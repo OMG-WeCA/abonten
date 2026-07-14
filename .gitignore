@@ -1,0 +1,82 @@
+# ── Generic / cross-stack ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+*.tmp
+*.bak
+*.swp
+*.orig
+.cache/
+*.pid
+
+# ── Editor / IDE ───────────────────────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.iml
+*.code-workspace
+.history/
+
+# ── Environment & secrets ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+secret/
+
+# ── Node / TypeScript ──────────────────────────────────────────────────
+node_modules/
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+.turbo/
+coverage/
+*.tsbuildinfo
+.npm/
+.pnpm-store/
+.yarn/cache
+.yarn/install-state.gz
+yarn-error.log
+
+# ── Python ─────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.tox/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+pip-wheel-metadata/
+
+# ── Databases & local data ─────────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+data/
+uploads/
+media/
+
+# ── OS / misc ──────────────────────────────────────────────────────────
+.Trashes
+ehthumbs.db
+*.lnk
