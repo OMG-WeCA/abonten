@@ -76,6 +76,10 @@ data/
 uploads/
 media/
 
+# ── Generated artifacts (stored as durable project artifacts outside the repo) ──
+*.pdf
+*.docx
+
 # ── OS / misc ──────────────────────────────────────────────────────────
 .Trashes
 ehthumbs.db
