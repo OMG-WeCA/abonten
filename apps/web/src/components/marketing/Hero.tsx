@@ -1,5 +1,14 @@
-import type { ReactNode } from 'react';
+'use client';
+
+import type { CSSProperties, ReactNode } from 'react';
+import Image from 'next/image';
 import { Button } from '../Button';
+import { useParallax } from './useParallax';
+
+interface HeroImage {
+  src: string;
+  alt: string;
+}
 
 interface HeroProps {
   eyebrow?: ReactNode;
@@ -10,6 +19,8 @@ interface HeroProps {
   secondaryLabel?: string;
   secondaryHref?: string;
   trust?: ReactNode;
+  /** Optional background photo (e.g. African cityscape) rendered behind a dark overlay. */
+  image?: HeroImage;
   children?: ReactNode;
 }
 
@@ -22,11 +33,36 @@ export function Hero({
   secondaryLabel,
   secondaryHref,
   trust,
+  image,
   children,
 }: HeroProps) {
+  const glowRef = useParallax<HTMLDivElement>(0.12, 70);
+  const blobRef = useParallax<HTMLDivElement>(0.22, 90);
+
   return (
-    <section className="relative overflow-hidden bg-background bg-hero-glow">
-      <div className="bg-dot-grid absolute inset-0 opacity-60" aria-hidden="true" />
+    <section className="relative overflow-hidden bg-background">
+      {image && (
+        <div className="absolute inset-0" aria-hidden="true">
+          <Image src={image.src} alt={image.alt} fill priority sizes="100vw" className="object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/65 to-background" />
+          <div className="absolute inset-0 bg-gradient-to-r from-background/70 via-transparent to-background/70" />
+        </div>
+      )}
+
+      <div ref={glowRef} className="bg-hero-glow pointer-events-none absolute -inset-[12%]" aria-hidden="true" />
+      <div className={`bg-dot-grid absolute inset-0 ${image ? 'opacity-30' : 'opacity-60'}`} aria-hidden="true" />
+
+      <div
+        ref={blobRef}
+        className="animate-float pointer-events-none absolute right-[8%] top-[16%] h-24 w-24 rounded-full bg-accent-blue/20 blur-2xl"
+        aria-hidden="true"
+      />
+      <div
+        className="animate-float-slow pointer-events-none absolute left-[10%] bottom-[14%] h-28 w-28 rounded-full bg-accent-violet/20 blur-2xl"
+        style={{ animationDelay: '-3s' } as CSSProperties}
+        aria-hidden="true"
+      />
+
       <div className="relative mx-auto max-w-7xl px-6 py-24 sm:py-28 lg:py-32">
         <div className="mx-auto max-w-3xl text-center">
           {eyebrow && (
@@ -35,7 +71,7 @@ export function Hero({
               {eyebrow}
             </p>
           )}
-          <h1 className="animate-fade-up-delay-1 text-4xl font-extrabold uppercase leading-[1.04] tracking-tight text-foreground sm:text-6xl lg:text-7xl">
+          <h1 className="animate-fade-up-delay-1 text-4xl font-extrabold uppercase leading-[1.04] tracking-tight text-foreground drop-shadow-[0_2px_20px_rgba(0,0,0,0.45)] sm:text-6xl lg:text-7xl">
             {title}
           </h1>
           {subtitle && (
@@ -44,7 +80,7 @@ export function Hero({
             </p>
           )}
           {(primaryLabel || secondaryLabel) && (
-            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <div className="animate-fade-up-delay-2 mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               {primaryLabel && primaryHref && (
                 <Button href={primaryHref} size="xl" variant="primary">
                   {primaryLabel}

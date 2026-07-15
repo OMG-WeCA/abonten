@@ -36,7 +36,7 @@ export function Footer() {
             </div>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-muted">
               Outdoor advertising, planned &amp; verified. The planning, booking, and
-              proof-of-performance platform for West &amp; Central Africa — aligned with OMG WeCA.
+              proof-of-performance platform for West &amp; Central Africa.
             </p>
             <p className="mt-4 text-xs uppercase tracking-wider text-muted/70">
               23+ markets · English &amp; French · NGN · GHS · XAF · XOF
@@ -87,9 +87,9 @@ export function Footer() {
         </div>
 
         <div className="mt-12 flex flex-col gap-3 border-t border-border pt-6 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
-          <p>&copy; {year} Abonten — OMG WeCA. All rights reserved.</p>
+          <p>&copy; {year} Abonten. All rights reserved.</p>
           <p className="uppercase tracking-wider">
-            Aligned with Omnicom Media Group West &amp; Central Africa
+            Plan · Book · Verify across West &amp; Central Africa
           </p>
         </div>
       </div>

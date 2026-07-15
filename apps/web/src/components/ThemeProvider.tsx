@@ -12,7 +12,7 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue>({ theme: 'dark', toggle: () => {} });
 
 /**
- * The marketing site is designed around the OMD deep-navy aesthetic, so dark is
+ * The marketing site is designed around a deep-navy aesthetic, so dark is
  * the default. A stored preference (if any) is respected on mount.
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {

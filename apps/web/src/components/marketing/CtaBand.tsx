@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Button } from '../Button';
+import { Reveal } from './Reveal';
 
 interface CtaBandProps {
   eyebrow?: ReactNode;
@@ -27,7 +28,7 @@ export function CtaBand({
     <section
       className={`relative overflow-hidden ${isPrimary ? 'bg-primary' : 'bg-surface-2 bg-cta-glow'}`}
     >
-      <div className="relative mx-auto max-w-4xl px-6 py-20 text-center sm:py-24">
+      <Reveal variant="up" className="relative mx-auto max-w-4xl px-6 py-20 text-center sm:py-24">
         {eyebrow && (
           <p
             className={`mb-3 text-xs font-bold uppercase tracking-[0.22em] ${
@@ -71,7 +72,7 @@ export function CtaBand({
             </Button>
           )}
         </div>
-      </div>
+      </Reveal>
     </section>
   );
 }

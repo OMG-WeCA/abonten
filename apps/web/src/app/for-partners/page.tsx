@@ -16,6 +16,7 @@ import { SectionHeading } from '../../components/marketing/SectionHeading';
 import { PillarCard } from '../../components/marketing/PillarCard';
 import { StepFlow } from '../../components/marketing/StepFlow';
 import { CtaBand } from '../../components/marketing/CtaBand';
+import { Reveal } from '../../components/marketing/Reveal';
 
 const DEMO_MAILTO = 'mailto:hello@abonten.com?subject=Abonten%20media%20partner%20signup';
 
@@ -24,7 +25,7 @@ const benefits = [
     icon: Users,
     accent: 'blue' as const,
     title: 'Reach more buyers',
-    body: 'Get your inventory in front of every planner and brand on the OMG WeCA network — one marketplace, hundreds of decision-makers, no more cold pitches.',
+    body: 'Get your inventory in front of every planner and brand on the Abonten network — one marketplace, hundreds of decision-makers, no more cold pitches.',
   },
   {
     icon: CalendarCheck,
@@ -100,12 +101,13 @@ export default function ForPartnersPage() {
             <span className="text-accent-gold">Get booked.</span>
           </>
         }
-        subtitle="Reach every planner and brand on the OMG WeCA network. Manage availability, accept bookings, and get paid — all from one dashboard. From a single depot in Kumasi to a national estate in Lagos."
+        subtitle="Reach every planner and brand on the Abonten network. Manage availability, accept bookings, and get paid — all from one dashboard. From a single depot in Kumasi to a national estate in Lagos."
         primaryLabel="Become a Media Partner"
         primaryHref={DEMO_MAILTO}
         secondaryLabel="See how it works"
         secondaryHref="#how-it-works"
         trust="Listed inventory is bookable across 23+ WeCA markets"
+        image={{ src: '/images/partners-skyline.jpg', alt: 'The Lagos, Nigeria skyline' }}
       />
 
       <Section variant="surface" size="lg">
@@ -116,10 +118,12 @@ export default function ForPartnersPage() {
           accent="gold"
         />
         <div className="mt-12 grid gap-6 md:grid-cols-3">
-          {benefits.map((b) => (
-            <PillarCard key={b.title} icon={b.icon} accent={b.accent} title={b.title}>
-              {b.body}
-            </PillarCard>
+          {benefits.map((b, i) => (
+            <Reveal key={b.title} delay={i * 90} className="h-full">
+              <PillarCard icon={b.icon} accent={b.accent} title={b.title}>
+                {b.body}
+              </PillarCard>
+            </Reveal>
           ))}
         </div>
       </Section>
@@ -132,10 +136,12 @@ export default function ForPartnersPage() {
           accent="blue"
         />
         <div className="mt-12 grid gap-6 sm:grid-cols-2">
-          {features.map((f) => (
-            <PillarCard key={f.title} icon={f.icon} accent={f.accent} title={f.title}>
-              {f.body}
-            </PillarCard>
+          {features.map((f, i) => (
+            <Reveal key={f.title} delay={i * 80} className="h-full">
+              <PillarCard icon={f.icon} accent={f.accent} title={f.title}>
+                {f.body}
+              </PillarCard>
+            </Reveal>
           ))}
         </div>
       </Section>

@@ -1,11 +1,11 @@
-/* OMD brand color palette — the single source of truth for web colors.
+/* Brand color palette — the single source of truth for web colors.
    Raw palette values are mapped into semantic tokens via Tailwind v4 @theme.
    To swap the theme: edit the @theme values (and the dark-mode overrides below).
    Never use raw hex in components — use semantic utilities (bg-background,
    text-primary, text-accent-gold, etc.). */
 
 @theme {
-  /* Raw OMD palette */
+  /* Raw brand palette */
   --color-brand-red: #E4002B;
   --color-brand-red-bright: #FF1B45;
   --color-brand-black: #0A0A0A;
@@ -14,7 +14,7 @@
   --color-brand-medium-gray: #6B7280;
   --color-brand-dark-gray: #374151;
 
-  /* Navy palette — OMD-inspired deep-navy marketing aesthetic (not pure black). */
+  /* Navy palette — deep-navy marketing aesthetic (not pure black). */
   --color-navy-950: #070B1F;
   --color-navy-900: #0A0E27;
   --color-navy-800: #0E1530;

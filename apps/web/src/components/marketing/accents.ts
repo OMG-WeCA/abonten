@@ -59,3 +59,16 @@ export const accentGradient: Record<Accent, string> = {
   emerald: 'from-accent-emerald/20 to-accent-emerald/0',
   violet: 'from-accent-violet/20 to-accent-violet/0',
 };
+
+/** Raw theme CSS variable per accent — used for custom-property overrides (e.g. card glow). */
+export const accentVar: Record<Accent, string> = {
+  primary: 'var(--color-primary)',
+  gold: 'var(--color-accent-gold)',
+  amber: 'var(--color-accent-amber)',
+  orange: 'var(--color-accent-orange)',
+  blue: 'var(--color-accent-blue)',
+  sky: 'var(--color-accent-sky)',
+  teal: 'var(--color-accent-teal)',
+  emerald: 'var(--color-accent-emerald)',
+  violet: 'var(--color-accent-violet)',
+};

@@ -18,6 +18,7 @@ import { SectionHeading } from '../../components/marketing/SectionHeading';
 import { PillarCard } from '../../components/marketing/PillarCard';
 import { StepFlow } from '../../components/marketing/StepFlow';
 import { CtaBand } from '../../components/marketing/CtaBand';
+import { Reveal } from '../../components/marketing/Reveal';
 
 const DEMO_MAILTO = 'mailto:hello@abonten.com?subject=Abonten%20planner%20access';
 
@@ -126,6 +127,7 @@ export default function ForPlannersPage() {
         secondaryLabel="Explore the platform"
         secondaryHref="#features"
         trust="One marketplace · every media partner · defensible KPIs"
+        image={{ src: '/images/hero-street.jpg', alt: 'A busy West African street with outdoor ads' }}
       />
 
       <Section variant="surface" size="lg">
@@ -136,10 +138,12 @@ export default function ForPlannersPage() {
           accent="gold"
         />
         <div className="mt-12 grid gap-6 sm:grid-cols-2">
-          {benefits.map((b) => (
-            <PillarCard key={b.title} icon={b.icon} accent={b.accent} title={b.title}>
-              {b.body}
-            </PillarCard>
+          {benefits.map((b, i) => (
+            <Reveal key={b.title} delay={i * 80} className="h-full">
+              <PillarCard icon={b.icon} accent={b.accent} title={b.title}>
+                {b.body}
+              </PillarCard>
+            </Reveal>
           ))}
         </div>
       </Section>
@@ -152,10 +156,12 @@ export default function ForPlannersPage() {
           accent="blue"
         />
         <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {features.map((f) => (
-            <PillarCard key={f.title} icon={f.icon} accent={f.accent} title={f.title}>
-              {f.body}
-            </PillarCard>
+          {features.map((f, i) => (
+            <Reveal key={f.title} delay={i * 70} className="h-full">
+              <PillarCard icon={f.icon} accent={f.accent} title={f.title}>
+                {f.body}
+              </PillarCard>
+            </Reveal>
           ))}
         </div>
       </Section>

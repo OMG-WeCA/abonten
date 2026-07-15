@@ -13,6 +13,7 @@ import { Section } from '../../components/marketing/Section';
 import { SectionHeading } from '../../components/marketing/SectionHeading';
 import { PillarCard } from '../../components/marketing/PillarCard';
 import { CtaBand } from '../../components/marketing/CtaBand';
+import { Reveal } from '../../components/marketing/Reveal';
 
 const DEMO_MAILTO = 'mailto:hello@abonten.com?subject=Abonten%20client%20demo';
 
@@ -88,6 +89,7 @@ export default function ForClientsPage() {
         secondaryLabel="How verification works"
         secondaryHref="#features"
         trust="Time-stamped · geo-tagged · immutable proof"
+        image={{ src: '/images/hero-night.jpg', alt: 'A city at night with illuminated billboards' }}
       />
 
       <Section variant="surface" size="lg">
@@ -98,10 +100,12 @@ export default function ForClientsPage() {
           accent="gold"
         />
         <div className="mt-12 grid gap-6 sm:grid-cols-2">
-          {benefits.map((b) => (
-            <PillarCard key={b.title} icon={b.icon} accent={b.accent} title={b.title}>
-              {b.body}
-            </PillarCard>
+          {benefits.map((b, i) => (
+            <Reveal key={b.title} delay={i * 80} className="h-full">
+              <PillarCard icon={b.icon} accent={b.accent} title={b.title}>
+                {b.body}
+              </PillarCard>
+            </Reveal>
           ))}
         </div>
       </Section>
@@ -114,10 +118,12 @@ export default function ForClientsPage() {
           accent="blue"
         />
         <div className="mt-12 grid gap-6 sm:grid-cols-2">
-          {features.map((f) => (
-            <PillarCard key={f.title} icon={f.icon} accent={f.accent} title={f.title}>
-              {f.body}
-            </PillarCard>
+          {features.map((f, i) => (
+            <Reveal key={f.title} delay={i * 80} className="h-full">
+              <PillarCard icon={f.icon} accent={f.accent} title={f.title}>
+                {f.body}
+              </PillarCard>
+            </Reveal>
           ))}
         </div>
       </Section>

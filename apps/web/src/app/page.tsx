@@ -13,8 +13,31 @@ import { PillarCard } from '../components/marketing/PillarCard';
 import { StepFlow } from '../components/marketing/StepFlow';
 import { StatBand } from '../components/marketing/StatBand';
 import { CtaBand } from '../components/marketing/CtaBand';
+import { Reveal } from '../components/marketing/Reveal';
+import { Marquee } from '../components/marketing/Marquee';
+import { BillboardShowcase } from '../components/marketing/BillboardShowcase';
+import { ImageBand } from '../components/marketing/ImageBand';
 
 const DEMO_MAILTO = 'mailto:hello@abonten.com?subject=Abonten%20demo%20request';
+
+const cities = [
+  'Lagos',
+  'Accra',
+  'Douala',
+  'Abuja',
+  'Kumasi',
+  'Yaoundé',
+  'Port Harcourt',
+  'Cotonou',
+  'Dakar',
+  'Abidjan',
+  'Lomé',
+  'Bamako',
+  'Kano',
+  'Ibadan',
+  'Libreville',
+  'Brazzaville',
+];
 
 const pillars = [
   {
@@ -69,7 +92,7 @@ export default function Home() {
   return (
     <>
       <Hero
-        eyebrow="Built for OMG WeCA · West & Central Africa"
+        eyebrow="Plan · Book · Verify"
         title={
           <>
             Outdoor advertising,
@@ -82,8 +105,14 @@ export default function Home() {
         primaryHref={DEMO_MAILTO}
         secondaryLabel="See how it works"
         secondaryHref="#how-it-works"
-        trust="Backed by OMG WeCA · English & French · NGN · GHS · XAF · XOF · USD · EUR"
+        trust="English & French · NGN · GHS · XAF · XOF · USD · EUR"
+        image={{ src: '/images/hero-billboard.jpg', alt: 'A roadside billboard in Nigeria' }}
       />
+
+      {/* City ticker */}
+      <div className="border-y border-border bg-surface-2/60">
+        <Marquee items={cities} label="Now bookable across WeCA" />
+      </div>
 
       {/* Three value pillars */}
       <Section variant="surface" size="lg">
@@ -94,16 +123,31 @@ export default function Home() {
           accent="gold"
         />
         <div className="mt-12 grid gap-6 md:grid-cols-3">
-          {pillars.map((p) => (
-            <PillarCard key={p.title} icon={p.icon} accent={p.accent} title={p.title}>
-              {p.body}
-            </PillarCard>
+          {pillars.map((p, i) => (
+            <Reveal key={p.title} delay={i * 90} className="h-full">
+              <PillarCard icon={p.icon} accent={p.accent} title={p.title}>
+                {p.body}
+              </PillarCard>
+            </Reveal>
           ))}
         </div>
       </Section>
 
+      {/* Signature: illuminated billboard showcase */}
+      <Section variant="navy" size="lg">
+        <SectionHeading
+          eyebrow="See it in action"
+          title="Lit up at night. Verified by day."
+          subtitle="Billboards booked through Abonten are geo-tagged and photographed daily, so clients always know their ads are live. Toggle day and night to see how every site is checked — illuminated or not."
+          accent="gold"
+        />
+        <div className="mt-12">
+          <BillboardShowcase />
+        </div>
+      </Section>
+
       {/* How it works */}
-      <Section id="how-it-works" variant="navy" size="lg">
+      <Section id="how-it-works" variant="surface" size="lg">
         <SectionHeading
           eyebrow="How it works"
           title="From listing to proof in three moves"
@@ -112,6 +156,20 @@ export default function Home() {
         />
         <StepFlow steps={steps} className="mt-14" />
       </Section>
+
+      {/* Image statement band */}
+      <ImageBand src="/images/home-aerial.jpg" alt="Aerial view of Lagos, Nigeria">
+        <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-accent-gold">
+          Why Abonten
+        </p>
+        <h2 className="text-3xl font-extrabold uppercase tracking-tight text-foreground sm:text-4xl lg:text-5xl">
+          The last spreadsheet you&rsquo;ll run for outdoor.
+        </h2>
+        <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-muted sm:text-lg">
+          One shared marketplace replaces vendor catalogs, availability phone calls, and
+          proof-of-performance emails — across the whole region.
+        </p>
+      </ImageBand>
 
       {/* Stats */}
       <Section id="stats" variant="surface" size="md">

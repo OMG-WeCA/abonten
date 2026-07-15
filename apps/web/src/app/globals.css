@@ -16,7 +16,7 @@ html {
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
-  font-family: var(--font-sans);
+  font-family: var(--font-inter, var(--font-sans));
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -26,8 +26,24 @@ body {
   color: #ffffff;
 }
 
-/* Subtle radial glow used behind dark hero / CTA sections. Uses theme tokens,
-   so no raw hex leaks into components. */
+/* ------------------------------------------------------------------ */
+/* Page-load fade (first paint)                                        */
+/* ------------------------------------------------------------------ */
+@keyframes page-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.page-fade {
+  animation: page-fade 0.45s ease both;
+}
+
+/* ------------------------------------------------------------------ */
+/* Hero / CTA radial glows (animated, GPU-friendly)                   */
+/* ------------------------------------------------------------------ */
 .bg-hero-glow::before {
   content: '';
   position: absolute;
@@ -37,6 +53,7 @@ body {
     radial-gradient(55% 45% at 85% 18%, color-mix(in oklab, var(--color-accent-blue) 18%, transparent), transparent 70%),
     radial-gradient(45% 40% at 50% 110%, color-mix(in oklab, var(--color-accent-violet) 14%, transparent), transparent 70%);
   pointer-events: none;
+  animation: hero-pan 18s ease-in-out infinite alternate;
 }
 
 .bg-cta-glow::before {
@@ -47,9 +64,19 @@ body {
     radial-gradient(50% 60% at 50% 0%, color-mix(in oklab, var(--color-primary) 28%, transparent), transparent 70%),
     radial-gradient(40% 50% at 100% 100%, color-mix(in oklab, var(--color-accent-violet) 16%, transparent), transparent 70%);
   pointer-events: none;
+  animation: hero-pan 16s ease-in-out infinite alternate;
 }
 
-/* Faint dotted grid overlay for hero depth. */
+@keyframes hero-pan {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    transform: translate3d(2%, -2%, 0) scale(1.06);
+  }
+}
+
+/* Faint dotted grid overlay for depth. */
 .bg-dot-grid {
   background-image: radial-gradient(
     color-mix(in oklab, var(--color-foreground) 9%, transparent) 1px,
@@ -58,7 +85,26 @@ body {
   background-size: 22px 22px;
 }
 
-/* Entrance animation for above-the-fold content. */
+/* Floating decorative blobs (subtle life, no JS). */
+@keyframes float-y {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0);
+  }
+}
+.animate-float {
+  animation: float-y 7s ease-in-out infinite;
+}
+.animate-float-slow {
+  animation: float-y 11s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/* Above-the-fold entrance (CSS, runs on load — always ends visible)   */
+/* ------------------------------------------------------------------ */
 @keyframes fade-up {
   from {
     opacity: 0;
@@ -69,25 +115,158 @@ body {
     transform: translateY(0);
   }
 }
-
 .animate-fade-up {
   animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-
 .animate-fade-up-delay-1 {
   animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: 0.12s;
 }
-
 .animate-fade-up-delay-2 {
   animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: 0.24s;
 }
 
+/* ------------------------------------------------------------------ */
+/* Scroll reveal — PROGRESSIVE ENHANCEMENT                             */
+/* Content is VISIBLE by default (opacity:1). When the element scrolls */
+/* into view, JS adds .reveal-animate to play a subtle fade-up. If JS  */
+/* or the IntersectionObserver never fires, content simply stays       */
+/* visible — it is NEVER hidden waiting for a trigger.                 */
+/* ------------------------------------------------------------------ */
+.reveal {
+  opacity: 1;
+}
+.reveal.reveal-animate {
+  animation: reveal-fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes reveal-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Button sheen sweep (premium hover)                                  */
+/* ------------------------------------------------------------------ */
+.btn-sheen {
+  position: relative;
+  overflow: hidden;
+}
+.btn-sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.28) 50%, transparent 70%);
+  transform: translateX(-130%);
+  transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+.btn-sheen:hover::after {
+  transform: translateX(130%);
+}
+
+/* ------------------------------------------------------------------ */
+/* Pillar-card hover glow                                              */
+/* ------------------------------------------------------------------ */
+.card-glow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    120% 80% at 50% 0%,
+    color-mix(in oklab, var(--glow-accent, var(--color-primary)) 18%, transparent),
+    transparent 60%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.group:hover .card-glow::before,
+.card-glow:hover::before {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Marquee (WeCA city ticker)                                          */
+/* ------------------------------------------------------------------ */
+@keyframes marquee-x {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.marquee {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+.marquee-track {
+  display: inline-flex;
+  width: max-content;
+  min-width: 200%;
+  animation: marquee-x 34s linear infinite;
+}
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+
+/* ------------------------------------------------------------------ */
+/* Billboard showcase — signature OOH effect                          */
+/* ------------------------------------------------------------------ */
+.billboard-ad {
+  animation: billboard-raise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes billboard-raise {
+  from {
+    transform: translateY(110%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.twinkle-star {
+  animation: twinkle 3s ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Reduced motion — disable every animation (content stays visible)   */
+/* ------------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .page-fade,
   .animate-fade-up,
   .animate-fade-up-delay-1,
-  .animate-fade-up-delay-2 {
-    animation: none;
+  .animate-fade-up-delay-2,
+  .animate-float,
+  .animate-float-slow,
+  .bg-hero-glow::before,
+  .bg-cta-glow::before,
+  .marquee-track,
+  .reveal.reveal-animate,
+  .billboard-ad,
+  .twinkle-star {
+    animation: none !important;
+  }
+  .btn-sheen::after {
+    display: none;
   }
 }
