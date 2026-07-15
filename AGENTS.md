@@ -70,7 +70,7 @@ abonten/
 ├─ .gitignore
 ├─ apps/
 │  ├─ api/                 # NestJS (or chosen backend) API
-│  ├─ web/                 # Next.js planner/admin/client dashboards
+│  ├─ web/                 # Next.js marketing website (home + for-partners / for-planners / for-clients)
 │  └─ mobile/              # React Native (Expo) field + client app
 ├─ packages/
 │  ├─ contracts/           # shared types generated from OpenAPI

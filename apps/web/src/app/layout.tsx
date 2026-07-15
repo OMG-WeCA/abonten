@@ -7,16 +7,24 @@ import { Footer } from '../components/Footer';
 
 export const metadata: Metadata = {
   title: 'Abonten — Outdoor Advertising, Planned & Verified',
-  description: 'Outdoor advertising planning, booking, and measurement platform for OMG WeCA (West & Central Africa).',
+  description:
+    'The planning, booking, and proof-of-performance platform for outdoor advertising across West & Central Africa. Built for OMG WeCA.',
+  metadataBase: new URL('https://abonten.com'),
+  openGraph: {
+    title: 'Abonten — Outdoor Advertising, Planned & Verified',
+    description:
+      'List inventory, plan multi-city campaigns with real KPIs, and prove every billboard is live — across 23+ markets in West & Central Africa.',
+    type: 'website',
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen">
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
+      <body className="min-h-screen bg-background text-foreground antialiased">
         <ThemeProvider>
           <Navbar />
-          <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>
+          <main>{children}</main>
           <Footer />
         </ThemeProvider>
       </body>

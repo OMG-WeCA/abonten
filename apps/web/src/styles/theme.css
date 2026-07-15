@@ -1,22 +1,43 @@
 /* OMD brand color palette — the single source of truth for web colors.
    Raw palette values are mapped into semantic tokens via Tailwind v4 @theme.
    To swap the theme: edit the @theme values (and the dark-mode overrides below).
-   Never use raw hex in components — use semantic utilities (bg-background, text-primary, etc.). */
+   Never use raw hex in components — use semantic utilities (bg-background,
+   text-primary, text-accent-gold, etc.). */
 
 @theme {
   /* Raw OMD palette */
   --color-brand-red: #E4002B;
+  --color-brand-red-bright: #FF1B45;
   --color-brand-black: #0A0A0A;
   --color-brand-white: #FFFFFF;
   --color-brand-light-gray: #F5F5F5;
   --color-brand-medium-gray: #6B7280;
   --color-brand-dark-gray: #374151;
 
+  /* Navy palette — OMD-inspired deep-navy marketing aesthetic (not pure black). */
+  --color-navy-950: #070B1F;
+  --color-navy-900: #0A0E27;
+  --color-navy-800: #0E1530;
+  --color-navy-700: #131A3A;
+  --color-navy-600: #1B2450;
+  --color-navy-500: #243056;
+
+  /* Vibrant accent colors for visual interest (used alongside the brand red). */
+  --color-accent-gold: #FFB020;
+  --color-accent-amber: #F59E0B;
+  --color-accent-orange: #FB923C;
+  --color-accent-blue: #3B82F6;
+  --color-accent-sky: #38BDF8;
+  --color-accent-teal: #2DD4BF;
+  --color-accent-emerald: #34D399;
+  --color-accent-violet: #A855F7;
+
   /* Semantic tokens (light mode defaults) */
   --color-primary: #E4002B;
   --color-primary-hover: #C20028;
   --color-background: #FFFFFF;
   --color-surface: #F5F5F5;
+  --color-surface-2: #FFFFFF;
   --color-foreground: #0A0A0A;
   --color-muted: #6B7280;
   --color-secondary: #374151;
@@ -26,17 +47,23 @@
   --color-error: #DC2626;
   --color-info: #2563EB;
 
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Dark mode: override semantic tokens when [data-theme="dark"] is on <html>. */
+/* Dark mode (the marketing site's default look): rich navy aesthetic.
+   Override semantic tokens when [data-theme="dark"] is on <html>. */
 [data-theme='dark'] {
-  --color-primary: #FF1B45;
-  --color-primary-hover: #E4002B;
-  --color-background: #0A0A0A;
-  --color-surface: #1F1F1F;
+  --color-primary: #E4002B;
+  --color-primary-hover: #C20028;
+  --color-background: #0A0E27;
+  --color-surface: #131A3A;
+  --color-surface-2: #0E1530;
   --color-foreground: #FFFFFF;
-  --color-muted: #9CA3AF;
+  --color-muted: #9BA8C7;
   --color-secondary: #D1D5DB;
-  --color-border: #374151;
+  --color-border: #243056;
+  --color-success: #34D399;
+  --color-warning: #FFB020;
+  --color-error: #FF5470;
+  --color-info: #3B82F6;
 }

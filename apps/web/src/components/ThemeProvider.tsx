@@ -9,10 +9,14 @@ interface ThemeContextValue {
   toggle: () => void;
 }
 
-const ThemeContext = createContext<ThemeContextValue>({ theme: 'light', toggle: () => {} });
+const ThemeContext = createContext<ThemeContextValue>({ theme: 'dark', toggle: () => {} });
 
+/**
+ * The marketing site is designed around the OMD deep-navy aesthetic, so dark is
+ * the default. A stored preference (if any) is respected on mount.
+ */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('light');
+  const [theme, setTheme] = useState<Theme>('dark');
 
   useEffect(() => {
     const stored = typeof localStorage !== 'undefined' ? (localStorage.getItem('theme') as Theme | null) : null;
