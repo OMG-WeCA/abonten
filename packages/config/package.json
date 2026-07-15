@@ -13,12 +13,15 @@
     "./eslint": "./eslint.config.mjs",
     "./prettier.json": "./prettier.json"
   },
+  "scripts": {
+    "lint": "eslint ."
+  },
   "devDependencies": {
-    "@eslint/js": "latest",
-    "eslint": "latest",
-    "globals": "latest",
-    "prettier": "latest",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "prettier": "^3.9.5",
     "typescript": "^6",
-    "typescript-eslint": "latest"
+    "typescript-eslint": "^8.64.0"
   }
 }

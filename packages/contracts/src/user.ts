@@ -8,7 +8,6 @@ export interface User extends Auditable {
   phone?: string;
   locale: string;
   status: UserStatus;
-  mfaEnabled: boolean;
 }
 
 export type OrganizationRole =

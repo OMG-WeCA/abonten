@@ -3,8 +3,6 @@ packages:
   - "packages/*"
 
 allowBuilds:
-  prisma: true
-  "@prisma/engines": true
   sharp: false
   "@scarf/scarf": false
   dtrace-provider: false

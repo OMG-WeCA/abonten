@@ -11,6 +11,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - abonten_pgdata:/var/lib/postgresql/data
+      - ./docker/postgis-init.sql:/docker-entrypoint-initdb.d/01-postgis.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-abonten}"]
       interval: 10s
@@ -18,7 +19,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:latest
     container_name: abonten-redis
     restart: unless-stopped
     ports:

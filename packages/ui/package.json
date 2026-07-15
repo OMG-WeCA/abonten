@@ -10,7 +10,8 @@
   },
   "scripts": {
     "build": "tsc --noEmit -p tsconfig.json",
-    "type-check": "tsc --noEmit -p tsconfig.json"
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint ."
   },
   "peerDependencies": {
     "react": ">=18",
@@ -18,9 +19,10 @@
   },
   "devDependencies": {
     "@abonten/config": "workspace:*",
-    "@types/react": "latest",
-    "react": "latest",
-    "react-dom": "latest",
+    "@types/react": "^19.2.17",
+    "eslint": "^10.7.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "typescript": "^6"
   }
 }

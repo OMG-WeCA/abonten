@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, NotFoundException, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DatabaseService } from '../common/database.service';
 import { CapabilityResolverService } from '../capabilities/capability-resolver.service';
@@ -70,7 +70,15 @@ export class MeController {
   async switchOrg(@CurrentUser() user: AuthenticatedUser, @Body() dto: SwitchOrgDto) {
     const users = await this.db.repo(UserEntity);
     const u = await users.findOne({ where: { id: user.userId } });
-    if (!u) return { error: 'user not found' };
+    if (!u) throw new NotFoundException('User not found');
+    // Verify active membership in the target org before issuing a JWT for it.
+    const memberships = await this.db.repo(MembershipEntity);
+    const membership = await memberships.findOne({
+      where: { userId: user.userId, organizationId: dto.organizationId, status: 'active' },
+    });
+    if (!membership) {
+      throw new ForbiddenException('No active membership in the target organization');
+    }
     return this.auth.issueTokens(u, dto.organizationId);
   }
 }

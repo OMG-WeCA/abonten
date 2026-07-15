@@ -10,10 +10,12 @@
   },
   "scripts": {
     "build": "tsc --noEmit -p tsconfig.json",
-    "type-check": "tsc --noEmit -p tsconfig.json"
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint ."
   },
   "devDependencies": {
     "@abonten/config": "workspace:*",
+    "eslint": "^10.7.0",
     "typescript": "^6"
   }
 }

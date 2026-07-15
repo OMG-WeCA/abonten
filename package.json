@@ -18,9 +18,9 @@
   },
   "devDependencies": {
     "@abonten/config": "workspace:*",
-    "eslint": "latest",
-    "prettier": "latest",
-    "turbo": "latest",
+    "eslint": "^10.7.0",
+    "prettier": "^3.9.5",
+    "turbo": "^2.10.5",
     "typescript": "^6"
   },
   "packageManager": "pnpm@11.13.0"

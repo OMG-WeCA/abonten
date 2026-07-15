@@ -12,19 +12,19 @@
   },
   "dependencies": {
     "@abonten/contracts": "workspace:*",
-    "@react-native-async-storage/async-storage": "latest",
-    "expo": "latest",
-    "expo-router": "latest",
-    "expo-secure-store": "latest",
-    "expo-status-bar": "latest",
-    "react": "latest",
-    "react-native": "latest",
-    "react-native-safe-area-context": "latest",
-    "react-native-screens": "latest"
+    "@react-native-async-storage/async-storage": "^3.1.1",
+    "expo": "^57.0.4",
+    "expo-router": "^57.0.4",
+    "expo-secure-store": "^57.0.0",
+    "expo-status-bar": "^57.0.0",
+    "react": "^19.2.7",
+    "react-native": "^0.86.0",
+    "react-native-safe-area-context": "^5.8.0",
+    "react-native-screens": "^4.26.0"
   },
   "devDependencies": {
     "@abonten/config": "workspace:*",
-    "@types/react": "latest",
+    "@types/react": "^19.2.17",
     "typescript": "^6"
   }
 }

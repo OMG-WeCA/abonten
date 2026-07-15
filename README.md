@@ -6,7 +6,7 @@ specification and [`AGENTS.md`](./AGENTS.md) for agent guidance.
 
 ## Monorepo layout
 
-- `apps/api` — NestJS API (TypeScript, Prisma + PostgreSQL/PostGIS, Redis, Swagger)
+- `apps/api` — NestJS API (TypeScript, TypeORM + PostgreSQL/PostGIS, Redis, Swagger)
 - `apps/web` — Next.js web app (App Router, Tailwind CSS)
 - `apps/mobile` — Expo / React Native app (expo-router, offline-first scaffolding)
 - `packages/contracts` — shared TypeScript types/DTOs from SPEC.md §6
@@ -22,7 +22,7 @@ pnpm dev                    # turbo runs all dev servers
 ```
 
 - API health: `http://localhost:3000/health`
-- Swagger: `http://localhost:3000/api`
+- Swagger: `http://localhost:3000/api/docs`
 - Web: `http://localhost:3001`
 
 Build & checks:
