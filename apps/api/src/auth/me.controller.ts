@@ -1,0 +1,76 @@
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { DatabaseService } from '../common/database.service';
+import { CapabilityResolverService } from '../capabilities/capability-resolver.service';
+import { MembershipEntity } from './entities/membership.entity';
+import { OrganizationEntity } from '../common/entities/organization.entity';
+import { UserCapabilityOverrideEntity } from './entities/user-capability-override.entity';
+import { UserEntity } from './entities/user.entity';
+import { CurrentUser } from './decorators/current-user.decorator';
+import type { AuthenticatedUser } from './authenticated-user';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { SwitchOrgDto } from './dto/switch-org.dto';
+import { AuthService } from './auth.service';
+import type { Capability } from '../capabilities/capability.enum';
+
+@ApiTags('me')
+@UseGuards(JwtAuthGuard)
+@Controller('me')
+export class MeController {
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly resolver: CapabilityResolverService,
+    private readonly auth: AuthService,
+  ) {}
+
+  @Get()
+  @ApiOperation({ summary: 'Current user + active org + effective capabilities' })
+  async me(@CurrentUser() user: AuthenticatedUser) {
+    const users = await this.db.repo(UserEntity);
+    const u = await users.findOne({ where: { id: user.userId } });
+    const orgId = user.activeOrgId;
+    let role: string | undefined;
+    let capabilities: Capability[] = [];
+    if (orgId) {
+      const memberships = await this.db.repo(MembershipEntity);
+      const m = await memberships.findOne({ where: { userId: user.userId, organizationId: orgId } });
+      if (m) {
+        role = m.role;
+        const overrides = await this.db
+          .repo(UserCapabilityOverrideEntity)
+          .then((r) => r.find({ where: { userId: user.userId, organizationId: orgId } }))
+          .catch(() => []);
+        capabilities = [...this.resolver.resolve(m.role as never, overrides)];
+      }
+    }
+    return {
+      user: u ? { id: u.id, email: u.email, name: u.name, phone: u.phone, status: u.status } : null,
+      activeOrgId: orgId,
+      role,
+      capabilities,
+    };
+  }
+
+  @Get('organizations')
+  @ApiOperation({ summary: 'Organizations the user belongs to' })
+  async organizations(@CurrentUser() user: AuthenticatedUser) {
+    const memberships = await this.db.repo(MembershipEntity);
+    const rows = await memberships.find({ where: { userId: user.userId, status: 'active' } });
+    const orgs = await this.db.repo(OrganizationEntity);
+    const out: Array<{ organizationId: string; role: string; name: string; type: string }> = [];
+    for (const m of rows) {
+      const org = await orgs.findOne({ where: { id: m.organizationId } });
+      out.push({ organizationId: m.organizationId, role: m.role, name: org?.name ?? '', type: org?.type ?? '' });
+    }
+    return out;
+  }
+
+  @Post('switch-org')
+  @ApiOperation({ summary: 'Switch the active organization context (re-issues a JWT)' })
+  async switchOrg(@CurrentUser() user: AuthenticatedUser, @Body() dto: SwitchOrgDto) {
+    const users = await this.db.repo(UserEntity);
+    const u = await users.findOne({ where: { id: user.userId } });
+    if (!u) return { error: 'user not found' };
+    return this.auth.issueTokens(u, dto.organizationId);
+  }
+}

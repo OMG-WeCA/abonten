@@ -1,4 +1,5 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { MembershipEntity } from '../../auth/entities/membership.entity';
 
 @Entity({ name: 'organizations' })
 export class OrganizationEntity {
@@ -12,7 +13,11 @@ export class OrganizationEntity {
   @Column({ name: 'default_locale', default: 'en' }) defaultLocale!: string;
   @Column({ default: 'active' }) status!: string;
   @Column({ name: 'billing_ref', nullable: true }) billingRef?: string;
+  @Column('simple-array', { name: 'allowed_email_domains', nullable: true }) allowedEmailDomains?: string[];
 
   @CreateDateColumn({ name: 'created_at' }) createdAt!: Date;
   @UpdateDateColumn({ name: 'updated_at' }) updatedAt!: Date;
+
+  @OneToMany(() => MembershipEntity, (m) => m.organization)
+  memberships!: MembershipEntity[];
 }

@@ -7,3 +7,5 @@ allowBuilds:
   "@prisma/engines": true
   sharp: false
   "@scarf/scarf": false
+  dtrace-provider: false
+  bcrypt: false

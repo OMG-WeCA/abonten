@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import configuration from './common/configuration';
 import validationSchema from './common/validation';
 import { CommonModule } from './common/common.module';
+import { CapabilitiesModule } from './capabilities/capabilities.module';
 import { AuthModule } from './auth/auth.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PlanningModule } from './planning/planning.module';
@@ -35,6 +36,7 @@ const featureModules = [
       validationOptions: { allowUnknown: true, abortEarly: false },
     }),
     CommonModule,
+    CapabilitiesModule,
     ...featureModules,
   ],
 })
