@@ -1,0 +1,27 @@
+{
+  "name": "abonten",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Abonten — outdoor advertising planning, booking, and measurement platform for OMG WeCA (spec: ./SPEC.md).",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "type-check": "turbo run type-check",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "outdated": "pnpm -r outdated"
+  },
+  "devDependencies": {
+    "@abonten/config": "workspace:*",
+    "eslint": "latest",
+    "prettier": "latest",
+    "turbo": "latest",
+    "typescript": "^6"
+  },
+  "packageManager": "pnpm@11.13.0"
+}

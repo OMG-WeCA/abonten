@@ -1,0 +1,30 @@
+{
+  "name": "@abonten/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "test": "echo \"no tests yet\" && exit 0"
+  },
+  "dependencies": {
+    "@abonten/contracts": "workspace:*",
+    "@react-native-async-storage/async-storage": "latest",
+    "expo": "latest",
+    "expo-router": "latest",
+    "expo-secure-store": "latest",
+    "expo-status-bar": "latest",
+    "react": "latest",
+    "react-native": "latest",
+    "react-native-safe-area-context": "latest",
+    "react-native-screens": "latest"
+  },
+  "devDependencies": {
+    "@abonten/config": "workspace:*",
+    "@types/react": "latest",
+    "typescript": "^6"
+  }
+}

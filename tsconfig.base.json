@@ -1,0 +1,25 @@
+{
+  "extends": "./packages/config/tsconfig/base.json",
+  "compilerOptions": {
+    "paths": {
+      "@abonten/contracts": [
+        "./packages/contracts/src"
+      ],
+      "@abonten/contracts/*": [
+        "./packages/contracts/src/*"
+      ],
+      "@abonten/config": [
+        "./packages/config/src"
+      ],
+      "@abonten/config/*": [
+        "./packages/config/src/*"
+      ],
+      "@abonten/ui": [
+        "./packages/ui/src"
+      ],
+      "@abonten/ui/*": [
+        "./packages/ui/src/*"
+      ]
+    }
+  }
+}

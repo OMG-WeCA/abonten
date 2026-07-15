@@ -1,0 +1,43 @@
+{
+  "name": "@abonten/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "nest start",
+    "start:prod": "node dist/main.js",
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "test": "echo \"no tests yet\" && exit 0"
+  },
+  "dependencies": {
+    "@abonten/contracts": "workspace:*",
+    "@nestjs/common": "latest",
+    "@nestjs/config": "latest",
+    "@nestjs/core": "latest",
+    "@nestjs/platform-express": "latest",
+    "@nestjs/swagger": "latest",
+    "@nestjs/terminus": "latest",
+    "@nestjs/typeorm": "latest",
+    "class-transformer": "latest",
+    "class-validator": "latest",
+    "ioredis": "latest",
+    "joi": "latest",
+    "pg": "latest",
+    "reflect-metadata": "latest",
+    "rxjs": "latest",
+    "typeorm": "latest"
+  },
+  "devDependencies": {
+    "@abonten/config": "workspace:*",
+    "@nestjs/cli": "latest",
+    "@nestjs/schematics": "latest",
+    "@types/express": "latest",
+    "@types/node": "latest",
+    "ts-loader": "latest",
+    "ts-node": "latest",
+    "tsconfig-paths": "latest",
+    "typescript": "^6"
+  }
+}

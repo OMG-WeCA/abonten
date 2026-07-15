@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: abonten-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-abonten}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-abonten}
+      POSTGRES_DB: ${POSTGRES_DB:-abonten}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - abonten_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-abonten}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: abonten-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - abonten_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: abonten-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-abonten}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-abonten123}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - abonten_miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  abonten_pgdata:
+  abonten_redisdata:
+  abonten_miniodata:
