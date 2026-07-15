@@ -1,0 +1,29 @@
+import { DataSource } from 'typeorm';
+import { SiteFaceEntity } from '../common/entities/site-face.entity';
+import { IDS } from './seed-ids';
+
+const F = '66666666-0000-4000-8000-';
+// 1-3 faces per site; bookable mirrors the site's listed status.
+const FACES = [
+  { id: F + '000000000001', siteId: IDS.site.ikorodu, faceLabel: 'A', width: 8, height: 3, area: 24, units: 'm', bookable: true },
+  { id: F + '000000000002', siteId: IDS.site.ikorodu, faceLabel: 'B', width: 8, height: 3, area: 24, units: 'm', bookable: true },
+  { id: F + '000000000003', siteId: IDS.site.lekkiepe, faceLabel: 'A', width: 12, height: 4, area: 48, units: 'm', bookable: true },
+  { id: F + '000000000004', siteId: IDS.site.victoria, faceLabel: 'A', width: 10, height: 5, area: 50, units: 'm', bookable: false },
+  { id: F + '000000000005', siteId: IDS.site.victoria, faceLabel: 'B', width: 10, height: 5, area: 50, units: 'm', bookable: false },
+  { id: F + '000000000006', siteId: IDS.site.ikeja, faceLabel: 'A', width: 6, height: 3, area: 18, units: 'm', bookable: true },
+  { id: F + '000000000007', siteId: IDS.site.apapa, faceLabel: 'A', width: 8, height: 3, area: 24, units: 'm', bookable: false },
+  { id: F + '000000000008', siteId: IDS.site.graphic, faceLabel: 'A', width: 8, height: 3, area: 24, units: 'm', bookable: true },
+  { id: F + '000000000009', siteId: IDS.site.spintex, faceLabel: 'A', width: 10, height: 4, area: 40, units: 'm', bookable: true },
+  { id: F + '00000000000a', siteId: IDS.site.liberation, faceLabel: 'A', width: 6, height: 3, area: 18, units: 'm', bookable: true },
+  { id: F + '00000000000b', siteId: IDS.site.bliberte, faceLabel: 'A', width: 8, height: 3, area: 24, units: 'm', bookable: true },
+  { id: F + '00000000000c', siteId: IDS.site.bliberte, faceLabel: 'B', width: 8, height: 3, area: 24, units: 'm', bookable: true },
+  { id: F + '00000000000d', siteId: IDS.site.akwa, faceLabel: 'A', width: 12, height: 4, area: 48, units: 'm', bookable: false },
+];
+
+export async function seedSiteFaces(ds: DataSource): Promise<void> {
+  const repo = ds.getRepository(SiteFaceEntity);
+  for (const f of FACES) {
+    await repo.save(repo.create(f));
+  }
+  console.log(`  site faces: ${FACES.length}`);
+}

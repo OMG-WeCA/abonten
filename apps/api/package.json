@@ -9,6 +9,7 @@
     "start:prod": "node dist/main.js",
     "lint": "eslint .",
     "type-check": "tsc --noEmit -p tsconfig.json",
+    "seed": "ts-node src/seed/index.ts",
     "test": "echo \"no tests yet\" && exit 0"
   },
   "dependencies": {

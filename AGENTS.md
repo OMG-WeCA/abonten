@@ -107,3 +107,69 @@ Deviate from this layout only with a documented reason in the PR/commit.
 - Do not bypass tenant isolation or RBAC, even for "quick" admin features.
 - Do not delete or overwrite historical POP or audit records.
 - Do not introduce a second language, framework, or styling system without a documented decision.
+
+## 7. Seed Data
+
+Seed data is **first-class** — every new feature should ship with seed data so devs can
+immediately see and test it with a populated database.
+
+### Where seed files live
+
+- `apps/api/src/seed/` — organized by domain:
+  `organizations.seed.ts`, `users.seed.ts`, `memberships.seed.ts`,
+  `capability-overrides.seed.ts`, `billboard-sites.seed.ts`, `site-faces.seed.ts`,
+  `site-metadata.seed.ts`.
+- `seed-ids.ts` — deterministic UUIDs for idempotent upserts and stable cross-references.
+- `index.ts` — the orchestrator that runs all seeders in dependency order.
+
+### How to run
+
+```sh
+docker compose up -d          # PostgreSQL+PostGIS, Redis, MinIO, Mailpit
+pnpm seed                      # or: pnpm --filter @abonten/api seed
+```
+
+The seed connects to `DATABASE_URL` (default: the docker-compose Postgres). It uses
+`synchronize: true` (dev only) to auto-create tables from entities, then upserts all
+seed data. It is **idempotent** — safe to re-run after schema or seed changes.
+
+If the DB isn't running, the seed fails gracefully with a clear error and exit code 1
+(no stack-trace crash).
+
+### Seeded users for testing
+
+| Email | Role | Org |
+| --- | --- | --- |
+| `ama@accraoutdoor.com` | org_owner | Accra Outdoor Media (media_partner) |
+| `kwame@accraoutdoor.com` | inventory_manager | Accra Outdoor Media |
+| `akosua@accraoutdoor.com` | field_operator | Accra Outdoor Media |
+| `chidi@mediareach.com` | org_owner | mediaReach OMD Lagos (agency) |
+| `aisha@mediareach.com` | planner | mediaReach OMD Lagos |
+| `emeka@mediareach.com` | planner_admin | mediaReach OMD Lagos |
+| `funke@unilever.com` | org_owner | Unilever West Africa (brand) |
+| `tunde@unilever.com` | client_admin | Unilever West Africa |
+| `ngozi@unilever.com` | client_viewer | Unilever West Africa |
+| `seyi@omg-weca.com` | org_owner | OMG WeCA (platform) |
+| `adaora@omg-weca.com` | platform_admin | OMG WeCA |
+
+Capability overrides: `akosua` (field_operator) is granted `REPORT_VIEW`;
+`kwame` (inventory_manager) has `INVENTORY_DELETE` revoked.
+
+10 billboard sites across Lagos, Accra, and Douala with realistic lat/long, formats
+(static, digital_led, 3d), illumination, and statuses. 13 site faces, 4 site metadata
+records (traffic, visibility, audience, POI).
+
+### Convention for adding new seed data
+
+When a feature adds or changes entities:
+1. **Create or update** the relevant `seed/<domain>.seed.ts` file (or create a new one).
+2. **Follow the existing idempotent pattern**: use deterministic UUIDs from `seed-ids.ts`
+   and `repo.save(repo.create({...id, ...fields}))` (upsert by primary key). For PostGIS
+   geometry columns, use `createQueryBuilder` with `ST_SetSRID(ST_MakePoint(lng, lat), 4326)`.
+3. **Add new entities** to the orchestrator `index.ts` in **dependency order**
+   (parents before children). Also register them in `database.module.ts` and the seed's
+   `DataSource` entities array.
+4. **Seed data should be realistic** and cover the WeCA market context (Nigeria, Ghana,
+   Cameroon; real street names, plausible traffic counts, local currencies).
+5. **Run `pnpm seed`** to verify it works, then `pnpm build && pnpm type-check && pnpm lint`
+   to ensure the seed type-checks and lints clean.

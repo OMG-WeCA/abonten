@@ -12,6 +12,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "type-check": "turbo run type-check",
+    "seed": "turbo run seed",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "outdated": "pnpm -r outdated"

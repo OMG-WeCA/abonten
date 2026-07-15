@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { BillboardSiteEntity } from './entities/billboard-site.entity';
 import { OrganizationEntity } from './entities/organization.entity';
+import { SiteFaceEntity } from './entities/site-face.entity';
+import { SiteMetadataEntity } from './entities/site-metadata.entity';
 import { MembershipEntity } from '../auth/entities/membership.entity';
 import { RefreshTokenEntity } from '../auth/entities/refresh-token.entity';
 import { UserCapabilityOverrideEntity } from '../auth/entities/user-capability-override.entity';
@@ -25,6 +27,8 @@ import { DatabaseService } from './database.service';
           entities: [
             OrganizationEntity,
             BillboardSiteEntity,
+            SiteFaceEntity,
+            SiteMetadataEntity,
             UserEntity,
             MembershipEntity,
             UserCapabilityOverrideEntity,

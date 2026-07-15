@@ -19,6 +19,9 @@
     },
     "type-check": {
       "dependsOn": ["^build"]
+    },
+    "seed": {
+      "cache": false
     }
   }
 }
