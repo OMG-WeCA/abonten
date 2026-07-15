@@ -181,9 +181,6 @@ importers:
 
   apps/web:
     dependencies:
-      '@abonten/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
       lucide-react:
         specifier: ^0.460.0
         version: 0.460.0(react@19.2.7)

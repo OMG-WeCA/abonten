@@ -184,11 +184,13 @@ Abonten uses the **OMD brand color palette** (from omd.com brand materials):
 | Token | Hex | Usage |
 | --- | --- | --- |
 | Brand Red | `#E4002B` | Primary accent (buttons, links, highlights) |
-| Brand Black | `#0A0A0A` | Dark backgrounds, primary text |
+| Brand Black | `#0A0A0A` | Dark surfaces, primary text (raw palette) |
+| Navy | `#0A0E27` | Deep navy — web dark-mode background (OMD-style marketing aesthetic) |
 | Brand White | `#FFFFFF` | Light backgrounds |
 | Light Gray | `#F5F5F5` | Muted/surface backgrounds |
 | Medium Gray | `#6B7280` | Muted text, borders |
 | Dark Gray | `#374151` | Secondary text |
+| Accents | `#FFB020` `#3B82F6` `#2DD4BF` `#A855F7` `#FB923C` | Vibrant accents for icons, badges, stat numbers (gold/blue/teal/violet/orange) |
 
 ### Semantic token system
 
@@ -197,16 +199,18 @@ allowed in components:
 
 | Token | Light | Dark |
 | --- | --- | --- |
-| `primary` | `#E4002B` | `#FF1B45` |
-| `background` | `#FFFFFF` | `#0A0A0A` |
-| `surface` | `#F5F5F5` | `#1F1F1F` |
+| `primary` | `#E4002B` | `#E4002B` |
+| `primary-hover` | `#C20028` | `#C20028` |
+| `background` | `#FFFFFF` | `#0A0E27` |
+| `surface` | `#F5F5F5` | `#131A3A` |
+| `surface-2` | `#FFFFFF` | `#0E1530` |
 | `foreground` | `#0A0A0A` | `#FFFFFF` |
-| `muted` | `#6B7280` | `#9CA3AF` |
-| `border` | `#E5E7EB` | `#374151` |
-| `success` | `#16A34A` | `#16A34A` |
-| `warning` | `#F59E0B` | `#F59E0B` |
-| `error` | `#DC2626` | `#DC2626` |
-| `info` | `#2563EB` | `#2563EB` |
+| `muted` | `#6B7280` | `#9BA8C7` |
+| `border` | `#E5E7EB` | `#243056` |
+| `success` | `#16A34A` | `#34D399` |
+| `warning` | `#F59E0B` | `#FFB020` |
+| `error` | `#DC2626` | `#FF5470` |
+| `info` | `#2563EB` | `#3B82F6` |
 
 ### Rule: always use semantic tokens, never raw hex
 
@@ -230,5 +234,6 @@ dark mode for a new token, add a `[data-theme="dark"]` override in `theme.css`.
 ### Dark mode
 
 The web app uses a `[data-theme="dark"]` selector on `<html>`, managed by
-`ThemeProvider` (`apps/web/src/components/ThemeProvider.tsx`). The semantic CSS
+`ThemeProvider` (`apps/web/src/components/ThemeProvider.tsx`). The marketing site
+defaults to **dark** (the OMD navy aesthetic) when no preference is stored. The semantic CSS
 variables are overridden in the dark block — no `dark:` prefix needed in components.

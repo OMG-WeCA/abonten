@@ -10,7 +10,6 @@
     "type-check": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@abonten/contracts": "workspace:*",
     "lucide-react": "^0.460.0",
     "next": "^16.2.10",
     "react": "^19.2.7",
