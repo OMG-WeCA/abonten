@@ -177,3 +177,58 @@ When a feature adds or changes entities:
    Cameroon; real street names, plausible traffic counts, local currencies).
 5. **Run `pnpm seed`** to verify it works, then `pnpm build && pnpm type-check && pnpm lint`
    to ensure the seed type-checks and lints clean.
+## 8. Brand Colors & Theming
+
+Abonten uses the **OMD brand color palette** (from omd.com brand materials):
+
+| Token | Hex | Usage |
+| --- | --- | --- |
+| Brand Red | `#E4002B` | Primary accent (buttons, links, highlights) |
+| Brand Black | `#0A0A0A` | Dark backgrounds, primary text |
+| Brand White | `#FFFFFF` | Light backgrounds |
+| Light Gray | `#F5F5F5` | Muted/surface backgrounds |
+| Medium Gray | `#6B7280` | Muted text, borders |
+| Dark Gray | `#374151` | Secondary text |
+
+### Semantic token system
+
+Raw hex values are mapped into **semantic tokens** — the only color references
+allowed in components:
+
+| Token | Light | Dark |
+| --- | --- | --- |
+| `primary` | `#E4002B` | `#FF1B45` |
+| `background` | `#FFFFFF` | `#0A0A0A` |
+| `surface` | `#F5F5F5` | `#1F1F1F` |
+| `foreground` | `#0A0A0A` | `#FFFFFF` |
+| `muted` | `#6B7280` | `#9CA3AF` |
+| `border` | `#E5E7EB` | `#374151` |
+| `success` | `#16A34A` | `#16A34A` |
+| `warning` | `#F59E0B` | `#F59E0B` |
+| `error` | `#DC2626` | `#DC2626` |
+| `info` | `#2563EB` | `#2563EB` |
+
+### Rule: always use semantic tokens, never raw hex
+
+In components, use Tailwind utilities that reference semantic tokens:
+`bg-background`, `text-foreground`, `bg-primary`, `text-muted`, `border-border`,
+`text-success`, `bg-warning/10`, etc. Never write `bg-[#E4002B]` or `text-[#0A0A0A]`.
+
+### Where theme files live
+
+- **Web**: `apps/web/src/styles/theme.css` — raw palette + semantic tokens via Tailwind v4
+  `@theme`, with `[data-theme="dark"]` overrides for dark mode.
+- **Mobile**: `packages/ui/src/theme.ts` — same palette + tokens exported as JS objects
+  for React Native (imported by the Expo app).
+
+### How to swap the theme
+
+Edit `theme.css` (web) and `theme.ts` (mobile) — change the `@theme` / object values.
+All components using semantic tokens automatically pick up the new palette. To add
+dark mode for a new token, add a `[data-theme="dark"]` override in `theme.css`.
+
+### Dark mode
+
+The web app uses a `[data-theme="dark"]` selector on `<html>`, managed by
+`ThemeProvider` (`apps/web/src/components/ThemeProvider.tsx`). The semantic CSS
+variables are overridden in the dark block — no `dark:` prefix needed in components.

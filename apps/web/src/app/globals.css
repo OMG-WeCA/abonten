@@ -1,10 +1,17 @@
 @import 'tailwindcss';
+@import '../styles/theme.css';
 
 :root {
   color-scheme: light;
 }
 
 body {
-  background: #f8fafc;
-  color: #0f172a;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
 }

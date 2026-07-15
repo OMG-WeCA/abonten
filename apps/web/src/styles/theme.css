@@ -1,0 +1,42 @@
+/* OMD brand color palette — the single source of truth for web colors.
+   Raw palette values are mapped into semantic tokens via Tailwind v4 @theme.
+   To swap the theme: edit the @theme values (and the dark-mode overrides below).
+   Never use raw hex in components — use semantic utilities (bg-background, text-primary, etc.). */
+
+@theme {
+  /* Raw OMD palette */
+  --color-brand-red: #E4002B;
+  --color-brand-black: #0A0A0A;
+  --color-brand-white: #FFFFFF;
+  --color-brand-light-gray: #F5F5F5;
+  --color-brand-medium-gray: #6B7280;
+  --color-brand-dark-gray: #374151;
+
+  /* Semantic tokens (light mode defaults) */
+  --color-primary: #E4002B;
+  --color-primary-hover: #C20028;
+  --color-background: #FFFFFF;
+  --color-surface: #F5F5F5;
+  --color-foreground: #0A0A0A;
+  --color-muted: #6B7280;
+  --color-secondary: #374151;
+  --color-border: #E5E7EB;
+  --color-success: #16A34A;
+  --color-warning: #F59E0B;
+  --color-error: #DC2626;
+  --color-info: #2563EB;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Dark mode: override semantic tokens when [data-theme="dark"] is on <html>. */
+[data-theme='dark'] {
+  --color-primary: #FF1B45;
+  --color-primary-hover: #E4002B;
+  --color-background: #0A0A0A;
+  --color-surface: #1F1F1F;
+  --color-foreground: #FFFFFF;
+  --color-muted: #9CA3AF;
+  --color-secondary: #D1D5DB;
+  --color-border: #374151;
+}
