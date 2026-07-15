@@ -143,6 +143,7 @@ If the DB isn't running, the seed fails gracefully with a clear error and exit c
 | `ama@accraoutdoor.com` | org_owner | Accra Outdoor Media (media_partner) |
 | `kwame@accraoutdoor.com` | inventory_manager | Accra Outdoor Media |
 | `akosua@accraoutdoor.com` | field_operator | Accra Outdoor Media |
+| `yaw@accraoutdoor.com` | org_admin | Accra Outdoor Media |
 | `chidi@mediareach.com` | org_owner | mediaReach OMD Lagos (agency) |
 | `aisha@mediareach.com` | planner | mediaReach OMD Lagos |
 | `emeka@mediareach.com` | planner_admin | mediaReach OMD Lagos |
@@ -166,6 +167,9 @@ When a feature adds or changes entities:
 2. **Follow the existing idempotent pattern**: use deterministic UUIDs from `seed-ids.ts`
    and `repo.save(repo.create({...id, ...fields}))` (upsert by primary key). For PostGIS
    geometry columns, use `createQueryBuilder` with `ST_SetSRID(ST_MakePoint(lng, lat), 4326)`.
+   For entities with geometry columns, `repo.save` cannot insert raw SQL; use the
+   find-by-natural-key + queryBuilder insert/update pattern instead (see
+   `billboard-sites.seed.ts` for the find-by-code example).
 3. **Add new entities** to the orchestrator `index.ts` in **dependency order**
    (parents before children). Also register them in `database.module.ts` and the seed's
    `DataSource` entities array.

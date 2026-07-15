@@ -14,6 +14,7 @@ const USERS = [
   { id: IDS.user.ngozi, email: 'ngozi@unilever.com', name: 'Ngozi Eze', status: 'active' },
   { id: IDS.user.seyi, email: 'seyi@omg-weca.com', name: 'Seyi Olatunji', status: 'active' },
   { id: IDS.user.adaora, email: 'adaora@omg-weca.com', name: 'Adaora Obi', status: 'active' },
+  { id: IDS.user.yaw, email: 'yaw@accraoutdoor.com', name: 'Yaw Mensah', status: 'active' },
 ];
 
 export async function seedUsers(ds: DataSource): Promise<void> {

@@ -15,6 +15,7 @@ const MEMBERSHIPS = [
   { id: MEM + '000000000009', userId: IDS.user.ngozi, organizationId: IDS.org.unilever, role: 'client_viewer', status: 'active' },
   { id: MEM + '00000000000a', userId: IDS.user.seyi, organizationId: IDS.org.omgWeca, role: 'org_owner', status: 'active' },
   { id: MEM + '00000000000b', userId: IDS.user.adaora, organizationId: IDS.org.omgWeca, role: 'platform_admin', status: 'active' },
+  { id: MEM + '00000000000c', userId: IDS.user.yaw, organizationId: IDS.org.accraOutdoor, role: 'org_admin', status: 'active' },
 ];
 
 export async function seedMemberships(ds: DataSource): Promise<void> {
