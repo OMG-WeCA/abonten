@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { randomUUID } from 'node:crypto';
@@ -63,7 +63,8 @@ export class AuthService {
       const m = await memberships.findOne({
         where: { userId: user.id, organizationId: activeOrgId, status: 'active' },
       });
-      if (m) role = m.role as OrganizationRole;
+      if (!m) throw new ForbiddenException('No active membership in the target organization');
+      role = m.role as OrganizationRole;
     }
     const payload: JwtPayload = { sub: user.id, email: user.email, activeOrgId, role };
     const accessToken = await this.jwt.signAsync(payload, {
