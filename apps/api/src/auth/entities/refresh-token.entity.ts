@@ -9,5 +9,5 @@ export class RefreshTokenEntity {
   @Column({ name: 'expires_at', type: 'timestamptz' }) expiresAt!: Date;
   @Column({ name: 'revoked_at', type: 'timestamptz', nullable: true }) revokedAt?: Date;
 
-  @CreateDateColumn({ name: 'created_at' }) createdAt!: Date;
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
 }

@@ -33,6 +33,6 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     JwtStrategy,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
-  exports: [AuthService, JwtModule],
+  exports: [AuthService, MagicLinkService, JwtModule],
 })
 export class AuthModule {}

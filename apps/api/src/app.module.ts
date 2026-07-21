@@ -13,6 +13,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
 import { MarketplaceModule } from './marketplace/marketplace.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { PlatformAdminModule } from './platform-admin/platform-admin.module';
+import { OrgsModule } from './orgs/orgs.module';
 
 const featureModules = [
   AuthModule,
@@ -24,6 +25,7 @@ const featureModules = [
   MarketplaceModule,
   ReportingModule,
   PlatformAdminModule,
+  OrgsModule,
 ];
 
 @Module({

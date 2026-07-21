@@ -10,5 +10,5 @@ export class UserCapabilityOverrideEntity {
   @Column({ type: 'varchar' }) action!: 'grant' | 'revoke';
   @Column({ name: 'created_by', nullable: true }) createdBy?: string;
 
-  @CreateDateColumn({ name: 'created_at' }) createdAt!: Date;
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
 }

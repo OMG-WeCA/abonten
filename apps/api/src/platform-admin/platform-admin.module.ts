@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { OrgController } from './org.controller';
 import { PlatformAdminController } from './platform-admin.controller';
 import { PlatformAdminService } from './platform-admin.service';
 
 @Module({
-  controllers: [PlatformAdminController, OrgController],
+  controllers: [PlatformAdminController],
   providers: [PlatformAdminService],
+  exports: [PlatformAdminService],
 })
 export class PlatformAdminModule {}

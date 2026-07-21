@@ -13,6 +13,6 @@ export class SiteMetadataEntity {
   @Column({ name: 'collected_at', type: 'timestamptz', nullable: true }) collectedAt?: Date;
   @Column({ name: 'expires_at', type: 'timestamptz', nullable: true }) expiresAt?: Date;
 
-  @CreateDateColumn({ name: 'created_at' }) createdAt!: Date;
-  @UpdateDateColumn({ name: 'updated_at' }) updatedAt!: Date;
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;
 }

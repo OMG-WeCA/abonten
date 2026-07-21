@@ -10,6 +10,9 @@
     "lint": "eslint .",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "seed": "ts-node src/seed/index.ts",
+    "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/data-source.ts",
+    "migration:run": "ts-node src/migrate.ts run",
+    "migration:revert": "ts-node src/migrate.ts revert",
     "test": "echo \"no tests yet\" && exit 0"
   },
   "dependencies": {

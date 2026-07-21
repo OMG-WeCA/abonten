@@ -1,5 +1,27 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
+export type SiteStatus =
+  | 'draft'
+  | 'pending_review'
+  | 'approved'
+  | 'listed'
+  | 'rejected'
+  | 'suspended'
+  | 'decommissioned';
+
+/**
+ * BillboardSite — a physical outdoor advertising structure (SPEC.md §5.1 / §6.2).
+ * `location` is a PostGIS Point(lng, lat) SRID 4326; `geo_polygon` an optional
+ * fenced area for large installations. Geometry is written via raw SQL
+ * (ST_SetSRID(ST_MakePoint(lng, lat), 4326)) — see InventoryService.
+ */
 @Entity({ name: 'billboard_sites' })
 export class BillboardSiteEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -8,20 +30,39 @@ export class BillboardSiteEntity {
   @Column({ name: 'organization_id' }) organizationId!: string;
   @Column() code!: string;
   @Column() name!: string;
-  @Column() type!: string;
+  @Column({ default: 'billboard' }) type!: string;
   @Column() format!: string;
+  @Column({ name: 'sub_format', nullable: true }) subFormat?: string;
 
-  // PostGIS: geometry(Point, 4326) for lat/lon. Requires the PostGIS extension
-  // (enabled in docker-compose via postgis/postgis). TypeORM supports the
-  // 'geometry' type when PostGIS is available. See SPEC.md §9 / §6.2.
   @Index({ spatial: true })
   @Column({ type: 'geometry', spatialFeatureType: 'Point', srid: 4326 })
   location!: string;
 
+  @Column({ type: 'geometry', spatialFeatureType: 'Polygon', srid: 4326, nullable: true })
+  geoPolygon?: string;
+
+  @Column({ nullable: true }) address?: string;
+  @Column({ nullable: true }) city?: string;
+  @Column({ nullable: true }) region?: string;
   @Column() country!: string;
+  @Column({ name: 'market_id', nullable: true }) marketId?: string;
+
+  @Column({ name: 'orientation_deg', type: 'double precision', nullable: true }) orientationDeg?: number;
+  @Column({ name: 'viewing_distance', type: 'double precision', nullable: true }) viewingDistance?: number;
+  @Column({ type: 'double precision', nullable: true }) elevation?: number;
+  @Column({ type: 'double precision', nullable: true }) width?: number;
+  @Column({ type: 'double precision', nullable: true }) height?: number;
+  @Column({ type: 'double precision', nullable: true }) area?: number;
+  @Column({ nullable: true }) units?: string;
+
   @Column({ name: 'illumination_type' }) illuminationType!: string;
+  @Column({ name: 'illumination_hours', nullable: true }) illuminationHours?: string;
+  @Column({ type: 'text', nullable: true }) description?: string;
   @Column({ default: 'draft' }) status!: string;
 
-  @CreateDateColumn({ name: 'created_at' }) createdAt!: Date;
-  @UpdateDateColumn({ name: 'updated_at' }) updatedAt!: Date;
+  @Column({ name: 'permit_ref', nullable: true }) permitRef?: string;
+  @Column({ name: 'permit_expires_at', type: 'timestamptz', nullable: true }) permitExpiresAt?: Date;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;
 }

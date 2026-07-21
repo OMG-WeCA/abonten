@@ -11,8 +11,8 @@ export class MembershipEntity {
   @Column() role!: string;
   @Column({ default: 'active' }) status!: string;
 
-  @CreateDateColumn({ name: 'created_at' }) createdAt!: Date;
-  @UpdateDateColumn({ name: 'updated_at' }) updatedAt!: Date;
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;
 
   @ManyToOne(() => UserEntity, (u) => u.memberships)
   @JoinColumn({ name: 'user_id' })

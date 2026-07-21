@@ -15,8 +15,8 @@ export class OrganizationEntity {
   @Column({ name: 'billing_ref', nullable: true }) billingRef?: string;
   @Column('simple-array', { name: 'allowed_email_domains', nullable: true }) allowedEmailDomains?: string[];
 
-  @CreateDateColumn({ name: 'created_at' }) createdAt!: Date;
-  @UpdateDateColumn({ name: 'updated_at' }) updatedAt!: Date;
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;
 
   @OneToMany(() => MembershipEntity, (m) => m.organization)
   memberships!: MembershipEntity[];

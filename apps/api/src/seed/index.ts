@@ -1,13 +1,5 @@
 import 'reflect-metadata';
-import { DataSource } from 'typeorm';
-import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
-import { OrganizationEntity } from '../common/entities/organization.entity';
-import { SiteFaceEntity } from '../common/entities/site-face.entity';
-import { SiteMetadataEntity } from '../common/entities/site-metadata.entity';
-import { MembershipEntity } from '../auth/entities/membership.entity';
-import { RefreshTokenEntity } from '../auth/entities/refresh-token.entity';
-import { UserCapabilityOverrideEntity } from '../auth/entities/user-capability-override.entity';
-import { UserEntity } from '../auth/entities/user.entity';
+import { AppDataSource } from '../data-source';
 import { seedBillboardSites } from './billboard-sites.seed';
 import { seedCapabilityOverrides } from './capability-overrides.seed';
 import { seedMemberships } from './memberships.seed';
@@ -16,29 +8,16 @@ import { seedSiteFaces } from './site-faces.seed';
 import { seedSiteMetadata } from './site-metadata.seed';
 import { seedUsers } from './users.seed';
 
+// `pnpm seed` = apply migrations + upsert all seed data. Using the migration
+// DataSource (synchronize: false) means a fresh `docker compose up -d && pnpm seed`
+// creates the schema via versioned migrations and then populates it — no
+// synchronize:true drift. Seeders upsert by deterministic id so re-runs are safe.
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL ?? 'postgresql://abonten:abonten@localhost:5432/abonten';
   console.log(`Abonten seed: connecting to ${url}`);
-  const ds = new DataSource({
-    type: 'postgres',
-    url,
-    // Dev seed tooling: synchronize creates/alters tables from entities so the seed
-    // works on a fresh docker-compose DB. The app's runtime DataSource stays synchronize:false.
-    synchronize: true,
-    entities: [
-      OrganizationEntity,
-      BillboardSiteEntity,
-      SiteFaceEntity,
-      SiteMetadataEntity,
-      UserEntity,
-      MembershipEntity,
-      UserCapabilityOverrideEntity,
-      RefreshTokenEntity,
-    ],
-  });
 
   try {
-    await ds.initialize();
+    await AppDataSource.initialize();
   } catch (err) {
     console.error('Abonten seed: could not connect to the database.');
     console.error('Is the dev DB running? Try: docker compose up -d');
@@ -48,21 +27,23 @@ async function main(): Promise<void> {
   }
 
   try {
+    console.log('Running migrations...');
+    await AppDataSource.runMigrations();
     console.log('Seeding...');
     // Dependency order: orgs -> users -> memberships -> overrides -> sites -> faces -> metadata.
-    await seedOrganizations(ds);
-    await seedUsers(ds);
-    await seedMemberships(ds);
-    await seedCapabilityOverrides(ds);
-    await seedBillboardSites(ds);
-    await seedSiteFaces(ds);
-    await seedSiteMetadata(ds);
+    await seedOrganizations(AppDataSource);
+    await seedUsers(AppDataSource);
+    await seedMemberships(AppDataSource);
+    await seedCapabilityOverrides(AppDataSource);
+    await seedBillboardSites(AppDataSource);
+    await seedSiteFaces(AppDataSource);
+    await seedSiteMetadata(AppDataSource);
     console.log('Seed complete.');
   } catch (err) {
     console.error('Seed failed:', err);
     process.exit(1);
   } finally {
-    await ds.destroy();
+    await AppDataSource.destroy();
   }
 }
 
