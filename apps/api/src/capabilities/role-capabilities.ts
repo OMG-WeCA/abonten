@@ -1,12 +1,23 @@
 import type { OrganizationRole } from './organization-roles';
 import { ALL_CAPABILITIES, Capability } from './capability.enum';
 
+// Capabilities reserved for the platform_admin role only — tenant org_owner/org_admin
+// never receive these, preventing privilege escalation via overrides or lifecycle.
+export const PLATFORM_ONLY_CAPABILITIES: Capability[] = [
+  Capability.PLATFORM_ADMIN,
+  Capability.USER_MANAGE,
+  Capability.AUDIT_VIEW,
+  Capability.REFERENCE_DATA_MANAGE,
+  Capability.MARKETPLACE_MANAGE,
+  Capability.REPORT_MANAGE,
+];
+
 // Role -> default capability set (auth task spec).
 export const ROLE_DEFAULT_CAPABILITIES: Record<OrganizationRole, Capability[]> = {
-  // PLATFORM_ADMIN is platform-only (platform_admin role); tenant org_owner/org_admin
-  // do NOT get it, so a media-partner admin cannot approve/reject/suspend sites.
-  org_owner: ALL_CAPABILITIES.filter((c) => c !== Capability.PLATFORM_ADMIN),
-  org_admin: ALL_CAPABILITIES.filter((c) => c !== Capability.PLATFORM_ADMIN && c !== Capability.BILLING_MANAGE),
+  // Platform-only capabilities are restricted to the platform_admin role; tenant
+  // org_owner/org_admin do NOT get them (prevents lifecycle + override escalation).
+  org_owner: ALL_CAPABILITIES.filter((c) => !PLATFORM_ONLY_CAPABILITIES.includes(c)),
+  org_admin: ALL_CAPABILITIES.filter((c) => !PLATFORM_ONLY_CAPABILITIES.includes(c) && c !== Capability.BILLING_MANAGE),
   inventory_manager: [
     Capability.INVENTORY_CREATE,
     Capability.INVENTORY_EDIT,

@@ -6,6 +6,8 @@ import { OrganizationEntity } from '../common/entities/organization.entity';
 import { UserCapabilityOverrideEntity } from '../auth/entities/user-capability-override.entity';
 import { UserEntity } from '../auth/entities/user.entity';
 import type { CapabilityOverrideDto } from './dto/capability-override.dto';
+import { Capability } from '../capabilities/capability.enum';
+import { PLATFORM_ONLY_CAPABILITIES } from '../capabilities/role-capabilities';
 
 @Injectable()
 export class PlatformAdminService {
@@ -24,6 +26,17 @@ export class PlatformAdminService {
   }
 
   async setOverride(userId: string, orgId: string, dto: CapabilityOverrideDto, actorId: string) {
+    // Defense-in-depth: platform-only capabilities can only be granted/revoked by
+    // a user who has PLATFORM_ADMIN in this org context (not just USER_MANAGE).
+    if (PLATFORM_ONLY_CAPABILITIES.includes(dto.capability)) {
+      const m = await this.fetchMembership(actorId, orgId);
+      if (!m) throw new ForbiddenException('Actor has no membership in this organization');
+      const actorOverrides = await this.fetchOverrides(actorId, orgId);
+      const actorCaps = this.resolver.resolve(m.role as never, actorOverrides);
+      if (!actorCaps.has(Capability.PLATFORM_ADMIN)) {
+        throw new ForbiddenException('Only platform admins can manage platform-only capabilities');
+      }
+    }
     const repo = await this.db.repo(UserCapabilityOverrideEntity);
     await repo.delete({ userId, organizationId: orgId, capability: dto.capability });
     await repo.save(
