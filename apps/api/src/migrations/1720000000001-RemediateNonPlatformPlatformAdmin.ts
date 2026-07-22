@@ -22,8 +22,7 @@ export class RemediateNonPlatformPlatformAdmin1720000000001 implements Migration
     // Remove platform-only capability grants in non-platform orgs.
     await queryRunner.query(`
       DELETE FROM user_capability_overrides
-      WHERE action = 'grant'
-        AND capability IN (
+      WHERE capability IN (
           'PLATFORM_ADMIN', 'USER_MANAGE', 'AUDIT_VIEW',
           'REFERENCE_DATA_MANAGE', 'MARKETPLACE_MANAGE', 'REPORT_MANAGE'
         )

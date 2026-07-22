@@ -101,7 +101,9 @@ export class MeController {
   }> {
     const users = await this.db.repo(UserEntity);
     const u = await users.findOne({ where: { id: user.userId } });
-    const orgId = user.activeOrgId ?? headerOrgId;
+    // X-Org-Id is authoritative when supplied (consistent with the guard);
+    // activeOrgId is the fallback only when the header is absent.
+    const orgId = headerOrgId ?? user.activeOrgId;
     let role: string | undefined;
     let capabilities: Capability[] = [];
     if (orgId) {
