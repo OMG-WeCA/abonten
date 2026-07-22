@@ -18,6 +18,11 @@ const FACES = [
   { id: F + '00000000000b', siteId: IDS.site.bliberte, faceLabel: 'A', width: 8, height: 3, area: 24, units: 'm', bookable: true },
   { id: F + '00000000000c', siteId: IDS.site.bliberte, faceLabel: 'B', width: 8, height: 3, area: 24, units: 'm', bookable: true },
   { id: F + '00000000000d', siteId: IDS.site.akwa, faceLabel: 'A', width: 12, height: 4, area: 48, units: 'm', bookable: false },
+  { id: F + '00000000000e', siteId: IDS.site.ikeja, faceLabel: 'B', width: 6, height: 3, area: 18, units: 'm', bookable: true },
+  { id: F + '00000000000f', siteId: IDS.site.spintex, faceLabel: 'B', width: 10, height: 4, area: 40, units: 'm', bookable: true },
+  { id: F + '000000000010', siteId: IDS.site.liberation, faceLabel: 'B', width: 6, height: 3, area: 18, units: 'm', bookable: true },
+  { id: F + '000000000011', siteId: IDS.site.graphic, faceLabel: 'B', width: 8, height: 3, area: 24, units: 'm', bookable: true },
+  { id: F + '000000000012', siteId: IDS.site.ikorodu, faceLabel: 'C', width: 8, height: 3, area: 24, units: 'm', bookable: true },
 ];
 
 export async function seedSiteFaces(ds: DataSource): Promise<void> {

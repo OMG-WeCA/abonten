@@ -4,6 +4,8 @@ import { seedBillboardSites } from './billboard-sites.seed';
 import { seedCapabilityOverrides } from './capability-overrides.seed';
 import { seedMemberships } from './memberships.seed';
 import { seedOrganizations } from './organizations.seed';
+import { seedRateCards } from './rate-cards.seed';
+import { seedSiteAssets } from './site-assets.seed';
 import { seedSiteFaces } from './site-faces.seed';
 import { seedSiteMetadata } from './site-metadata.seed';
 import { seedUsers } from './users.seed';
@@ -38,6 +40,8 @@ async function main(): Promise<void> {
     await seedBillboardSites(AppDataSource);
     await seedSiteFaces(AppDataSource);
     await seedSiteMetadata(AppDataSource);
+    await seedRateCards(AppDataSource);
+    await seedSiteAssets(AppDataSource);
     console.log('Seed complete.');
   } catch (err) {
     console.error('Seed failed:', err);
