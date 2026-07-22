@@ -84,6 +84,7 @@ export const ROLE_DEFAULT_CAPABILITIES: Record<OrganizationRole, Capability[]> =
   ],
   platform_admin: [
     Capability.PLATFORM_ADMIN,
+    Capability.MEMBERSHIP_MANAGE,
     Capability.ORG_MANAGE,
     Capability.USER_MANAGE,
     Capability.AUDIT_VIEW,

@@ -78,7 +78,7 @@ export class OrgsController {
     @Req() req: AuthReq,
   ) {
     assertOrgMatch(req, orgId);
-    return this.orgs.invite(orgId, dto);
+    return this.orgs.invite(orgId, dto, req.user?.userId ?? '');
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
@@ -92,7 +92,7 @@ export class OrgsController {
     @Req() req: AuthReq,
   ) {
     assertOrgMatch(req, orgId);
-    return this.orgs.updateMembership(orgId, userId, dto.role);
+    return this.orgs.updateMembership(orgId, userId, dto.role, req.user?.userId ?? '');
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
