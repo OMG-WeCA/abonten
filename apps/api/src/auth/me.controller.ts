@@ -108,7 +108,7 @@ export class MeController {
     let capabilities: Capability[] = [];
     if (orgId) {
       const memberships = await this.db.repo(MembershipEntity);
-      const m = await memberships.findOne({ where: { userId: user.userId, organizationId: orgId } });
+      const m = await memberships.findOne({ where: { userId: user.userId, organizationId: orgId, status: 'active' } });
       if (m) {
         role = m.role;
         const overrides = await this.db
