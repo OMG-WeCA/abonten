@@ -10,6 +10,8 @@ import {
   REQUIRE_CAPABILITIES_KEY,
 } from './require-capabilities.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { OrganizationEntity } from '../common/entities/organization.entity';
+import { PLATFORM_ONLY_CAPABILITIES } from './role-capabilities';
 
 // Capabilities granted to any authenticated user regardless of org context
 // (self-service: creating/listing one's orgs, viewing/editing one's profile).
@@ -68,6 +70,12 @@ export class CapabilitiesGuard implements CanActivate {
       ]);
       if (!membership) throw new ForbiddenException('No membership in this organization');
       effective = this.resolver.resolve(membership.role as never, overrides);
+      // Platform-only capabilities are only valid in a platform-type organization.
+      const orgRepo = await this.db.repo(OrganizationEntity);
+      const org = await orgRepo.findOne({ where: { id: orgId } }).catch(() => null);
+      if (org && org.type !== 'platform') {
+        for (const c of PLATFORM_ONLY_CAPABILITIES) effective.delete(c);
+      }
     }
 
     const held = (c: Capability) => GLOBAL_CAPABILITIES.has(c) || effective.has(c);

@@ -17,8 +17,15 @@ export class OrgsService {
     private readonly resolver: CapabilityResolverService,
   ) {}
 
-  /** Only a platform admin (PLATFORM_ADMIN) can assign the platform_admin role. */
+  /** Only a platform admin (PLATFORM_ADMIN) can assign the platform_admin role,
+   * and only within a platform-type organization. */
   private async assertCanAssignPlatformRole(actorId: string, orgId: string): Promise<void> {
+    // The platform_admin role is only valid in a platform-type organization.
+    const orgs = await this.db.repo(OrganizationEntity);
+    const org = await orgs.findOne({ where: { id: orgId } }).catch(() => null);
+    if (!org || org.type !== 'platform') {
+      throw new ForbiddenException('platform_admin role can only be assigned in a platform-type organization');
+    }
     const memberships = await this.db.repo(MembershipEntity);
     const m = await memberships.findOne({ where: { userId: actorId, organizationId: orgId, status: 'active' } }).catch(() => null);
     if (!m) throw new ForbiddenException('Actor has no membership in this organization');

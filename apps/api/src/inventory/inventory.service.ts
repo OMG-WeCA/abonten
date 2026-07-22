@@ -6,6 +6,7 @@ import { Capability } from '../capabilities/capability.enum';
 import { MembershipEntity } from '../auth/entities/membership.entity';
 import { UserCapabilityOverrideEntity } from '../auth/entities/user-capability-override.entity';
 import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
+import { OrganizationEntity } from '../common/entities/organization.entity';
 import { SiteFaceEntity } from '../common/entities/site-face.entity';
 import { SiteAssetEntity } from '../common/entities/site-asset.entity';
 import { SiteMetadataEntity } from '../common/entities/site-metadata.entity';
@@ -62,6 +63,7 @@ export class InventoryService {
 
   // ----------------------------------------------------------------- sites
   async createSite(orgId: string, dto: CreateSiteDto) {
+    await this.assertMediaPartnerOrg(orgId);
     const repo = await this.db.repo(BillboardSiteEntity);
     const code = dto.code ?? `${slug(dto.name)}-${randomSuffix()}`.toUpperCase();
     const area = dto.area ?? dto.width * dto.height;
@@ -398,6 +400,7 @@ export class InventoryService {
 
   // ----------------------------------------------------------------- rate cards
   async createRateCard(orgId: string, siteId: string, dto: CreateRateCardDto) {
+    await this.assertMediaPartnerOrg(orgId);
     await this.assertOwnership(orgId, siteId);
     const repo = await this.db.repo(RateCardEntity);
     return repo.save(
@@ -447,6 +450,16 @@ export class InventoryService {
     const isPlatformAdmin = caps.has(Capability.PLATFORM_ADMIN);
     if (!isOwner && !isPlatformAdmin && rows[0].status !== 'listed') {
       throw new ForbiddenException('Site not available');
+    }
+  }
+
+  /** Only media-partner organizations can create/manage billboard inventory. */
+  private async assertMediaPartnerOrg(orgId: string | undefined): Promise<void> {
+    if (!orgId) throw new ForbiddenException('No active organization context');
+    const orgs = await this.db.repo(OrganizationEntity);
+    const org = await orgs.findOne({ where: { id: orgId } }).catch(() => null);
+    if (!org || org.type !== 'media_partner') {
+      throw new ForbiddenException('Only media-partner organizations can manage billboard inventory');
     }
   }
 
