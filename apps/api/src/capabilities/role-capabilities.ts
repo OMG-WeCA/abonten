@@ -3,8 +3,10 @@ import { ALL_CAPABILITIES, Capability } from './capability.enum';
 
 // Role -> default capability set (auth task spec).
 export const ROLE_DEFAULT_CAPABILITIES: Record<OrganizationRole, Capability[]> = {
-  org_owner: ALL_CAPABILITIES,
-  org_admin: ALL_CAPABILITIES.filter((c) => c !== Capability.BILLING_MANAGE),
+  // PLATFORM_ADMIN is platform-only (platform_admin role); tenant org_owner/org_admin
+  // do NOT get it, so a media-partner admin cannot approve/reject/suspend sites.
+  org_owner: ALL_CAPABILITIES.filter((c) => c !== Capability.PLATFORM_ADMIN),
+  org_admin: ALL_CAPABILITIES.filter((c) => c !== Capability.PLATFORM_ADMIN && c !== Capability.BILLING_MANAGE),
   inventory_manager: [
     Capability.INVENTORY_CREATE,
     Capability.INVENTORY_EDIT,
