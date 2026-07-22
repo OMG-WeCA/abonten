@@ -1,8 +1,96 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { DatabaseService } from '../common/database.service';
+import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
+import { SiteFaceEntity } from '../common/entities/site-face.entity';
+import { SiteAssetEntity } from '../common/entities/site-asset.entity';
+import { SiteMetadataEntity } from '../common/entities/site-metadata.entity';
+import { RateCardEntity } from '../common/entities/rate-card.entity';
+import type { MarketplaceQueryDto } from './dto/marketplace.dto';
+
+const SITE_COLUMNS =
+  'id, code, name, type, format, sub_format AS "subFormat", address, city, region, country, ' +
+  'market_id AS "marketId", orientation_deg AS "orientationDeg", viewing_distance AS "viewingDistance", ' +
+  'elevation, width, height, area, units, illumination_type AS "illuminationType", illumination_hours AS "illuminationHours", ' +
+  'description, status, permit_ref AS "permitRef", permit_expires_at AS "permitExpiresAt", ' +
+  'ST_X(location) AS longitude, ST_Y(location) AS latitude, ' +
+  'created_at AS "createdAt", updated_at AS "updatedAt"';
 
 @Injectable()
 export class MarketplaceService {
-  findAll(): string[] {
-    return [];
+  constructor(private readonly db: DatabaseService) {}
+
+  /** Search listed sites available for booking, with filters + spatial radius. */
+  async search(q: MarketplaceQueryDto) {
+    const page = Math.max(1, q.page ?? 1);
+    const limit = Math.min(100, Math.max(1, q.limit ?? 20));
+    const repo = await this.db.repo(BillboardSiteEntity);
+
+    const where: string[] = ["s.status = 'listed'"];
+    const params: unknown[] = [];
+    const push = (clause: string, ...values: unknown[]) => {
+      const start = params.length + 1;
+      for (const v of values) params.push(v);
+      let n = start;
+      where.push(clause.replace(/\?/g, () => `$${n++}`));
+    };
+
+    if (q.country) push('s.country = ?', q.country);
+    if (q.city) push('s.city ILIKE ?', `%${q.city}%`);
+    if (q.market) push('s.market_id = ?', q.market);
+    if (q.format) push('s.format = ?', q.format);
+    if (q.illumination) push('s.illumination_type = ?', q.illumination);
+    if (q.search) push('(s.name ILIKE ? OR s.description ILIKE ?)', `%${q.search}%`, `%${q.search}%`);
+    if (q.minSize !== undefined) push('COALESCE(s.area, s.width * s.height) >= ?', q.minSize);
+    if (q.maxSize !== undefined) push('COALESCE(s.area, s.width * s.height) <= ?', q.maxSize);
+    if (q.minPrice !== undefined) {
+      push('(SELECT min((rates->>\'perDay\')::numeric) FROM rate_cards WHERE site_id = s.id) >= ?', q.minPrice);
+    }
+    if (q.maxPrice !== undefined) {
+      push('(SELECT min((rates->>\'perDay\')::numeric) FROM rate_cards WHERE site_id = s.id) <= ?', q.maxPrice);
+    }
+    if (q.lat !== undefined && q.lng !== undefined && q.radius !== undefined) {
+      // Spatial: sites within `radius` km of (lng, lat). ST_DWithin uses meters.
+      push(
+        'ST_DWithin(s.location, ST_SetSRID(ST_MakePoint(?, ?), 4326), ?)',
+        q.lng,
+        q.lat,
+        q.radius * 1000,
+      );
+    }
+    // availability_window (startDate/endDate) is accepted but not filtered in S1/S2
+    // (booking availability lands with the booking module).
+
+    const whereSql = where.join(' AND ');
+    const offset = (page - 1) * limit;
+    const rows = await repo.query(
+      `SELECT s.id, s.code, s.name, s.format, s.city, s.country, s.illumination_type AS "illuminationType",
+        s.width, s.height, s.area, ST_X(s.location) AS longitude, ST_Y(s.location) AS latitude,
+        (SELECT count(*) FROM site_faces WHERE site_id = s.id) AS "faceCount",
+        (SELECT min((rates->>'perDay')::numeric) FROM rate_cards WHERE site_id = s.id) AS "startingPrice",
+        (SELECT storage_ref FROM site_assets WHERE site_id = s.id ORDER BY created_at LIMIT 1) AS "thumbnail",
+        (SELECT jsonb_object_agg(dimension, payload) FROM site_metadata WHERE site_id = s.id) AS "keyMetadata"
+       FROM billboard_sites s WHERE ${whereSql} ORDER BY s.created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+      params,
+    );
+    const totalRows = await repo.query(`SELECT count(*)::int AS c FROM billboard_sites s WHERE ${whereSql}`, params);
+    return { items: rows, total: totalRows[0]?.c ?? 0, page, limit };
+  }
+
+  /** Public detail of a listed site (faces, assets, metadata, rate cards). */
+  async getPublicSite(siteId: string) {
+    const repo = await this.db.repo(BillboardSiteEntity);
+    const rows = await repo.query(`SELECT ${SITE_COLUMNS} FROM billboard_sites WHERE id = $1`, [siteId]);
+    const site = rows[0];
+    if (!site) throw new NotFoundException('Site not found');
+    if (site.status !== 'listed' && site.status !== 'approved') {
+      throw new NotFoundException('Site not listed');
+    }
+    const [faces, assets, metadata, rateCards] = await Promise.all([
+      this.db.repo(SiteFaceEntity).then((r) => r.find({ where: { siteId } })),
+      this.db.repo(SiteAssetEntity).then((r) => r.find({ where: { siteId } })),
+      this.db.repo(SiteMetadataEntity).then((r) => r.find({ where: { siteId } })),
+      this.db.repo(RateCardEntity).then((r) => r.find({ where: { siteId } })),
+    ]);
+    return { ...site, faces, assets, metadata, rateCards };
   }
 }
