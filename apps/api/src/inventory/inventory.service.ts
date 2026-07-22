@@ -145,7 +145,10 @@ export class InventoryService {
       where.push(clause.replace(/\?/g, () => `$${n++}`));
     };
 
-    if (caps.has(Capability.INVENTORY_VIEW) && orgId) {
+    if (caps.has(Capability.PLATFORM_ADMIN)) {
+      // Platform admins browse all sites across orgs (review workflow).
+      if (q.status) push('status = ?', q.status);
+    } else if (caps.has(Capability.INVENTORY_VIEW) && orgId) {
       push('organization_id = ?', orgId);
       if (q.status) push('status = ?', q.status);
     } else if (caps.has(Capability.MARKETPLACE_VIEW)) {
@@ -176,7 +179,8 @@ export class InventoryService {
     if (!site) throw new NotFoundException('Site not found');
     const caps = await this.effectiveCapabilities(user.userId, orgId);
     const isOwner = site.organizationId === orgId && caps.has(Capability.INVENTORY_VIEW);
-    if (!isOwner && site.status !== 'listed') {
+    const isPlatformAdmin = caps.has(Capability.PLATFORM_ADMIN);
+    if (!isOwner && !isPlatformAdmin && site.status !== 'listed') {
       throw new ForbiddenException('Site not available');
     }
     const [faces, assets, metadata, rateCards] = await Promise.all([
@@ -188,8 +192,7 @@ export class InventoryService {
     return { ...site, faces, assets, metadata, rateCards };
   }
 
-  async updateSite(orgId: string, siteId: string, dto: UpdateSiteDto) {
-    await this.assertOwnership(orgId, siteId);
+  async updateSite(user: AuthenticatedUser, orgId: string, siteId: string, dto: UpdateSiteDto) {
     const repo = await this.db.repo(BillboardSiteEntity);
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -224,10 +227,11 @@ export class InventoryService {
         sets.push('geo_polygon = NULL');
       }
     }
-    if (sets.length === 0) return this.getSite({ userId: '' } as AuthenticatedUser, orgId, siteId);
+    if (sets.length === 0) return this.getSite(user, orgId, siteId);
+    await this.assertOwnership(orgId, siteId);
     params.push(siteId);
     await repo.query(`UPDATE billboard_sites SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
-    return this.getSite({ userId: '' } as AuthenticatedUser, orgId, siteId);
+    return this.getSite(user, orgId, siteId);
   }
 
   async deleteSite(orgId: string, siteId: string) {
@@ -244,7 +248,9 @@ export class InventoryService {
   }
 
   async approveSite(siteId: string) {
-    await this.transition(siteId, 'pending_review', 'listed');
+    // SPEC §5.1 lifecycle: pending_review → approved → listed (two steps).
+    await this.transition(siteId, 'pending_review', 'approved');
+    await this.transition(siteId, 'approved', 'listed');
     return { id: siteId, status: 'listed' };
   }
 

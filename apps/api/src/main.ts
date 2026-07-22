@@ -3,6 +3,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { mkdirSync } from 'node:fs';
 import session from 'express-session';
 import { AppModule } from './app.module';
 
@@ -10,6 +11,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   const config = app.get(ConfigService);
   const port = config.get<number>('api.port', 3000);
+
+  // Ensure the local asset-upload directory exists (dev disk storage) to avoid
+  // ENOENT on the first multipart upload.
+  mkdirSync(process.env.UPLOADS_DIR ?? './uploads', { recursive: true });
 
   // Session middleware is required by the Azure AD (Entra ID) OIDC strategy state/nonce.
   app.use(

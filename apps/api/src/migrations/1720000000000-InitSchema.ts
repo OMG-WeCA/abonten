@@ -25,7 +25,7 @@ export class InitSchema1720000000000 implements MigrationInterface {
         "default_locale" varchar NOT NULL DEFAULT 'en',
         "status" varchar NOT NULL DEFAULT 'active',
         "billing_ref" varchar,
-        "allowed_email_domains" text[],
+        "allowed_email_domains" text,
         "created_at" timestamptz NOT NULL DEFAULT now(),
         "updated_at" timestamptz NOT NULL DEFAULT now()
       )
@@ -354,7 +354,7 @@ export class InitSchema1720000000000 implements MigrationInterface {
         "organization_id" varchar NOT NULL,
         "user_id" varchar,
         "trigger" varchar,
-        "channels" text[],
+        "channels" text,
         "sla_minutes" integer,
         "created_at" timestamptz NOT NULL DEFAULT now(),
         "updated_at" timestamptz NOT NULL DEFAULT now()

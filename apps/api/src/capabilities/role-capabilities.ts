@@ -77,5 +77,6 @@ export const ROLE_DEFAULT_CAPABILITIES: Record<OrganizationRole, Capability[]> =
     Capability.REFERENCE_DATA_MANAGE,
     Capability.MARKETPLACE_MANAGE,
     Capability.REPORT_MANAGE,
+    Capability.INVENTORY_VIEW,
   ],
 };

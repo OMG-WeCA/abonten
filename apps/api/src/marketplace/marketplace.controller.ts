@@ -8,12 +8,13 @@ import { MarketplaceService } from './marketplace.service';
 import { MarketplaceQueryDto } from './dto/marketplace.dto';
 
 @ApiTags('marketplace')
-@UseGuards(JwtAuthGuard, CapabilitiesGuard)
-@RequireCapabilities(Capability.MARKETPLACE_VIEW)
 @Controller('marketplace')
 export class MarketplaceController {
   constructor(private readonly service: MarketplaceService) {}
 
+  // Search is planner-gated; the site detail view is public (SPEC §5.3).
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard)
+  @RequireCapabilities(Capability.MARKETPLACE_VIEW)
   @Get()
   @ApiOperation({ summary: 'Search listed sites available for booking' })
   async search(@Query() q: MarketplaceQueryDto) {
@@ -21,7 +22,7 @@ export class MarketplaceController {
   }
 
   @Get(':siteId')
-  @ApiOperation({ summary: 'Public detail of a listed site' })
+  @ApiOperation({ summary: 'Public detail of a listed site (no auth required)' })
   async getSite(@Param('siteId') siteId: string) {
     return this.service.getPublicSite(siteId);
   }

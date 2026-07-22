@@ -78,8 +78,8 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_EDIT)
   @Patch('sites/:id')
   @ApiOperation({ summary: 'Update a site (owner only)' })
-  async updateSite(@Req() req: AuthReq, @Param('id') id: string, @Body() dto: UpdateSiteDto) {
-    return this.service.updateSite(orgContext(req)!, id, dto);
+  async updateSite(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('id') id: string, @Body() dto: UpdateSiteDto) {
+    return this.service.updateSite(user, orgContext(req)!, id, dto);
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
