@@ -1,10 +1,11 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
- * Initial schema — creates the PostGIS extension and every entity table for the
- * S1/S2 MVP (SPEC.md §6). Hand-written so geometry columns, the spatial index,
- * and the PostGIS extension are explicit. Column types mirror the TypeORM
- * entities in src/common/entities + src/auth/entities.
+ * Initial schema — creates every entity table for the S1/S2 MVP (SPEC.md §6).
+ * The PostGIS extension is created conditionally (present on the docker-compose
+ * postgis env, gracefully skipped elsewhere); billboard_sites stores lat/lng as
+ * float columns. Column types mirror the TypeORM entities in
+ * src/common/entities + src/auth/entities.
  *
  * Run with: pnpm --filter @abonten/api migration:run
  */
@@ -109,6 +110,7 @@ export class InitSchema1720000000000 implements MigrationInterface {
         "illumination_hours" varchar,
         "description" text,
         "status" varchar NOT NULL DEFAULT 'draft',
+        "rejection_reason" text,
         "permit_ref" varchar,
         "permit_expires_at" timestamptz,
         "created_at" timestamptz NOT NULL DEFAULT now(),
@@ -439,7 +441,6 @@ export class InitSchema1720000000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS "site_metadata"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "site_assets"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "site_faces"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "billboard_sites_location_idx"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "billboard_sites"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "refresh_tokens"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "user_capability_overrides"`);

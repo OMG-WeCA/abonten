@@ -26,7 +26,7 @@ pnpm --filter @abonten/api seed
 echo "=== [3] verify migrations: tables + PostGIS extension ==="
 docker compose exec -T postgres psql -U abonten -d abonten -c "\dt"
 docker compose exec -T postgres psql -U abonten -d abonten -c "SELECT extname FROM pg_extension WHERE extname='postgis';"
-docker compose exec -T postgres psql -U abonten -d abonten -c "SELECT code, city, ST_X(location) AS lng, ST_Y(location) AS lat, status FROM billboard_sites ORDER BY code LIMIT 5;"
+docker compose exec -T postgres psql -U abonten -d abonten -c "SELECT code, city, latitude, longitude, status FROM billboard_sites ORDER BY code LIMIT 5;"
 
 echo "=== [4] verify seed counts (all entities populated) ==="
 docker compose exec -T postgres psql -U abonten -d abonten -c "

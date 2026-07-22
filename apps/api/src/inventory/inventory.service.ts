@@ -28,7 +28,7 @@ const SITE_DETAIL_COLUMNS =
   'address, city, region, country, market_id AS "marketId", orientation_deg AS "orientationDeg", ' +
   'viewing_distance AS "viewingDistance", elevation, width, height, area, units, ' +
   'illumination_type AS "illuminationType", illumination_hours AS "illuminationHours", ' +
-  'description, status, permit_ref AS "permitRef", permit_expires_at AS "permitExpiresAt", ' +
+  'description, status, rejection_reason AS "rejectionReason", permit_ref AS "permitRef", permit_expires_at AS "permitExpiresAt", ' +
   'created_at AS "createdAt", updated_at AS "updatedAt"';
 
 function slug(s: string): string {
@@ -240,20 +240,20 @@ export class InventoryService {
 
   async submitSite(orgId: string, siteId: string) {
     await this.assertOwnership(orgId, siteId);
-    await this.transition(siteId, 'draft', 'pending_review');
+    await this.transition(siteId, 'draft', 'pending_review', { reason: null });
     return { id: siteId, status: 'pending_review' };
   }
 
   async approveSite(siteId: string) {
-    // SPEC §5.1 lifecycle: pending_review → approved → listed (two steps).
-    await this.transition(siteId, 'pending_review', 'approved');
-    await this.transition(siteId, 'approved', 'listed');
+    // SPEC §5.1 lifecycle: pending_review → approved → listed (two steps); clear any rejection reason.
+    await this.transition(siteId, 'pending_review', 'approved', { reason: null });
+    await this.transition(siteId, 'approved', 'listed', { reason: null });
     return { id: siteId, status: 'listed' };
   }
 
   async rejectSite(siteId: string, reason: string) {
-    await this.transition(siteId, 'pending_review', 'draft');
-    return { id: siteId, status: 'draft', reason };
+    await this.transition(siteId, 'pending_review', 'draft', { reason });
+    return { id: siteId, status: 'draft', rejectionReason: reason };
   }
 
   async suspendSite(siteId: string) {
@@ -422,7 +422,7 @@ export class InventoryService {
     if (rows[0].organizationId !== orgId) throw new ForbiddenException('Not your site');
   }
 
-  private async transition(siteId: string, from: string | string[], to: string) {
+  private async transition(siteId: string, from: string | string[], to: string, opts?: { reason?: string | null }) {
     const repo = await this.db.repo(BillboardSiteEntity);
     const fromList = Array.isArray(from) ? from : [from];
     const rows = await repo.query(`SELECT status FROM billboard_sites WHERE id = $1`, [siteId]);
@@ -430,7 +430,11 @@ export class InventoryService {
     if (!fromList.includes(rows[0].status)) {
       throw new ForbiddenException(`Site is ${rows[0].status}, expected ${fromList.join('/')}`);
     }
-    await repo.query(`UPDATE billboard_sites SET status = $1 WHERE id = $2`, [to, siteId]);
+    if (opts && opts.reason !== undefined) {
+      await repo.query(`UPDATE billboard_sites SET status = $1, rejection_reason = $2 WHERE id = $3`, [to, opts.reason, siteId]);
+    } else {
+      await repo.query(`UPDATE billboard_sites SET status = $1 WHERE id = $2`, [to, siteId]);
+    }
   }
 
   private async effectiveCapabilities(userId: string, orgId: string | undefined) {

@@ -58,6 +58,7 @@ export class BillboardSiteEntity {
   @Column({ name: 'illumination_hours', nullable: true }) illuminationHours?: string;
   @Column({ type: 'text', nullable: true }) description?: string;
   @Column({ default: 'draft' }) status!: string;
+  @Column({ name: 'rejection_reason', type: 'text', nullable: true }) rejectionReason?: string | null;
 
   @Column({ name: 'permit_ref', nullable: true }) permitRef?: string;
   @Column({ name: 'permit_expires_at', type: 'timestamptz', nullable: true }) permitExpiresAt?: Date;
