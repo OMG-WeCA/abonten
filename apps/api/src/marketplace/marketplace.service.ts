@@ -55,16 +55,16 @@ export class MarketplaceService {
     if (q.minSize !== undefined) push('COALESCE(s.area, s.width * s.height) >= ?', q.minSize);
     if (q.maxSize !== undefined) push('COALESCE(s.area, s.width * s.height) <= ?', q.maxSize);
     if (q.minPrice !== undefined) {
-      push('(SELECT min((rates->>\'perDay\')::numeric) FROM rate_cards WHERE site_id = s.id) >= ?', q.minPrice);
+      push('(SELECT min((rates->>\'perDay\')::numeric) FROM rate_cards WHERE site_id = s.id::text) >= ?', q.minPrice);
     }
     if (q.maxPrice !== undefined) {
-      push('(SELECT min((rates->>\'perDay\')::numeric) FROM rate_cards WHERE site_id = s.id) <= ?', q.maxPrice);
+      push('(SELECT min((rates->>\'perDay\')::numeric) FROM rate_cards WHERE site_id = s.id::text) <= ?', q.maxPrice);
     }
     if (q.lat !== undefined && q.lng !== undefined && q.radius !== undefined) {
       if (await this.hasPostgis()) {
         // PostGIS available: ST_DWithin on geometry built from the float columns (meters).
         push(
-          'ST_DWithin(ST_SetSRID(ST_MakePoint(s.longitude, s.latitude), 4326), ST_SetSRID(ST_MakePoint(?, ?), 4326), ?)',
+          'ST_DWithin(ST_SetSRID(ST_MakePoint(s.longitude, s.latitude), 4326)::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)',
           q.lng,
           q.lat,
           q.radius * 1000,
@@ -88,10 +88,10 @@ export class MarketplaceService {
     const rows = await repo.query(
       `SELECT s.id, s.code, s.name, s.format, s.city, s.country, s.illumination_type AS "illuminationType",
         s.width, s.height, s.area, s.latitude, s.longitude,
-        (SELECT count(*) FROM site_faces WHERE site_id = s.id) AS "faceCount",
-        (SELECT min((rates->>'perDay')::numeric) FROM rate_cards WHERE site_id = s.id) AS "startingPrice",
-        (SELECT storage_ref FROM site_assets WHERE site_id = s.id ORDER BY created_at LIMIT 1) AS "thumbnail",
-        (SELECT jsonb_object_agg(dimension, payload) FROM site_metadata WHERE site_id = s.id) AS "keyMetadata"
+        (SELECT count(*) FROM site_faces WHERE site_id = s.id::text) AS "faceCount",
+        (SELECT min((rates->>'perDay')::numeric) FROM rate_cards WHERE site_id = s.id::text) AS "startingPrice",
+        (SELECT storage_ref FROM site_assets WHERE site_id = s.id::text ORDER BY created_at LIMIT 1) AS "thumbnail",
+        (SELECT jsonb_object_agg(dimension, payload) FROM site_metadata WHERE site_id = s.id::text) AS "keyMetadata"
        FROM billboard_sites s WHERE ${whereSql} ORDER BY s.created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       params,
     );
