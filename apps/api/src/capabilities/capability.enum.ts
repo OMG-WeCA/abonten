@@ -47,6 +47,8 @@ export enum Capability {
   // Org self-service (global — granted to any authenticated user, no org context needed)
   ORG_CREATE = 'ORG_CREATE',
   ORG_VIEW = 'ORG_VIEW',
+  ME_VIEW = 'ME_VIEW',
+  ME_EDIT = 'ME_EDIT',
 }
 
 export const ALL_CAPABILITIES: Capability[] = Object.values(Capability) as Capability[];

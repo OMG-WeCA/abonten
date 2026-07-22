@@ -1,6 +1,10 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-import { OrganizationEntity } from '../../common/entities/organization.entity';
-import { UserEntity } from './user.entity';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 @Entity({ name: 'memberships' })
 export class MembershipEntity {
@@ -13,12 +17,4 @@ export class MembershipEntity {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;
-
-  @ManyToOne(() => UserEntity, (u) => u.memberships)
-  @JoinColumn({ name: 'user_id' })
-  user?: UserEntity;
-
-  @ManyToOne(() => OrganizationEntity, (o) => o.memberships)
-  @JoinColumn({ name: 'organization_id' })
-  organization?: OrganizationEntity;
 }

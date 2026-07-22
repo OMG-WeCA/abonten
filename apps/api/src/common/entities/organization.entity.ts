@@ -1,5 +1,4 @@
-import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-import { MembershipEntity } from '../../auth/entities/membership.entity';
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity({ name: 'organizations' })
 export class OrganizationEntity {
@@ -17,7 +16,4 @@ export class OrganizationEntity {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;
-
-  @OneToMany(() => MembershipEntity, (m) => m.organization)
-  memberships!: MembershipEntity[];
 }

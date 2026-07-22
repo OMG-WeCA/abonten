@@ -12,10 +12,13 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { SwitchOrgDto } from './dto/switch-org.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuthService } from './auth.service';
-import type { Capability } from '../capabilities/capability.enum';
+import { Capability } from '../capabilities/capability.enum';
+import { CapabilitiesGuard } from '../capabilities/capabilities.guard';
+import { RequireCapabilities } from '../capabilities/require-capabilities.decorator';
 
 @ApiTags('me')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, CapabilitiesGuard)
+@RequireCapabilities(Capability.ME_VIEW)
 @Controller('me')
 export class MeController {
   constructor(
@@ -30,6 +33,7 @@ export class MeController {
     return this.withCapabilities(user);
   }
 
+  @RequireCapabilities(Capability.ME_EDIT)
   @Patch()
   @ApiOperation({ summary: 'Update my profile (name, phone, locale)' })
   async updateProfile(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateProfileDto) {

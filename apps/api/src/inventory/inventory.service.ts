@@ -318,10 +318,27 @@ export class InventoryService {
   }
 
   // ----------------------------------------------------------------- assets
-  async addAsset(orgId: string, siteId: string, kind: string, storageRef: string, capturedAt?: Date) {
+  async addAsset(
+    orgId: string,
+    siteId: string,
+    kind: string,
+    file: { buffer: Buffer; mimetype: string; originalname: string },
+    capturedAt?: Date,
+  ) {
+    // Validate ownership BEFORE storing, so an invalid/non-owned site does not
+    // create an orphan object.
     await this.assertOwnership(orgId, siteId);
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const storageRef = `assets/${siteId}/${Date.now()}-${safeName}`;
+    await this.storage.store(storageRef, file.buffer, file.mimetype);
     const repo = await this.db.repo(SiteAssetEntity);
-    return repo.save(repo.create({ siteId, kind, storageRef, capturedAt }));
+    try {
+      return await repo.save(repo.create({ siteId, kind, storageRef, capturedAt }));
+    } catch (err) {
+      // DB insert failed — remove the stored object to avoid orphans.
+      await this.storage.remove(storageRef);
+      throw err;
+    }
   }
 
   async listAssets(siteId: string) {

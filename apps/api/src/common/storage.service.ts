@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 
 /**
@@ -43,9 +43,13 @@ export class StorageService {
         new PutObjectCommand({ Bucket: this.bucket, Key: ref, Body: buffer, ContentType: contentType }),
       );
     } else {
-      const path = join(this.localDir, ref);
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, buffer);
+      const root = resolve(this.localDir);
+      const resolved = resolve(join(this.localDir, ref));
+      if (resolved !== root && !resolved.startsWith(root + '/')) {
+        throw new Error('storage ref escapes uploads directory');
+      }
+      mkdirSync(dirname(resolved), { recursive: true });
+      writeFileSync(resolved, buffer);
     }
     return ref;
   }

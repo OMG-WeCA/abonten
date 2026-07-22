@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -14,7 +15,6 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type {} from 'multer'; // loads the Express.Multer global type augmentation
-import { StorageService } from '../common/storage.service';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -22,7 +22,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CapabilitiesGuard } from '../capabilities/capabilities.guard';
 import { Capability } from '../capabilities/capability.enum';
-import { RequireCapabilities } from '../capabilities/require-capabilities.decorator';
+import { RequireAnyCapabilities, RequireCapabilities } from '../capabilities/require-capabilities.decorator';
 import { InventoryService } from './inventory.service';
 import {
   CreateFaceDto,
@@ -47,10 +47,7 @@ function orgContext(req: AuthReq): string | undefined {
 @ApiTags('inventory')
 @Controller('inventory')
 export class InventoryController {
-  constructor(
-    private readonly service: InventoryService,
-    private readonly storage: StorageService,
-  ) {}
+  constructor(private readonly service: InventoryService) {}
 
   // --------------------------------------------------------------- sites
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
@@ -61,7 +58,8 @@ export class InventoryController {
     return this.service.createSite(orgContext(req)!, dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard)
+  @RequireAnyCapabilities(Capability.INVENTORY_VIEW, Capability.MARKETPLACE_VIEW, Capability.PLATFORM_ADMIN)
   @Get('sites')
   @ApiOperation({ summary: 'List sites (own org for partners; listed for planners)' })
   async listSites(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Query() q: ListSitesQueryDto) {
@@ -172,23 +170,20 @@ export class InventoryController {
   @Post('sites/:siteId/assets')
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload a reference photo for a site' })
-  @UseInterceptors(FileInterceptor('file')) // memory storage → file.buffer; StorageService persists it
+  @UseInterceptors(FileInterceptor('file')) // memory storage → file.buffer; service persists it
   async uploadAsset(
     @Req() req: AuthReq,
-    @Param('siteId') siteId: string,
+    @Param('siteId', new ParseUUIDPipe()) siteId: string,
     @UploadedFile() file: Express.Multer.File,
     @Body('kind') kind?: string,
     @Body('capturedAt') capturedAt?: string,
   ) {
     if (!file) throw new Error('No file uploaded');
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const storageRef = `assets/${siteId}/${Date.now()}-${safeName}`;
-    await this.storage.store(storageRef, file.buffer, file.mimetype);
     return this.service.addAsset(
       orgContext(req)!,
       siteId,
       kind ?? 'front',
-      storageRef,
+      { buffer: file.buffer, mimetype: file.mimetype, originalname: file.originalname },
       capturedAt ? new Date(capturedAt) : undefined,
     );
   }
