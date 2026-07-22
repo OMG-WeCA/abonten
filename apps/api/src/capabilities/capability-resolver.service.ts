@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { OrganizationRole } from './organization-roles';
 import { Capability } from './capability.enum';
-import { ROLE_DEFAULT_CAPABILITIES } from './role-capabilities';
+import { PLATFORM_ONLY_CAPABILITIES, ROLE_DEFAULT_CAPABILITIES } from './role-capabilities';
 
 export interface CapabilityOverride {
   capability: string;
@@ -17,6 +17,17 @@ export class CapabilityResolverService {
       const cap = o.capability as Capability;
       if (o.action === 'grant') caps.add(cap);
       else caps.delete(cap);
+    }
+    return caps;
+  }
+
+  /** Resolve capabilities with org-type scoping: strips platform-only
+   * capabilities when the org is not platform. Centralized so guards,
+   * services, and controllers all apply the same policy. */
+  resolveScoped(role: OrganizationRole, overrides: CapabilityOverride[], orgType: string | undefined): Set<Capability> {
+    const caps = this.resolve(role, overrides);
+    if (orgType !== 'platform') {
+      for (const c of PLATFORM_ONLY_CAPABILITIES) caps.delete(c);
     }
     return caps;
   }

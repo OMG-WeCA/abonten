@@ -7,7 +7,6 @@ import { MembershipEntity } from '../auth/entities/membership.entity';
 import { UserCapabilityOverrideEntity } from '../auth/entities/user-capability-override.entity';
 import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
 import { OrganizationEntity } from '../common/entities/organization.entity';
-import { PLATFORM_ONLY_CAPABILITIES } from '../capabilities/role-capabilities';
 import { SiteFaceEntity } from '../common/entities/site-face.entity';
 import { SiteAssetEntity } from '../common/entities/site-asset.entity';
 import { SiteMetadataEntity } from '../common/entities/site-metadata.entity';
@@ -502,14 +501,9 @@ export class InventoryService {
       .repo(UserCapabilityOverrideEntity)
       .then((r) => r.find({ where: { userId, organizationId: orgId } }))
       .catch(() => []);
-    const caps = this.resolver.resolve(m.role as never, overrides);
-    // Strip platform-only capabilities in non-platform orgs (consistent with the guard).
     const orgs = await this.db.repo(OrganizationEntity);
     const org = await orgs.findOne({ where: { id: orgId } }).catch(() => null);
-    if (org && org.type !== 'platform') {
-      for (const c of PLATFORM_ONLY_CAPABILITIES) caps.delete(c);
-    }
-    return caps;
+    return this.resolver.resolveScoped(m.role as never, overrides, org?.type);
   }
 
 }

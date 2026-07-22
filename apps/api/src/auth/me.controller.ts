@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, NotFoundException, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, NotFoundException, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DatabaseService } from '../common/database.service';
 import { CapabilityResolverService } from '../capabilities/capability-resolver.service';
@@ -8,6 +8,7 @@ import { UserCapabilityOverrideEntity } from './entities/user-capability-overrid
 import { UserEntity } from './entities/user.entity';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AuthenticatedUser } from './authenticated-user';
+import type { Request } from 'express';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { SwitchOrgDto } from './dto/switch-org.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -29,8 +30,8 @@ export class MeController {
 
   @Get()
   @ApiOperation({ summary: 'Current user + active org + effective capabilities' })
-  async me(@CurrentUser() user: AuthenticatedUser) {
-    return this.withCapabilities(user);
+  async me(@CurrentUser() user: AuthenticatedUser, @Req() req: Request & { user?: AuthenticatedUser }) {
+    return this.withCapabilities(user, req.headers['x-org-id'] as string | undefined);
   }
 
   @RequireCapabilities(Capability.ME_EDIT)
@@ -56,8 +57,8 @@ export class MeController {
 
   @Get('capabilities')
   @ApiOperation({ summary: 'Effective capabilities for the current org context' })
-  async capabilities(@CurrentUser() user: AuthenticatedUser) {
-    const { role, capabilities } = await this.withCapabilities(user);
+  async capabilities(@CurrentUser() user: AuthenticatedUser, @Req() req: Request & { user?: AuthenticatedUser }) {
+    const { role, capabilities } = await this.withCapabilities(user, req.headers['x-org-id'] as string | undefined);
     return { role, capabilities, activeOrgId: user.activeOrgId };
   }
 
@@ -92,7 +93,7 @@ export class MeController {
     return this.auth.issueTokens(u, dto.organizationId);
   }
 
-  private async withCapabilities(user: AuthenticatedUser): Promise<{
+  private async withCapabilities(user: AuthenticatedUser, headerOrgId?: string): Promise<{
     user: { id: string; email: string; name: string; phone?: string; locale: string; status: string } | null;
     activeOrgId?: string;
     role?: string;
@@ -100,7 +101,7 @@ export class MeController {
   }> {
     const users = await this.db.repo(UserEntity);
     const u = await users.findOne({ where: { id: user.userId } });
-    const orgId = user.activeOrgId;
+    const orgId = user.activeOrgId ?? headerOrgId;
     let role: string | undefined;
     let capabilities: Capability[] = [];
     if (orgId) {
@@ -112,7 +113,8 @@ export class MeController {
           .repo(UserCapabilityOverrideEntity)
           .then((r) => r.find({ where: { userId: user.userId, organizationId: orgId } }))
           .catch(() => []);
-        capabilities = [...this.resolver.resolve(m.role as never, overrides)];
+        const org = await this.db.repo(OrganizationEntity).then((r) => r.findOne({ where: { id: orgId } })).catch(() => null);
+        capabilities = [...this.resolver.resolveScoped(m.role as never, overrides, org?.type)];
       }
     }
     return {
