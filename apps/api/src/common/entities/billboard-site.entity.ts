@@ -2,7 +2,6 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -18,9 +17,11 @@ export type SiteStatus =
 
 /**
  * BillboardSite — a physical outdoor advertising structure (SPEC.md §5.1 / §6.2).
- * `location` is a PostGIS Point(lng, lat) SRID 4326; `geo_polygon` an optional
- * fenced area for large installations. Geometry is written via raw SQL
- * (ST_SetSRID(ST_MakePoint(lng, lat), 4326)) — see InventoryService.
+ * Location is stored as float `latitude`/`longitude` columns so the schema works
+ * on any Postgres (including the disposable no-PostGIS test service). When the
+ * PostGIS extension is available, spatial queries use ST_DWithin (on-the-fly
+ * geometry); otherwise they fall back to the Haversine formula — see
+ * MarketplaceService. `geoPolygon` is a JSON array of {longitude, latitude}.
  */
 @Entity({ name: 'billboard_sites' })
 export class BillboardSiteEntity {
@@ -34,12 +35,10 @@ export class BillboardSiteEntity {
   @Column() format!: string;
   @Column({ name: 'sub_format', nullable: true }) subFormat?: string;
 
-  @Index({ spatial: true })
-  @Column({ type: 'geometry', spatialFeatureType: 'Point', srid: 4326 })
-  location!: string;
-
-  @Column({ type: 'geometry', spatialFeatureType: 'Polygon', srid: 4326, nullable: true })
-  geoPolygon?: string;
+  @Column({ type: 'double precision' }) latitude!: number;
+  @Column({ type: 'double precision' }) longitude!: number;
+  @Column({ name: 'geo_polygon', type: 'json', nullable: true })
+  geoPolygon?: Array<{ longitude: number; latitude: number }> | null;
 
   @Column({ nullable: true }) address?: string;
   @Column({ nullable: true }) city?: string;

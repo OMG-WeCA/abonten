@@ -24,7 +24,7 @@ import type {
 
 const SITE_DETAIL_COLUMNS =
   'id, organization_id AS "organizationId", code, name, type, format, sub_format AS "subFormat", ' +
-  'ST_X(location) AS longitude, ST_Y(location) AS latitude, ' +
+  'latitude, longitude, geo_polygon AS "geoPolygon", ' +
   'address, city, region, country, market_id AS "marketId", orientation_deg AS "orientationDeg", ' +
   'viewing_distance AS "viewingDistance", elevation, width, height, area, units, ' +
   'illumination_type AS "illuminationType", illumination_hours AS "illuminationHours", ' +
@@ -48,7 +48,7 @@ function randomSuffix(): string {
 interface InsertEntry {
   col: string;
   val?: unknown;
-  sql?: 'location' | 'geo_polygon';
+  sql?: 'geo_polygon';
 }
 
 @Injectable()
@@ -71,7 +71,8 @@ export class InventoryService {
       { col: 'name', val: dto.name },
       { col: 'type', val: dto.type ?? 'billboard' },
       { col: 'format', val: dto.format },
-      { col: 'location', sql: 'location' },
+      { col: 'latitude', val: dto.latitude },
+      { col: 'longitude', val: dto.longitude },
       { col: 'city', val: dto.city },
       { col: 'country', val: dto.country },
       { col: 'width', val: dto.width },
@@ -105,19 +106,11 @@ export class InventoryService {
     let i = 0;
     for (const e of entries) {
       cols.push(e.col);
-      if (e.sql === 'location') {
-        i += 1;
-        const lngN = i;
-        params.push(dto.longitude);
-        i += 1;
-        const latN = i;
-        params.push(dto.latitude);
-        placeholders.push(`ST_SetSRID(ST_MakePoint($${lngN}, $${latN}), 4326)`);
-      } else if (e.sql === 'geo_polygon') {
+      if (e.sql === 'geo_polygon') {
         i += 1;
         const n = i;
-        params.push(this.polygonSql(dto.geoPolygon!));
-        placeholders.push(`ST_GeomFromGeoJSON($${n})`);
+        params.push(JSON.stringify(dto.geoPolygon!));
+        placeholders.push(`$${n}::json`);
       } else {
         i += 1;
         params.push(e.val);
@@ -215,14 +208,18 @@ export class InventoryService {
       params.push(dto.permitExpiresAt ? new Date(dto.permitExpiresAt) : null);
       sets.push(`permit_expires_at = $${params.length}`);
     }
-    if (dto.latitude !== undefined && dto.longitude !== undefined) {
-      params.push(dto.longitude, dto.latitude);
-      sets.push(`location = ST_SetSRID(ST_MakePoint($${params.length - 1}, $${params.length}), 4326)`);
+    if (dto.latitude !== undefined) {
+      params.push(dto.latitude);
+      sets.push(`latitude = $${params.length}`);
+    }
+    if (dto.longitude !== undefined) {
+      params.push(dto.longitude);
+      sets.push(`longitude = $${params.length}`);
     }
     if (dto.geoPolygon !== undefined) {
       if (dto.geoPolygon && dto.geoPolygon.length >= 3) {
-        params.push(this.polygonSql(dto.geoPolygon));
-        sets.push(`geo_polygon = ST_GeomFromGeoJSON($${params.length})`);
+        params.push(JSON.stringify(dto.geoPolygon));
+        sets.push(`geo_polygon = $${params.length}::json`);
       } else {
         sets.push('geo_polygon = NULL');
       }
@@ -450,10 +447,4 @@ export class InventoryService {
     return this.resolver.resolve(m.role as never, overrides);
   }
 
-  /** Build a closed GeoJSON Polygon SQL string from an array of points. */
-  private polygonSql(points: { longitude: number; latitude: number }[]): string {
-    const ring = points.map((p) => [p.longitude, p.latitude]);
-    ring.push(ring[0]); // close the ring
-    return JSON.stringify({ type: 'Polygon', coordinates: [ring] });
-  }
 }

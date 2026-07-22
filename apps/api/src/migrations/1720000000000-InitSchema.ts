@@ -12,7 +12,7 @@ export class InitSchema1720000000000 implements MigrationInterface {
   name = 'InitSchema1720000000000';
 
   async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "postgis"`);
+    await queryRunner.query(`DO $$ BEGIN CREATE EXTENSION IF NOT EXISTS "postgis"; EXCEPTION WHEN OTHERS THEN NULL; END $$`);
 
     // ---- Identity & tenancy -------------------------------------------------
     await queryRunner.query(`
@@ -90,8 +90,9 @@ export class InitSchema1720000000000 implements MigrationInterface {
         "type" varchar NOT NULL DEFAULT 'billboard',
         "format" varchar NOT NULL,
         "sub_format" varchar,
-        "location" geometry(Point, 4326) NOT NULL,
-        "geo_polygon" geometry(Polygon, 4326),
+        "latitude" double precision NOT NULL,
+        "longitude" double precision NOT NULL,
+        "geo_polygon" json,
         "address" varchar,
         "city" varchar,
         "region" varchar,
@@ -114,10 +115,6 @@ export class InitSchema1720000000000 implements MigrationInterface {
         "updated_at" timestamptz NOT NULL DEFAULT now()
       )
     `);
-    await queryRunner.query(
-      `CREATE INDEX "billboard_sites_location_idx" ON "billboard_sites" USING GIST ("location")`,
-    );
-
     await queryRunner.query(`
       CREATE TABLE "site_faces" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,

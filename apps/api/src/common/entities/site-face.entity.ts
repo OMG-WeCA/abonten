@@ -10,7 +10,7 @@ export class SiteFaceEntity {
   @Column({ type: 'double precision' }) height!: number;
   @Column({ type: 'double precision' }) area!: number;
   @Column() units!: string;
-  @Column({ nullable: true }) printableArea?: string;
+  @Column({ name: 'printable_area', nullable: true }) printableArea?: string;
   @Column({ default: true }) bookable!: boolean;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;

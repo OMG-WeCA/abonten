@@ -49,24 +49,24 @@ export function siteCurrency(country: string): string {
   return CURRENCY_BY_COUNTRY[country] ?? 'NGN';
 }
 
-// Upsert by deterministic id, writing the PostGIS Point via ST_MakePoint.
+// Upsert by deterministic id, writing latitude/longitude as float columns
+// (works on any Postgres, including the no-PostGIS disposable service).
 export async function seedBillboardSites(ds: DataSource): Promise<void> {
   const repo = ds.getRepository(BillboardSiteEntity);
   for (const s of SITES) {
     const params: unknown[] = [
       s.id, IDS.org.accraOutdoor, s.code, s.name, s.type, s.format,
-      s.subFormat ?? null, s.longitude, s.latitude, s.address ?? null, s.city,
+      s.subFormat ?? null, s.latitude, s.longitude, s.address ?? null, s.city,
       s.region ?? null, s.country, s.width, s.height, s.area, 'm',
       s.illuminationType, s.illuminationHours ?? null, s.description ?? null, s.status,
     ];
-    // location uses params 8 (lng) and 9 (lat).
     await repo.query(
       `INSERT INTO billboard_sites
-        (id, organization_id, code, name, type, format, sub_format, location, address, city, region, country, width, height, area, units, illumination_type, illumination_hours, description, status, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,ST_SetSRID(ST_MakePoint($8,$9),4326),$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,now(),now())
+        (id, organization_id, code, name, type, format, sub_format, latitude, longitude, address, city, region, country, width, height, area, units, illumination_type, illumination_hours, description, status, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,now(),now())
        ON CONFLICT (id) DO UPDATE SET
          name=EXCLUDED.name, type=EXCLUDED.type, format=EXCLUDED.format, sub_format=EXCLUDED.sub_format,
-         location=EXCLUDED.location, address=EXCLUDED.address, city=EXCLUDED.city, region=EXCLUDED.region,
+         latitude=EXCLUDED.latitude, longitude=EXCLUDED.longitude, address=EXCLUDED.address, city=EXCLUDED.city, region=EXCLUDED.region,
          country=EXCLUDED.country, width=EXCLUDED.width, height=EXCLUDED.height, area=EXCLUDED.area,
          units=EXCLUDED.units, illumination_type=EXCLUDED.illumination_type, illumination_hours=EXCLUDED.illumination_hours,
          description=EXCLUDED.description, status=EXCLUDED.status, updated_at=now()`,

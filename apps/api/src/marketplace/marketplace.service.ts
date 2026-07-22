@@ -12,12 +12,24 @@ const SITE_COLUMNS =
   'market_id AS "marketId", orientation_deg AS "orientationDeg", viewing_distance AS "viewingDistance", ' +
   'elevation, width, height, area, units, illumination_type AS "illuminationType", illumination_hours AS "illuminationHours", ' +
   'description, status, permit_ref AS "permitRef", permit_expires_at AS "permitExpiresAt", ' +
-  'ST_X(location) AS longitude, ST_Y(location) AS latitude, ' +
+  'latitude, longitude, ' +
   'created_at AS "createdAt", updated_at AS "updatedAt"';
 
 @Injectable()
 export class MarketplaceService {
   constructor(private readonly db: DatabaseService) {}
+
+  private postgisCache: boolean | undefined;
+  /** True when the PostGIS extension is installed (enables ST_DWithin). */
+  private async hasPostgis(): Promise<boolean> {
+    if (this.postgisCache !== undefined) return this.postgisCache;
+    const repo = await this.db.repo(BillboardSiteEntity);
+    const rows = await repo
+      .query("SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='postgis')::bool AS has")
+      .catch(() => [{ has: false }]);
+    this.postgisCache = !!rows[0]?.has;
+    return this.postgisCache;
+  }
 
   /** Search listed sites available for booking, with filters + spatial radius. */
   async search(q: MarketplaceQueryDto) {
@@ -49,13 +61,24 @@ export class MarketplaceService {
       push('(SELECT min((rates->>\'perDay\')::numeric) FROM rate_cards WHERE site_id = s.id) <= ?', q.maxPrice);
     }
     if (q.lat !== undefined && q.lng !== undefined && q.radius !== undefined) {
-      // Spatial: sites within `radius` km of (lng, lat). ST_DWithin uses meters.
-      push(
-        'ST_DWithin(s.location, ST_SetSRID(ST_MakePoint(?, ?), 4326), ?)',
-        q.lng,
-        q.lat,
-        q.radius * 1000,
-      );
+      if (await this.hasPostgis()) {
+        // PostGIS available: ST_DWithin on geometry built from the float columns (meters).
+        push(
+          'ST_DWithin(ST_SetSRID(ST_MakePoint(s.longitude, s.latitude), 4326), ST_SetSRID(ST_MakePoint(?, ?), 4326), ?)',
+          q.lng,
+          q.lat,
+          q.radius * 1000,
+        );
+      } else {
+        // No PostGIS: Haversine great-circle distance in km on the float columns.
+        push(
+          '(6371 * acos(LEAST(1, sin(radians(?)) * sin(radians(s.latitude)) + cos(radians(?)) * cos(radians(s.latitude)) * cos(radians(s.longitude - ?))))) <= ?',
+          q.lat,
+          q.lat,
+          q.lng,
+          q.radius,
+        );
+      }
     }
     // availability_window (startDate/endDate) is accepted but not filtered in S1/S2
     // (booking availability lands with the booking module).
@@ -64,7 +87,7 @@ export class MarketplaceService {
     const offset = (page - 1) * limit;
     const rows = await repo.query(
       `SELECT s.id, s.code, s.name, s.format, s.city, s.country, s.illumination_type AS "illuminationType",
-        s.width, s.height, s.area, ST_X(s.location) AS longitude, ST_Y(s.location) AS latitude,
+        s.width, s.height, s.area, s.latitude, s.longitude,
         (SELECT count(*) FROM site_faces WHERE site_id = s.id) AS "faceCount",
         (SELECT min((rates->>'perDay')::numeric) FROM rate_cards WHERE site_id = s.id) AS "startingPrice",
         (SELECT storage_ref FROM site_assets WHERE site_id = s.id ORDER BY created_at LIMIT 1) AS "thumbnail",
