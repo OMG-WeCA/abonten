@@ -43,14 +43,16 @@ function assertOrgMatch(req: AuthReq, orgId: string): void {
 export class OrgsController {
   constructor(private readonly orgs: OrgsService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard)
+  @RequireCapabilities(Capability.ORG_CREATE)
   @Post()
   @ApiOperation({ summary: 'Create a new organization (creator becomes org_owner)' })
   async create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateOrgDto) {
     return this.orgs.createOrg(user.userId, dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard)
+  @RequireCapabilities(Capability.ORG_VIEW)
   @Get('me')
   @ApiOperation({ summary: 'Organizations the current user belongs to' })
   async myOrgs(@CurrentUser() user: AuthenticatedUser) {

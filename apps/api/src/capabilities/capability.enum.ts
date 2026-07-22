@@ -44,6 +44,9 @@ export enum Capability {
   ORG_SETTINGS_EDIT = 'ORG_SETTINGS_EDIT',
   MEMBERSHIP_MANAGE = 'MEMBERSHIP_MANAGE',
   BILLING_MANAGE = 'BILLING_MANAGE',
+  // Org self-service (global — granted to any authenticated user, no org context needed)
+  ORG_CREATE = 'ORG_CREATE',
+  ORG_VIEW = 'ORG_VIEW',
 }
 
 export const ALL_CAPABILITIES: Capability[] = Object.values(Capability) as Capability[];

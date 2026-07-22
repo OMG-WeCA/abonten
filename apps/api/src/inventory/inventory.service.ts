@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../common/database.service';
+import { StorageService } from '../common/storage.service';
 import { CapabilityResolverService } from '../capabilities/capability-resolver.service';
 import { Capability } from '../capabilities/capability.enum';
 import { MembershipEntity } from '../auth/entities/membership.entity';
@@ -56,6 +57,7 @@ export class InventoryService {
   constructor(
     private readonly db: DatabaseService,
     private readonly resolver: CapabilityResolverService,
+    private readonly storage: StorageService,
   ) {}
 
   // ----------------------------------------------------------------- sites
@@ -330,6 +332,9 @@ export class InventoryService {
   async deleteAsset(orgId: string, siteId: string, assetId: string) {
     await this.assertOwnership(orgId, siteId);
     const repo = await this.db.repo(SiteAssetEntity);
+    const asset = await repo.findOne({ where: { id: assetId, siteId } });
+    if (!asset) throw new NotFoundException('Asset not found');
+    await this.storage.remove(asset.storageRef);
     await repo.delete({ id: assetId, siteId });
     return { id: assetId, deleted: true };
   }
@@ -409,6 +414,23 @@ export class InventoryService {
       ...(dto.effectiveTo !== undefined && { effectiveTo: dto.effectiveTo ? new Date(dto.effectiveTo) : null }),
     });
     return repo.save(rc);
+  }
+
+  /** Tenant-safe read gate for a site's children (faces/assets/metadata/rate cards):
+   * owner (INVENTORY_VIEW in the owning org), platform admin, or a listed site; else 403. */
+  async assertCanReadSite(user: AuthenticatedUser, orgId: string | undefined, siteId: string): Promise<void> {
+    const repo = await this.db.repo(BillboardSiteEntity);
+    const rows = await repo.query(
+      `SELECT organization_id AS "organizationId", status FROM billboard_sites WHERE id = $1`,
+      [siteId],
+    );
+    if (!rows[0]) throw new NotFoundException('Site not found');
+    const caps = await this.effectiveCapabilities(user.userId, orgId);
+    const isOwner = rows[0].organizationId === orgId && caps.has(Capability.INVENTORY_VIEW);
+    const isPlatformAdmin = caps.has(Capability.PLATFORM_ADMIN);
+    if (!isOwner && !isPlatformAdmin && rows[0].status !== 'listed') {
+      throw new ForbiddenException('Site not available');
+    }
   }
 
   // ----------------------------------------------------------------- helpers

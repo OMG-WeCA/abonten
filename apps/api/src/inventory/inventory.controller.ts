@@ -13,7 +13,8 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import type {} from 'multer'; // loads the Express.Multer global type augmentation
+import { StorageService } from '../common/storage.service';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -43,12 +44,13 @@ function orgContext(req: AuthReq): string | undefined {
   return header ?? req.user?.activeOrgId;
 }
 
-const uploadsDir = process.env.UPLOADS_DIR ?? './uploads';
-
 @ApiTags('inventory')
 @Controller('inventory')
 export class InventoryController {
-  constructor(private readonly service: InventoryService) {}
+  constructor(
+    private readonly service: InventoryService,
+    private readonly storage: StorageService,
+  ) {}
 
   // --------------------------------------------------------------- sites
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
@@ -143,7 +145,8 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_VIEW)
   @Get('sites/:siteId/faces')
   @ApiOperation({ summary: 'List faces for a site' })
-  async listFaces(@Param('siteId') siteId: string) {
+  async listFaces(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('siteId') siteId: string) {
+    await this.service.assertCanReadSite(user, orgContext(req), siteId);
     return this.service.listFaces(siteId);
   }
 
@@ -169,14 +172,7 @@ export class InventoryController {
   @Post('sites/:siteId/assets')
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload a reference photo for a site' })
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: uploadsDir,
-        filename: (_req, file, cb) => cb(null, `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`),
-      }),
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file')) // memory storage → file.buffer; StorageService persists it
   async uploadAsset(
     @Req() req: AuthReq,
     @Param('siteId') siteId: string,
@@ -185,7 +181,9 @@ export class InventoryController {
     @Body('capturedAt') capturedAt?: string,
   ) {
     if (!file) throw new Error('No file uploaded');
-    const storageRef = `uploads/${file.filename}`;
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const storageRef = `assets/${siteId}/${Date.now()}-${safeName}`;
+    await this.storage.store(storageRef, file.buffer, file.mimetype);
     return this.service.addAsset(
       orgContext(req)!,
       siteId,
@@ -199,14 +197,15 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_VIEW)
   @Get('sites/:siteId/assets')
   @ApiOperation({ summary: 'List assets for a site' })
-  async listAssets(@Param('siteId') siteId: string) {
+  async listAssets(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('siteId') siteId: string) {
+    await this.service.assertCanReadSite(user, orgContext(req), siteId);
     return this.service.listAssets(siteId);
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.INVENTORY_EDIT)
   @Delete('sites/:siteId/assets/:assetId')
-  @ApiOperation({ summary: 'Delete an asset' })
+  @ApiOperation({ summary: 'Delete an asset (and its stored object)' })
   async deleteAsset(@Req() req: AuthReq, @Param('siteId') siteId: string, @Param('assetId') assetId: string) {
     return this.service.deleteAsset(orgContext(req)!, siteId, assetId);
   }
@@ -224,7 +223,8 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_VIEW)
   @Get('sites/:siteId/metadata')
   @ApiOperation({ summary: 'Get all enrichment for a site' })
-  async listMetadata(@Param('siteId') siteId: string) {
+  async listMetadata(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('siteId') siteId: string) {
+    await this.service.assertCanReadSite(user, orgContext(req), siteId);
     return this.service.listMetadata(siteId);
   }
 
@@ -253,7 +253,8 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_VIEW)
   @Get('sites/:siteId/rate-cards')
   @ApiOperation({ summary: 'List rate cards for a site' })
-  async listRateCards(@Param('siteId') siteId: string) {
+  async listRateCards(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('siteId') siteId: string) {
+    await this.service.assertCanReadSite(user, orgContext(req), siteId);
     return this.service.listRateCards(siteId);
   }
 

@@ -8,6 +8,13 @@ import { CapabilityResolverService } from './capability-resolver.service';
 import { REQUIRE_CAPABILITIES_KEY } from './require-capabilities.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 
+// Capabilities that are granted to any authenticated user regardless of org
+// context (e.g. creating/listing one's own organizations).
+const GLOBAL_CAPABILITIES: ReadonlySet<Capability> = new Set<Capability>([
+  Capability.ORG_CREATE,
+  Capability.ORG_VIEW,
+]);
+
 @Injectable()
 export class CapabilitiesGuard implements CanActivate {
   constructor(
@@ -26,6 +33,11 @@ export class CapabilitiesGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest();
     const user = req.user as AuthenticatedUser | undefined;
     if (!user?.userId) throw new ForbiddenException('Not authenticated');
+
+    // Per-org capabilities need an org context; global ones are granted to any
+    // authenticated user.
+    const perOrg = required.filter((c) => !GLOBAL_CAPABILITIES.has(c));
+    if (perOrg.length === 0) return true;
 
     const headerOrg = req.headers['x-org-id'] as string | undefined;
     const orgId = headerOrg ?? user.activeOrgId;
@@ -46,7 +58,7 @@ export class CapabilitiesGuard implements CanActivate {
     if (!memberships) throw new ForbiddenException('No membership in this organization');
     const effective = this.resolver.resolve(memberships.role as never, overrides);
 
-    const ok = required.every((c) => effective.has(c));
+    const ok = perOrg.every((c) => effective.has(c));
     if (!ok) throw new ForbiddenException('Insufficient capabilities');
     return true;
   }

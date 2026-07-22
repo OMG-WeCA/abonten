@@ -80,8 +80,16 @@ export class MarketplaceService {
         );
       }
     }
-    // availability_window (startDate/endDate) is accepted but not filtered in S1/S2
-    // (booking availability lands with the booking module).
+    if (q.startDate && q.endDate) {
+      // A site is available in the window if it has at least one bookable face with
+      // no active (non-cancelled, non-completed) booking overlapping [startDate, endDate].
+      // Booking overlap: b.start_date < endDate AND b.end_date > startDate.
+      push(
+        'EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = s.id::text AND f.bookable AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.face_id = f.id::text AND b.status NOT IN (\'cancelled\',\'completed\') AND b.start_date < ? AND b.end_date > ?))',
+        q.endDate,
+        q.startDate,
+      );
+    }
 
     const whereSql = where.join(' AND ');
     const offset = (page - 1) * limit;

@@ -38,5 +38,7 @@ export default () => ({
     endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
     bucket: process.env.S3_BUCKET ?? 'abonten',
     region: process.env.S3_REGION ?? 'us-east-1',
+    accessKey: process.env.S3_ACCESS_KEY ?? '',
+    secretKey: process.env.S3_SECRET_KEY ?? '',
   },
 });
