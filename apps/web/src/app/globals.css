@@ -205,17 +205,84 @@ body {
   }
 }
 .marquee {
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  overflow: hidden;
+  padding: 0.45rem clamp(1rem, 4vw, 2.5rem);
+}
+.marquee-label {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  border: 1px solid color-mix(in oklab, var(--color-foreground) 15%, transparent);
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--color-background) 88%, transparent);
+  padding: 0.4rem 0.75rem;
+  color: color-mix(in oklab, var(--color-foreground) 90%, transparent);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  line-height: 1.25;
+  text-transform: uppercase;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+}
+.marquee-viewport {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
 }
 .marquee-track {
-  display: inline-flex;
+  display: flex;
   width: max-content;
-  min-width: 200%;
-  animation: marquee-x 34s linear infinite;
+  will-change: transform;
+  animation: marquee-x 38s linear infinite;
 }
-.marquee:hover .marquee-track {
-  animation-play-state: paused;
+.marquee-group {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+.marquee-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-inline: 1.5rem;
+  white-space: nowrap;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+@media (hover: hover) {
+  .marquee:hover .marquee-track,
+  .marquee:focus-within .marquee-track {
+    animation-play-state: paused;
+  }
+}
+@media (max-width: 480px) {
+  .marquee {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding-block: 0.6rem;
+  }
+  .marquee-label {
+    align-self: flex-start;
+    margin-left: 0.4rem;
+  }
+  .marquee-viewport {
+    width: 100%;
+    flex: none;
+  }
+  .marquee-item {
+    margin-inline: 1.1rem;
+    font-size: 0.75rem;
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -265,6 +332,11 @@ body {
   .billboard-ad,
   .twinkle-star {
     animation: none !important;
+  }
+  .marquee-viewport {
+    overflow-x: auto;
+    -webkit-mask-image: none;
+    mask-image: none;
   }
   .btn-sheen::after {
     display: none;

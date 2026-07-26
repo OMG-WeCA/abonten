@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
@@ -17,9 +17,50 @@ const DEMO_MAILTO = 'mailto:hello@abonten.com?subject=Abonten%20demo%20request';
 export function Navbar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const headerRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    };
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (headerRef.current && !headerRef.current.contains(event.target as Node)) setOpen(false);
+    };
+
+    window.addEventListener('keydown', closeOnEscape);
+    document.addEventListener('pointerdown', closeOnOutsidePress);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      document.removeEventListener('pointerdown', closeOnOutsidePress);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 768px)');
+    const closeOnDesktop = () => {
+      if (desktop.matches) setOpen(false);
+    };
+
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-foreground/10 bg-background/80 backdrop-blur-md">
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-50 border-b border-foreground/10 bg-background/80 backdrop-blur-md"
+    >
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
         <Link href="/" className="group flex items-center gap-2.5" aria-label="Abonten home">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shadow-lg shadow-primary/30 transition-transform group-hover:scale-105">
@@ -54,9 +95,12 @@ export function Navbar() {
         </div>
 
         <button
-          onClick={() => setOpen((o) => !o)}
-          className="rounded-lg p-2 text-foreground transition-colors hover:bg-foreground/10 md:hidden"
-          aria-label="Toggle menu"
+          ref={menuButtonRef}
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          className="rounded-xl p-2.5 text-foreground transition-colors hover:bg-foreground/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background md:hidden"
+          aria-label={open ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-controls={menuId}
           aria-expanded={open}
         >
           {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -64,8 +108,17 @@ export function Navbar() {
       </div>
 
       {open && (
-        <div className="border-t border-foreground/10 bg-background px-6 py-4 md:hidden">
-          <nav className="flex flex-col gap-1">
+        <div
+          id={menuId}
+          className="absolute inset-x-0 top-full border-b border-foreground/10 bg-background/95 px-6 py-4 shadow-2xl shadow-black/20 backdrop-blur-xl md:hidden"
+        >
+          <nav
+            className="mx-auto flex max-w-7xl flex-col gap-1"
+            aria-label="Mobile navigation"
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest('a')) setOpen(false);
+            }}
+          >
             {navLinks.map((link) => {
               const active = pathname === link.href;
               return (
@@ -73,15 +126,18 @@ export function Navbar() {
                   key={link.href}
                   href={link.href}
                   onClick={() => setOpen(false)}
-                  className={`rounded-lg px-3 py-2.5 text-sm font-semibold uppercase tracking-wide ${
-                    active ? 'text-primary' : 'text-foreground/80 hover:text-primary'
+                  aria-current={active ? 'page' : undefined}
+                  className={`min-h-11 rounded-xl px-3 py-2.5 text-sm font-semibold uppercase tracking-wide transition-colors ${
+                    active
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-foreground/85 hover:bg-foreground/5 hover:text-primary'
                   }`}
                 >
                   {link.label}
                 </Link>
               );
             })}
-            <Button href={DEMO_MAILTO} size="md" className="mt-3 w-full">
+            <Button href={DEMO_MAILTO} size="md" className="mt-3 min-h-11 w-full">
               Get Started
             </Button>
           </nav>
