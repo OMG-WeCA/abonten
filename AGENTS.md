@@ -242,3 +242,17 @@ The web app uses a `[data-theme="dark"]` selector on `<html>`, managed by
 `ThemeProvider` (`apps/web/src/components/ThemeProvider.tsx`). The marketing site
 defaults to **dark** (the OMD navy aesthetic) when no preference is stored. The semantic CSS
 variables are overridden in the dark block — no `dark:` prefix needed in components.
+
+## 9. Hosting: the `/abonten` subpath is temporary scaffolding
+
+The current `/abonten` subpath/base-path hosting — e.g., `basePath: '/abonten'` in
+`apps/web/next.config.mjs` and `/abonten`-prefixed routing or asset URLs — is
+**temporary deployment scaffolding** for preview/transitional hosting. It is **not**
+Abonten's final production deployment shape and **not** a product or repository requirement.
+
+- Treat `/abonten` URL prefixes and `basePath` as temporary, configurable deployment
+  details; do not hard-code or normalize them into code, tests, docs, or tooling.
+- Future routing, asset, and deployment work must not assume `/abonten` prefixes are
+  permanent (links, redirects, sitemaps, static assets, reverse-proxy rules, etc.).
+- The final deployment shape is deliberately unspecified. Keep it configurable and do
+  not invent or commit to a canonical host/domain until the operator decides.

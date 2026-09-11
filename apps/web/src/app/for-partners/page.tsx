@@ -107,7 +107,7 @@ export default function ForPartnersPage() {
         secondaryLabel="See how it works"
         secondaryHref="#how-it-works"
         trust="Listed inventory is bookable across 23+ WeCA markets"
-        image={{ src: '/images/partners-skyline.jpg', alt: 'The Lagos, Nigeria skyline' }}
+        image={{ src: '/abonten/images/partners-skyline.jpg', alt: 'The Lagos, Nigeria skyline' }}
       />
 
       <Section variant="surface" size="lg">
