@@ -2,6 +2,7 @@
 export * from './common';
 export * from './organization';
 export * from './user';
+export * from './auth';
 export * from './billboard-site';
 export * from './campaign';
 export * from './booking';

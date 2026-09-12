@@ -1,7 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import Redis from 'ioredis';
 
-// ioredis reconnects without throwing; we swallow errors so dev boot works without Redis.
+// Auth state is safety-critical: never queue or replay a command after a Redis outage.
+const REDIS_COMMAND_TIMEOUT_MS = 2_000;
+
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly client: Redis;
@@ -9,7 +11,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   constructor() {
     this.client = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
       lazyConnect: true,
-      maxRetriesPerRequest: null,
+      connectTimeout: REDIS_COMMAND_TIMEOUT_MS,
+      commandTimeout: REDIS_COMMAND_TIMEOUT_MS,
+      enableOfflineQueue: false,
+      maxRetriesPerRequest: 0,
+      autoResendUnfulfilledCommands: false,
     });
     this.client.on('error', (err) => {
       Logger.warn(`Redis error (may be down): ${String(err.message ?? err)}`, 'RedisService');

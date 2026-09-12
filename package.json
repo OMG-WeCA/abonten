@@ -9,6 +9,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "db:migrate": "pnpm --filter @abonten/api migration:run",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "type-check": "turbo run type-check",

@@ -9,6 +9,7 @@ export default [
     ignores: [
       '**/dist/**',
       '**/.next/**',
+      '**/out/**',
       '**/.expo/**',
       '**/expo-dist/**',
       '**/node_modules/**',
@@ -28,7 +29,10 @@ export default [
   },
   {
     rules: {
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
     },
   },
 ];

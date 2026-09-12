@@ -8,9 +8,10 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthController } from './auth.controller';
 import { MeController } from './me.controller';
 import { AuthService } from './auth.service';
-import { MagicLinkService } from './magic-link.service';
+import { EmailCodeService } from './email-code.service';
 import { MicrosoftAuthService } from './microsoft-auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { UserIdentityService } from './user-identity.service';
 
 @Module({
   imports: [
@@ -19,8 +20,12 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (cfg: ConfigService) => ({
-        secret: cfg.get<string>('jwt.secret') ?? 'change-me-in-dev',
-        signOptions: { expiresIn: Math.round(parseDurationMs(cfg.get<string>('jwt.accessExpiresIn') ?? '15m') / 1000) },
+        secret: cfg.getOrThrow<string>('jwt.secret'),
+        signOptions: {
+          expiresIn: Math.round(
+            parseDurationMs(cfg.get<string>('jwt.accessExpiresIn') ?? '15m') / 1000,
+          ),
+        },
       }),
     }),
     ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 100 }] }),
@@ -28,11 +33,12 @@ import { JwtStrategy } from './strategies/jwt.strategy';
   controllers: [AuthController, MeController],
   providers: [
     AuthService,
-    MagicLinkService,
+    EmailCodeService,
     MicrosoftAuthService,
+    UserIdentityService,
     JwtStrategy,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
-  exports: [AuthService, MagicLinkService, JwtModule],
+  exports: [AuthService, EmailCodeService, UserIdentityService, JwtModule],
 })
 export class AuthModule {}

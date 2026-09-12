@@ -4,7 +4,7 @@ import { OrgsController } from './orgs.controller';
 import { OrgsService } from './orgs.service';
 
 @Module({
-  imports: [AuthModule], // for MagicLinkService (invite emails)
+  imports: [AuthModule], // for EmailCodeService and canonical invitation identities
   controllers: [OrgsController],
   providers: [OrgsService],
 })

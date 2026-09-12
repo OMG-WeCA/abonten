@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -6,8 +6,8 @@ import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { MagicLinkService } from './magic-link.service';
-import { MagicLinkDto } from './dto/magic-link.dto';
+import { EmailCodeService } from './email-code.service';
+import { RequestEmailCodeDto, VerifyEmailCodeDto } from './dto/email-code.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import type { UserEntity } from './entities/user.entity';
 
@@ -16,25 +16,22 @@ import type { UserEntity } from './entities/user.entity';
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
-    private readonly magic: MagicLinkService,
+    private readonly emailCode: EmailCodeService,
     private readonly cfg: ConfigService,
   ) {}
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  @Post('magic-link')
-  @ApiOperation({ summary: 'Request a passwordless sign-in link by email' })
-  magicLink(@Body() dto: MagicLinkDto) {
-    return this.magic.request(dto.email);
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @Post('email-code/request')
+  @ApiOperation({ summary: 'Email a six-digit passwordless sign-in code' })
+  requestEmailCode(@Body() dto: RequestEmailCodeDto) {
+    return this.emailCode.request(dto.email);
   }
 
-  @Get('magic-link/verify')
-  @ApiOperation({ summary: 'Verify a magic-link token and redirect to the frontend with tokens' })
-  async magicLinkVerify(@Query('token') token: string, @Res() res: Response) {
-    const result = await this.magic.verify(token);
-    const url = new URL(`${this.cfg.get<string>('web.baseUrl')}/auth/magic-link/callback`);
-    url.searchParams.set('accessToken', result.accessToken);
-    url.searchParams.set('refreshToken', result.refreshToken);
-    res.redirect(url.toString());
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('email-code/verify')
+  @ApiOperation({ summary: 'Verify an emailed sign-in code and issue a token pair' })
+  verifyEmailCode(@Body() dto: VerifyEmailCodeDto) {
+    return this.emailCode.verify(dto.email, dto.code);
   }
 
   @Post('refresh')

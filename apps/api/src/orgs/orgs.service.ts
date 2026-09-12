@@ -1,6 +1,13 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DatabaseService } from '../common/database.service';
-import { MagicLinkService } from '../auth/magic-link.service';
+import { EmailCodeService } from '../auth/email-code.service';
 import { MembershipEntity } from '../auth/entities/membership.entity';
 import { OrganizationEntity } from '../common/entities/organization.entity';
 import { UserEntity } from '../auth/entities/user.entity';
@@ -8,12 +15,33 @@ import type { CreateOrgDto, InviteUserDto } from './dto/orgs.dto';
 import { CapabilityResolverService } from '../capabilities/capability-resolver.service';
 import { Capability } from '../capabilities/capability.enum';
 import { UserCapabilityOverrideEntity } from '../auth/entities/user-capability-override.entity';
+import { normalizeEmailIdentity } from '../auth/email-identity';
+import { UserIdentityService } from '../auth/user-identity.service';
+
+export interface InvitationResult {
+  userId: string;
+  organizationId: string;
+  role: string;
+  membership: {
+    status: 'active';
+    change: 'created' | 'unchanged';
+  };
+  delivery:
+    | { status: 'sent' }
+    | {
+        status: 'failed';
+        reason: 'rate_limited' | 'temporarily_unavailable';
+        retryable: true;
+        retryPath: string;
+      };
+}
 
 @Injectable()
 export class OrgsService {
   constructor(
     private readonly db: DatabaseService,
-    private readonly magic: MagicLinkService,
+    private readonly emailCode: EmailCodeService,
+    private readonly identities: UserIdentityService,
     private readonly resolver: CapabilityResolverService,
   ) {}
 
@@ -24,12 +52,19 @@ export class OrgsService {
     const orgs = await this.db.repo(OrganizationEntity);
     const org = await orgs.findOne({ where: { id: orgId } }).catch(() => null);
     if (!org || org.type !== 'platform') {
-      throw new ForbiddenException('platform_admin role can only be assigned in a platform-type organization');
+      throw new ForbiddenException(
+        'platform_admin role can only be assigned in a platform-type organization',
+      );
     }
     const memberships = await this.db.repo(MembershipEntity);
-    const m = await memberships.findOne({ where: { userId: actorId, organizationId: orgId, status: 'active' } }).catch(() => null);
+    const m = await memberships
+      .findOne({ where: { userId: actorId, organizationId: orgId, status: 'active' } })
+      .catch(() => null);
     if (!m) throw new ForbiddenException('Actor has no membership in this organization');
-    const overrides = await this.db.repo(UserCapabilityOverrideEntity).then((r) => r.find({ where: { userId: actorId, organizationId: orgId } })).catch(() => []);
+    const overrides = await this.db
+      .repo(UserCapabilityOverrideEntity)
+      .then((r) => r.find({ where: { userId: actorId, organizationId: orgId } }))
+      .catch(() => []);
     const caps = this.resolver.resolve(m.role as never, overrides);
     if (!caps.has(Capability.PLATFORM_ADMIN)) {
       throw new ForbiddenException('Only platform admins can assign the platform_admin role');
@@ -52,7 +87,12 @@ export class OrgsService {
     );
     const memberships = await this.db.repo(MembershipEntity);
     await memberships.save(
-      memberships.create({ userId: actorUserId, organizationId: org.id, role: 'org_owner', status: 'active' }),
+      memberships.create({
+        userId: actorUserId,
+        organizationId: org.id,
+        role: 'org_owner',
+        status: 'active',
+      }),
     );
     return org;
   }
@@ -87,40 +127,113 @@ export class OrgsService {
     const memberships = await this.db.repo(MembershipEntity);
     const users = await this.db.repo(UserEntity);
     const rows = await memberships.find({ where: { organizationId: orgId, status: 'active' } });
-    const out: Array<{ userId: string; email: string; name: string; role: string; status: string }> = [];
+    const out: Array<{
+      userId: string;
+      email: string;
+      name: string;
+      role: string;
+      status: string;
+    }> = [];
     for (const m of rows) {
       const u = await users.findOne({ where: { id: m.userId } });
-      if (u) out.push({ userId: u.id, email: u.email, name: u.name, role: m.role, status: m.status });
+      if (u)
+        out.push({ userId: u.id, email: u.email, name: u.name, role: m.role, status: m.status });
     }
     return out;
   }
 
-  /** Invite a user by email: create/find the user, add an active membership, and
-   * send a magic-link sign-in email so they can access the org. */
-  async invite(orgId: string, dto: InviteUserDto, actorId: string) {
+  /** Persist an invitation membership, then attempt code delivery.
+   * Repeating the same request is the safe delivery retry: it never changes an
+   * existing role or reactivates a revoked membership. */
+  async invite(orgId: string, dto: InviteUserDto, actorId: string): Promise<InvitationResult> {
     if (dto.role === 'platform_admin') {
       await this.assertCanAssignPlatformRole(actorId, orgId);
     }
-    const users = await this.db.repo(UserEntity);
-    let user = await users.findOne({ where: { email: dto.email } });
-    if (!user) {
-      user = await users.save(
-        users.create({ email: dto.email, name: dto.name ?? dto.email.split('@')[0], status: 'active' }),
-      );
-    }
+
+    const email = normalizeEmailIdentity(dto.email);
+    const user = await this.identities.findOrCreateByEmail(email, {
+      name: dto.name ?? email.split('@')[0],
+    });
     const memberships = await this.db.repo(MembershipEntity);
-    const existing = await memberships.findOne({ where: { userId: user.id, organizationId: orgId } });
-    if (!existing) {
-      await memberships.save(
-        memberships.create({ userId: user.id, organizationId: orgId, role: dto.role, status: 'active' }),
-      );
-    } else {
-      existing.role = dto.role;
-      existing.status = 'active';
-      await memberships.save(existing);
+    let membership = await memberships.findOne({
+      where: { userId: user.id, organizationId: orgId },
+    });
+    let membershipChange: 'created' | 'unchanged' = 'unchanged';
+
+    if (!membership) {
+      try {
+        membership = await memberships.save(
+          memberships.create({
+            userId: user.id,
+            organizationId: orgId,
+            role: dto.role,
+            status: 'active',
+          }),
+        );
+        membershipChange = 'created';
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+        membership = await memberships.findOne({
+          where: { userId: user.id, organizationId: orgId },
+        });
+        if (!membership) throw error;
+      }
     }
-    await this.magic.request(dto.email);
-    return { userId: user.id, organizationId: orgId, role: dto.role, invited: true };
+
+    this.assertInvitationMatchesMembership(membership, dto.role, orgId);
+
+    const baseResult = {
+      userId: user.id,
+      organizationId: orgId,
+      role: membership.role,
+      membership: { status: 'active' as const, change: membershipChange },
+    };
+
+    try {
+      await this.emailCode.request(email);
+      return { ...baseResult, delivery: { status: 'sent' } };
+    } catch (error) {
+      return {
+        ...baseResult,
+        delivery: {
+          status: 'failed',
+          reason:
+            error instanceof HttpException && error.getStatus() === HttpStatus.TOO_MANY_REQUESTS
+              ? 'rate_limited'
+              : 'temporarily_unavailable',
+          retryable: true,
+          retryPath: `/api/orgs/${orgId}/invite`,
+        },
+      };
+    }
+  }
+
+  private assertInvitationMatchesMembership(
+    membership: MembershipEntity,
+    requestedRole: string,
+    orgId: string,
+  ): asserts membership is MembershipEntity & { status: 'active' } {
+    if (membership.status !== 'active') {
+      throw new ConflictException({
+        code: 'MEMBERSHIP_REVOKED',
+        message:
+          'This membership is not active and cannot be restored by an invitation retry. Use explicit membership administration before retrying delivery.',
+        userId: membership.userId,
+        organizationId: orgId,
+        currentStatus: membership.status,
+      });
+    }
+    if (membership.role !== requestedRole) {
+      throw new ConflictException({
+        code: 'MEMBERSHIP_ROLE_CONFLICT',
+        message:
+          'This user already has a different role. Change the role explicitly through the membership endpoint, then retry the invitation with that role.',
+        userId: membership.userId,
+        organizationId: orgId,
+        currentRole: membership.role,
+        requestedRole,
+      });
+    }
   }
 
   async updateMembership(orgId: string, userId: string, role: string, actorId: string) {
@@ -143,4 +256,13 @@ export class OrgsService {
     await memberships.save(m);
     return { userId, organizationId: orgId, status: 'revoked' };
   }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '23505'
+  );
 }

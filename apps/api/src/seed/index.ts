@@ -9,22 +9,23 @@ import { seedSiteAssets } from './site-assets.seed';
 import { seedSiteFaces } from './site-faces.seed';
 import { seedSiteMetadata } from './site-metadata.seed';
 import { seedUsers } from './users.seed';
+import { describeDatabaseEndpoint, sanitizeDatabaseError } from './database-log-sanitizer';
 
 // `pnpm seed` = apply migrations + upsert all seed data. Using the migration
-// DataSource (synchronize: false) means a fresh `docker compose up -d && pnpm seed`
+// DataSource (synchronize: false) means a fresh `docker compose up -d --wait && pnpm seed`
 // creates the schema via versioned migrations and then populates it — no
 // synchronize:true drift. Seeders upsert by deterministic id so re-runs are safe.
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL ?? 'postgresql://abonten:abonten@localhost:5432/abonten';
-  console.log(`Abonten seed: connecting to ${url}`);
+  const endpoint = describeDatabaseEndpoint(url);
+  console.log(`Abonten seed: connecting to ${endpoint}`);
 
   try {
     await AppDataSource.initialize();
   } catch (err) {
-    console.error('Abonten seed: could not connect to the database.');
-    console.error('Is the dev DB running? Try: docker compose up -d');
-    console.error(`DATABASE_URL = ${url}`);
-    console.error('Error:', (err as Error).message ?? err);
+    console.error(`Abonten seed: could not connect to ${endpoint}.`);
+    console.error('Is the dev DB ready? Try: docker compose up -d --wait');
+    console.error('Error:', sanitizeDatabaseError(err, url));
     process.exit(1);
   }
 
@@ -44,7 +45,7 @@ async function main(): Promise<void> {
     await seedSiteAssets(AppDataSource);
     console.log('Seed complete.');
   } catch (err) {
-    console.error('Seed failed:', err);
+    console.error(`Seed failed for ${endpoint}:`, sanitizeDatabaseError(err, url));
     process.exit(1);
   } finally {
     await AppDataSource.destroy();

@@ -52,16 +52,16 @@ for i in $(seq 1 40); do
   sleep 1
 done
 
-echo "Requesting magic link for $SEED_EMAIL ..."
-curl -s -X POST "$API_URL/auth/magic-link" -H 'Content-Type: application/json' -d "{\"email\":\"$SEED_EMAIL\"}"
+echo "Requesting an email sign-in code for $SEED_EMAIL ..."
+curl -fsS -X POST "$API_URL/auth/email-code/request" -H 'Content-Type: application/json' -d "{\"email\":\"$SEED_EMAIL\"}" >/dev/null
 sleep 3
-# Fetch the magic-link email from Mailpit and extract the verify token.
-MSG_ID=$(curl -s "$MAILPIT_API/messages?limit=1" | grep -oE '"ID":"[^"]+"' | head -1 | cut -d'"' -f4)
-TOKEN=$(curl -s "$MAILPIT_API/message/$MSG_ID" | grep -oE 'token=[a-f0-9-]+' | head -1 | cut -d= -f2)
-echo "magic-link token: $TOKEN"
-VERIFY_LOC=$(curl -s -i "http://localhost:${API_PORT:-3000}/api/auth/magic-link/verify?token=$TOKEN" | grep -i '^location:' | sed 's/\r//')
-ACCESS_TOKEN=$(echo "$VERIFY_LOC" | grep -oE 'accessToken=[^&]+' | cut -d= -f2)
-echo "access token: ${ACCESS_TOKEN:0:20}..."
+# Fetch the code from Mailpit. Do not print credentials in this verification script.
+MSG_ID=$(curl -fsS "$MAILPIT_API/messages?limit=1" | grep -oE '"ID":"[^"]+"' | head -1 | cut -d'"' -f4)
+CODE=$(curl -fsS "$MAILPIT_API/message/$MSG_ID" | grep -oE '[0-9]{6}' | head -1)
+[ -n "$CODE" ]
+VERIFY_RESPONSE=$(curl -fsS -X POST "$API_URL/auth/email-code/verify" -H 'Content-Type: application/json' -d "{\"email\":\"$SEED_EMAIL\",\"code\":\"$CODE\"}")
+ACCESS_TOKEN=$(echo "$VERIFY_RESPONSE" | grep -oE '"accessToken":"[^"]+"' | cut -d'"' -f4)
+[ -n "$ACCESS_TOKEN" ]
 
 ORG_HEADER="X-Org-Id: 11111111-0000-4000-8000-000000000001" # Accra Outdoor (ama is org_owner)
 echo "POST /orgs request:"

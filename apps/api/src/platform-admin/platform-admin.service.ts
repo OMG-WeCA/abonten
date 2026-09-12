@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../common/database.service';
 import { CapabilityResolverService } from '../capabilities/capability-resolver.service';
 import { MembershipEntity } from '../auth/entities/membership.entity';
@@ -8,12 +8,14 @@ import { UserEntity } from '../auth/entities/user.entity';
 import type { CapabilityOverrideDto } from './dto/capability-override.dto';
 import { Capability } from '../capabilities/capability.enum';
 import { PLATFORM_ONLY_CAPABILITIES } from '../capabilities/role-capabilities';
+import { UserIdentityService } from '../auth/user-identity.service';
 
 @Injectable()
 export class PlatformAdminService {
   constructor(
     private readonly db: DatabaseService,
     private readonly resolver: CapabilityResolverService,
+    private readonly identities: UserIdentityService,
   ) {}
 
   async getCapabilities(userId: string, orgId: string) {
@@ -69,28 +71,43 @@ export class PlatformAdminService {
     return out;
   }
 
-  async invite(orgId: string, dto: { email: string; name?: string; role: string }, actorId: string) {
-    const users = await this.db.repo(UserEntity);
-    let user = await users.findOne({ where: { email: dto.email } });
-    if (!user) {
-      user = await users.save(
-        users.create({ email: dto.email, name: dto.name ?? dto.email, status: 'active' }),
-      );
-    }
+  async invite(
+    orgId: string,
+    dto: { email: string; name?: string; role: string },
+    actorId: string,
+  ) {
+    const user = await this.identities.findOrCreateByEmail(dto.email, {
+      name: dto.name ?? dto.email,
+    });
     const memberships = await this.db.repo(MembershipEntity);
-    const existing = await memberships.findOne({ where: { userId: user.id, organizationId: orgId } });
-    if (!existing) {
-      await memberships.save(
-        memberships.create({
-          userId: user.id,
-          organizationId: orgId,
-          role: dto.role,
-          status: 'active',
-        }),
+    let membership = await memberships.findOne({
+      where: { userId: user.id, organizationId: orgId },
+    });
+    if (!membership) {
+      try {
+        membership = await memberships.save(
+          memberships.create({
+            userId: user.id,
+            organizationId: orgId,
+            role: dto.role,
+            status: 'active',
+          }),
+        );
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+        membership = await memberships.findOne({
+          where: { userId: user.id, organizationId: orgId },
+        });
+        if (!membership) throw error;
+      }
+    }
+    if (membership.status !== 'active' || membership.role !== dto.role) {
+      throw new ConflictException(
+        'Existing membership role or status conflicts with this invitation; use explicit membership administration.',
       );
     }
     void actorId;
-    return { userId: user.id, organizationId: orgId, role: dto.role };
+    return { userId: user.id, organizationId: orgId, role: membership.role };
   }
 
   async updateMembership(orgId: string, userId: string, role: string) {
@@ -120,4 +137,13 @@ export class PlatformAdminService {
       .then((r) => r.findOne({ where: { userId, organizationId: orgId } }))
       .catch(() => null);
   }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '23505'
+  );
 }

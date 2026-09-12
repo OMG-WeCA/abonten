@@ -71,7 +71,7 @@ export class OrgsController {
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.MEMBERSHIP_MANAGE)
   @Post(':orgId/invite')
-  @ApiOperation({ summary: 'Invite a user to an organization by email (sends a magic link)' })
+  @ApiOperation({ summary: 'Invite a user to an organization by email (sends a sign-in code)' })
   async invite(
     @Param('orgId') orgId: string,
     @Body() dto: InviteUserDto,

@@ -736,7 +736,7 @@ Platform ──< AuditLog, ReferenceData, ReportRun (cross-tenant, admin-scoped)
 
 ### 8.3 Security & privacy
 
-- Authentication: Microsoft OAuth (Azure AD / Microsoft Entra ID) as primary SSO; magic link (passwordless email) as alternative; capabilities-driven authorization with per-user overrides; scoped API keys.
+- Authentication: Microsoft OAuth (Azure AD / Microsoft Entra ID) as primary SSO; emailed six-digit sign-in codes as the passwordless email alternative; capabilities-driven authorization with per-user overrides; scoped API keys.
 - Authorization: server-side RBAC enforced on every request; tenant isolation so one org cannot
   read another's private data (marketplace listings are the exception — intentionally public to
   authenticated buyers).

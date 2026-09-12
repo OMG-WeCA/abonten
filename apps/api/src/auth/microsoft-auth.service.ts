@@ -6,10 +6,16 @@ import { DatabaseService } from '../common/database.service';
 import { OrganizationEntity } from '../common/entities/organization.entity';
 import { MembershipEntity } from './entities/membership.entity';
 import { UserEntity } from './entities/user.entity';
+import { normalizeEmailIdentity } from './email-identity';
+import { UserIdentityService } from './user-identity.service';
 
 @Injectable()
 export class MicrosoftAuthService implements OnModuleInit {
-  constructor(private readonly cfg: ConfigService, private readonly db: DatabaseService) {}
+  constructor(
+    private readonly cfg: ConfigService,
+    private readonly db: DatabaseService,
+    private readonly identities: UserIdentityService,
+  ) {}
 
   onModuleInit(): void {
     const tenantId = this.cfg.get<string>('azureAd.tenantId');
@@ -42,49 +48,55 @@ export class MicrosoftAuthService implements OnModuleInit {
 
   async findOrCreateFromMicrosoft(profile: IOidcProfile): Promise<UserEntity> {
     const oid = profile.oid ?? profile.sub;
-    const email =
-      profile.emails?.[0]?.value ?? (profile._json?.email as string | undefined) ?? '';
-    const users = await this.db.repo(UserEntity);
-    let user: UserEntity | null = oid ? await users.findOne({ where: { msOauthSubject: oid } }) : null;
-    if (!user && email) user = await users.findOne({ where: { email } });
-    if (!user) {
-      const created = users.create({
-        email: email || `ms-${oid ?? 'unknown'}@local`,
-        name: profile.displayName ?? email,
-        msOauthSubject: oid,
-        status: 'active',
-      });
-      user = await users.save(created);
-    } else if (!user.msOauthSubject && oid) {
-      user.msOauthSubject = oid;
-      await users.save(user);
-    }
+    const email = profile.emails?.[0]?.value ?? (profile._json?.email as string | undefined) ?? '';
+    const user = await this.identities.findOrCreateFromMicrosoft({
+      email,
+      name: profile.displayName ?? email,
+      subject: oid,
+    });
 
     // Link to an org whose allowedEmailDomains matches the user's email domain.
     if (email) {
-      const domain = email.split('@')[1];
+      const domain = normalizeEmailIdentity(email).split('@')[1];
       if (domain) {
         const orgs = await this.db.repo(OrganizationEntity);
         const all = await orgs.find();
-        const matched = all.find((o) => (o.allowedEmailDomains ?? []).includes(domain));
+        const matched = all.find((organization) =>
+          (organization.allowedEmailDomains ?? []).some(
+            (allowedDomain) => normalizeEmailIdentity(allowedDomain) === domain,
+          ),
+        );
         if (matched) {
           const memberships = await this.db.repo(MembershipEntity);
           const existing = await memberships.findOne({
             where: { userId: user.id, organizationId: matched.id },
           });
           if (!existing) {
-            await memberships.save(
-              memberships.create({
-                userId: user.id,
-                organizationId: matched.id,
-                role: 'planner',
-                status: 'active',
-              }),
-            );
+            try {
+              await memberships.save(
+                memberships.create({
+                  userId: user.id,
+                  organizationId: matched.id,
+                  role: 'planner',
+                  status: 'active',
+                }),
+              );
+            } catch (error) {
+              if (!isUniqueViolation(error)) throw error;
+            }
           }
         }
       }
     }
     return user;
   }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '23505'
+  );
 }
