@@ -12,18 +12,21 @@ import { MarketplaceQueryDto } from './dto/marketplace.dto';
 export class MarketplaceController {
   constructor(private readonly service: MarketplaceService) {}
 
-  // Search is planner-gated; the site detail view is public (SPEC §5.3).
+  // Marketplace inventory is shared only with authenticated buyers. It is never a
+  // public catalog: site detail includes faces, assets, enrichment, and rate cards.
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.MARKETPLACE_VIEW)
   @Get()
-  @ApiOperation({ summary: 'Search listed sites available for booking' })
+  @ApiOperation({ summary: 'Search listed marketplace sites' })
   async search(@Query() q: MarketplaceQueryDto) {
     return this.service.search(q);
   }
 
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard)
+  @RequireCapabilities(Capability.MARKETPLACE_VIEW)
   @Get(':siteId')
-  @ApiOperation({ summary: 'Public detail of a listed site (no auth required)' })
+  @ApiOperation({ summary: 'Authenticated buyer detail for a listed site' })
   async getSite(@Param('siteId') siteId: string) {
-    return this.service.getPublicSite(siteId);
+    return this.service.getMarketplaceSite(siteId);
   }
 }

@@ -107,13 +107,13 @@ export class MarketplaceService {
     return { items: rows, total: totalRows[0]?.c ?? 0, page, limit };
   }
 
-  /** Public detail of a listed site (faces, assets, metadata, rate cards). */
-  async getPublicSite(siteId: string) {
+  /** Authenticated buyer detail of a listed site (faces, assets, metadata, rate cards). */
+  async getMarketplaceSite(siteId: string) {
     const repo = await this.db.repo(BillboardSiteEntity);
     const rows = await repo.query(`SELECT ${SITE_COLUMNS} FROM billboard_sites WHERE id = $1`, [siteId]);
     const site = rows[0];
     if (!site) throw new NotFoundException('Site not found');
-    if (site.status !== 'listed' && site.status !== 'approved') {
+    if (site.status !== 'listed') {
       throw new NotFoundException('Site not listed');
     }
     const [faces, assets, metadata, rateCards] = await Promise.all([

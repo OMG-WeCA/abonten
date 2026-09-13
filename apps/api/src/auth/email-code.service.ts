@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHmac, randomInt, randomUUID } from 'node:crypto';
 import { MailService } from '../common/mail.service';
 import { RedisService } from '../common/redis.service';
-import { AuthService, type AuthResult } from './auth.service';
+import { AuthService, type AuthResult, type SessionMetadata } from './auth.service';
 import { normalizeEmailIdentity } from './email-identity';
 import { UserIdentityService } from './user-identity.service';
 
@@ -141,7 +141,7 @@ export class EmailCodeService {
     return { accepted: true };
   }
 
-  async verify(emailInput: string, code: string): Promise<AuthResult> {
+  async verify(emailInput: string, code: string, metadata?: SessionMetadata): Promise<AuthResult> {
     const email = normalizeEmailIdentity(emailInput);
     const result = await this.verifyChallenge(email, code);
     if (result.status === 'rate_limited') {
@@ -157,7 +157,7 @@ export class EmailCodeService {
     const user = await this.identities.findOrCreateByEmail(result.email, {
       name: result.email.split('@')[0],
     });
-    return this.auth.issueTokens(user);
+    return this.auth.issueTokens(user, undefined, metadata);
   }
 
   private async verifyChallenge(

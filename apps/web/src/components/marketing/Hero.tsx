@@ -43,7 +43,7 @@ export function Hero({
     <section className="relative overflow-hidden bg-background">
       {image && (
         <div className="absolute inset-0" aria-hidden="true">
-          <Image src={image.src} alt={image.alt} fill priority sizes="100vw" className="object-cover" />
+          <Image src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}${image.src}`} alt={image.alt} fill priority sizes="100vw" className="object-cover" />
           <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/65 to-background" />
           <div className="absolute inset-0 bg-gradient-to-r from-background/70 via-transparent to-background/70" />
         </div>

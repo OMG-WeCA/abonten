@@ -5,6 +5,10 @@ export default Joi.object({
   API_PORT: Joi.number().default(3000),
   API_BASE_URL: Joi.string().default('http://localhost:3000'),
   WEB_BASE_URL: Joi.string().default('http://localhost:3001'),
+  NEXT_PUBLIC_BASE_PATH: Joi.string()
+    .allow('')
+    .pattern(/^\/[^/?#]+(?:\/[^/?#]+)*$/)
+    .default(''),
   JWT_SECRET: Joi.when('NODE_ENV', {
     is: 'production',
     then: Joi.string().min(32).invalid('change-me-in-dev', 'change-me-session-dev').required(),
@@ -12,7 +16,14 @@ export default Joi.object({
   }),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('7d'),
-  SESSION_SECRET: Joi.string().min(8).default('change-me-session-dev'),
+  SESSION_SECRET: Joi.when('NODE_ENV', {
+    is: 'production',
+    then: Joi.string()
+      .min(32)
+      .invalid('change-me-session-dev', 'change-me-in-dev', 'change-me')
+      .required(),
+    otherwise: Joi.string().min(8).default('change-me-session-dev'),
+  }),
   EMAIL_CODE_SECRET: Joi.when('NODE_ENV', {
     is: 'production',
     then: Joi.string().min(32).invalid(Joi.ref('JWT_SECRET')).required().messages({

@@ -8,6 +8,7 @@ export default () => ({
   },
   web: {
     baseUrl: process.env.WEB_BASE_URL ?? 'http://localhost:3001',
+    basePath: process.env.NEXT_PUBLIC_BASE_PATH ?? '',
   },
   jwt: {
     // Validation requires an explicit secret in production; only development has a fallback.
@@ -16,7 +17,8 @@ export default () => ({
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
   },
   session: {
-    secret: process.env.SESSION_SECRET ?? 'change-me-session-dev',
+    // OIDC state/nonce sessions require an explicit secret in production.
+    secret: process.env.SESSION_SECRET ?? (isProduction() ? undefined : 'change-me-session-dev'),
   },
   auth: {
     // Development may reuse the JWT secret for convenience. Production requires a distinct key.

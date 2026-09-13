@@ -4,6 +4,9 @@ import { ENTITIES } from './common/entities';
 import { InitSchema1720000000000 } from './migrations/1720000000000-InitSchema';
 import { RemediateNonPlatformPlatformAdmin1720000000001 } from './migrations/1720000000001-RemediateNonPlatformPlatformAdmin';
 import { CanonicalizeUserIdentity1720000000002 } from './migrations/1720000000002-CanonicalizeUserIdentity';
+import { AccountFoundations1720000000003 } from './migrations/1720000000003-AccountFoundations';
+import { RefreshTokenFamilies1720000000004 } from './migrations/1720000000004-RefreshTokenFamilies';
+import { OnboardingIdempotency1720000000005 } from './migrations/1720000000005-OnboardingIdempotency';
 
 // DataSource used by the migration CLI / `pnpm migration:run|revert|generate`.
 // The runtime app uses DatabaseModule's lazy, migration-only DataSource with
@@ -18,6 +21,9 @@ export const AppDataSource = new DataSource({
     InitSchema1720000000000,
     RemediateNonPlatformPlatformAdmin1720000000001,
     CanonicalizeUserIdentity1720000000002,
+    AccountFoundations1720000000003,
+    RefreshTokenFamilies1720000000004,
+    OnboardingIdempotency1720000000005,
   ],
   migrationsRun: false,
   logging: ['error', 'migration'],

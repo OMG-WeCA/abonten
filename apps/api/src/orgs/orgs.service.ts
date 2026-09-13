@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   HttpException,
@@ -10,13 +11,65 @@ import { DatabaseService } from '../common/database.service';
 import { EmailCodeService } from '../auth/email-code.service';
 import { MembershipEntity } from '../auth/entities/membership.entity';
 import { OrganizationEntity } from '../common/entities/organization.entity';
+import { AuditLogEntity } from '../common/entities/audit-log.entity';
 import { UserEntity } from '../auth/entities/user.entity';
-import type { CreateOrgDto, InviteUserDto } from './dto/orgs.dto';
+import {
+  SELF_SERVICE_ORGANIZATION_TYPES,
+  type CreateOrgDto,
+  type InviteUserDto,
+  type UpdateOrganizationSettingsDto,
+} from './dto/orgs.dto';
 import { CapabilityResolverService } from '../capabilities/capability-resolver.service';
 import { Capability } from '../capabilities/capability.enum';
 import { UserCapabilityOverrideEntity } from '../auth/entities/user-capability-override.entity';
 import { normalizeEmailIdentity } from '../auth/email-identity';
 import { UserIdentityService } from '../auth/user-identity.service';
+import type { OrganizationRole } from '../capabilities/organization-roles';
+import type { EntityManager, EntityTarget, ObjectLiteral, Repository } from 'typeorm';
+import { OrganizationCreationRequestEntity } from './entities/organization-creation-request.entity';
+
+const ASSIGNABLE_ROLES_BY_ORG_TYPE: Record<string, readonly OrganizationRole[]> = {
+  media_partner: ['org_owner', 'org_admin', 'inventory_manager', 'field_operator'],
+  agency: ['org_owner', 'org_admin', 'planner', 'planner_admin'],
+  brand: ['org_owner', 'org_admin', 'client_viewer', 'client_admin'],
+  platform: ['org_owner', 'org_admin', 'platform_admin'],
+};
+
+const MANAGEABLE_ROLES_BY_ACTOR: Record<OrganizationRole, readonly OrganizationRole[]> = {
+  org_owner: [
+    'org_owner',
+    'org_admin',
+    'inventory_manager',
+    'field_operator',
+    'planner',
+    'planner_admin',
+    'client_viewer',
+    'client_admin',
+    'platform_admin',
+  ],
+  org_admin: [
+    'org_admin',
+    'inventory_manager',
+    'field_operator',
+    'planner',
+    'planner_admin',
+    'client_viewer',
+    'client_admin',
+  ],
+  inventory_manager: ['inventory_manager', 'field_operator'],
+  field_operator: ['field_operator'],
+  planner: ['planner'],
+  planner_admin: ['planner', 'planner_admin'],
+  client_viewer: ['client_viewer'],
+  client_admin: ['client_viewer', 'client_admin'],
+  platform_admin: ['org_admin', 'platform_admin'],
+};
+
+interface MembershipActorPolicy {
+  actor: MembershipEntity;
+  organization: OrganizationEntity;
+  capabilities: Set<Capability>;
+}
 
 export interface InvitationResult {
   userId: string;
@@ -45,56 +98,212 @@ export class OrgsService {
     private readonly resolver: CapabilityResolverService,
   ) {}
 
-  /** Only a platform admin (PLATFORM_ADMIN) can assign the platform_admin role,
-   * and only within a platform-type organization. */
-  private async assertCanAssignPlatformRole(actorId: string, orgId: string): Promise<void> {
-    // The platform_admin role is only valid in a platform-type organization.
-    const orgs = await this.db.repo(OrganizationEntity);
-    const org = await orgs.findOne({ where: { id: orgId } }).catch(() => null);
-    if (!org || org.type !== 'platform') {
-      throw new ForbiddenException(
-        'platform_admin role can only be assigned in a platform-type organization',
-      );
+  private repository<T extends ObjectLiteral>(
+    target: EntityTarget<T>,
+    manager?: EntityManager,
+  ): Promise<Repository<T>> {
+    return manager ? Promise.resolve(manager.getRepository(target)) : this.db.repo(target);
+  }
+
+  private async membershipActorPolicy(
+    actorId: string,
+    orgId: string,
+    manager?: EntityManager,
+  ): Promise<MembershipActorPolicy> {
+    const memberships = await this.repository(MembershipEntity, manager);
+    const orgs = await this.repository(OrganizationEntity, manager);
+    // Every membership mutation transaction takes the same organization-row lock.
+    // This serializes owner counts and owner role/status changes for one tenant.
+    const organization = await orgs.findOne({
+      where: { id: orgId, status: 'active' },
+      lock: manager ? { mode: 'pessimistic_write' } : undefined,
+    });
+    const actor = await memberships.findOne({
+      where: { userId: actorId, organizationId: orgId, status: 'active' },
+    });
+    if (!actor || !organization) {
+      throw new ForbiddenException('Actor has no active membership in this organization');
     }
-    const memberships = await this.db.repo(MembershipEntity);
-    const m = await memberships
-      .findOne({ where: { userId: actorId, organizationId: orgId, status: 'active' } })
-      .catch(() => null);
-    if (!m) throw new ForbiddenException('Actor has no membership in this organization');
-    const overrides = await this.db
-      .repo(UserCapabilityOverrideEntity)
-      .then((r) => r.find({ where: { userId: actorId, organizationId: orgId } }))
+
+    const overrides = await this.repository(UserCapabilityOverrideEntity, manager)
+      .then((repo) => repo.find({ where: { userId: actorId, organizationId: orgId } }))
       .catch(() => []);
-    const caps = this.resolver.resolve(m.role as never, overrides);
-    if (!caps.has(Capability.PLATFORM_ADMIN)) {
+    const capabilities = this.resolver.resolveScoped(
+      actor.role as OrganizationRole,
+      overrides,
+      organization.type,
+    );
+    if (!capabilities.has(Capability.MEMBERSHIP_MANAGE)) {
+      throw new ForbiddenException('Actor cannot manage organization memberships');
+    }
+    return { actor, organization, capabilities };
+  }
+
+  private assertRoleAssignment(policy: MembershipActorPolicy, role: string): void {
+    const nextRole = role as OrganizationRole;
+    const organizationRoles = ASSIGNABLE_ROLES_BY_ORG_TYPE[policy.organization.type] ?? [];
+    if (!organizationRoles.includes(nextRole)) {
+      throw new BadRequestException('Role is not valid for this organization type');
+    }
+
+    const manageable = MANAGEABLE_ROLES_BY_ACTOR[policy.actor.role as OrganizationRole] ?? [];
+    if (!manageable.includes(nextRole)) {
+      throw new ForbiddenException('Actor cannot assign this role');
+    }
+    if (nextRole === 'platform_admin' && !policy.capabilities.has(Capability.PLATFORM_ADMIN)) {
       throw new ForbiddenException('Only platform admins can assign the platform_admin role');
+    }
+  }
+
+  private assertCanManageTarget(policy: MembershipActorPolicy, target: MembershipEntity): void {
+    const manageable = MANAGEABLE_ROLES_BY_ACTOR[policy.actor.role as OrganizationRole] ?? [];
+    const targetRole = target.role as OrganizationRole;
+    if (!manageable.includes(targetRole)) {
+      throw new ForbiddenException('Actor cannot change this membership');
+    }
+    if (targetRole === 'platform_admin' && !policy.capabilities.has(Capability.PLATFORM_ADMIN)) {
+      throw new ForbiddenException('Only platform admins can change a platform admin');
     }
   }
 
   /** Create an organization; the creator becomes its org_owner. */
   async createOrg(actorUserId: string, dto: CreateOrgDto): Promise<OrganizationEntity> {
+    // DTO validation covers HTTP input; these guards protect programmatic callers too.
+    if (!(SELF_SERVICE_ORGANIZATION_TYPES as readonly string[]).includes(dto.type)) {
+      throw new BadRequestException(
+        'Platform organizations cannot be created through self-service onboarding',
+      );
+    }
+    const name = dto.name.trim();
+    const country = dto.country.trim();
+    if (!name) throw new BadRequestException('Organization name is required');
+    if (country.length < 2) throw new BadRequestException('Country is required');
+
+    return this.db.transaction(async (manager) => {
+      const orgs = await this.repository(OrganizationEntity, manager);
+      if (dto.onboardingKey) {
+        const users = await this.repository(UserEntity, manager);
+        const actor = await users.findOne({
+          where: { id: actorUserId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!actor) throw new NotFoundException('User not found');
+
+        const requests = await this.repository(OrganizationCreationRequestEntity, manager);
+        const existingRequest = await requests.findOne({
+          where: { userId: actorUserId, idempotencyKey: dto.onboardingKey },
+        });
+        if (existingRequest) {
+          const existingOrganization = await orgs.findOne({
+            where: { id: existingRequest.organizationId },
+          });
+          const existingMembership = await this.repository(MembershipEntity, manager).then((repo) =>
+            repo.findOne({
+              where: {
+                userId: actorUserId,
+                organizationId: existingRequest.organizationId,
+                status: 'active',
+              },
+            }),
+          );
+          if (existingOrganization && existingMembership) return existingOrganization;
+          throw new ConflictException('Onboarding organization is no longer available');
+        }
+      }
+
+      const org = await orgs.save(
+        orgs.create({
+          name,
+          type: dto.type,
+          country,
+          defaultCurrency: dto.defaultCurrency ?? 'NGN',
+          defaultLocale: dto.defaultLocale ?? 'en',
+          status: 'active',
+          allowedEmailDomains: dto.allowedEmailDomains,
+        }),
+      );
+      const memberships = await this.repository(MembershipEntity, manager);
+      await memberships.save(
+        memberships.create({
+          userId: actorUserId,
+          organizationId: org.id,
+          role: 'org_owner',
+          status: 'active',
+        }),
+      );
+      await this.recordAudit(
+        actorUserId,
+        org.id,
+        'organization.created',
+        'organization',
+        org.id,
+        null,
+        {
+          name: org.name,
+          type: org.type,
+          country: org.country,
+          defaultCurrency: org.defaultCurrency,
+        },
+        manager,
+      );
+      if (dto.onboardingKey) {
+        const requests = await this.repository(OrganizationCreationRequestEntity, manager);
+        await requests.save(
+          requests.create({
+            userId: actorUserId,
+            idempotencyKey: dto.onboardingKey,
+            organizationId: org.id,
+          }),
+        );
+      }
+      return org;
+    });
+  }
+
+  /** Updates current organization defaults only; historical quote/invoice values are never changed. */
+  async updateSettings(
+    orgId: string,
+    dto: UpdateOrganizationSettingsDto,
+    actorUserId: string,
+  ): Promise<OrganizationEntity> {
+    const name = dto.name?.trim();
+    const country = dto.country?.trim();
+    if (dto.name !== undefined && !name) {
+      throw new BadRequestException('Organization name is required');
+    }
+    if (dto.country !== undefined && (!country || country.length < 2)) {
+      throw new BadRequestException('Country is required');
+    }
+
     const orgs = await this.db.repo(OrganizationEntity);
-    const org = await orgs.save(
-      orgs.create({
-        name: dto.name,
-        type: dto.type,
-        country: dto.country,
-        defaultCurrency: dto.defaultCurrency ?? 'NGN',
-        defaultLocale: dto.defaultLocale ?? 'en',
-        status: 'active',
-        allowedEmailDomains: dto.allowedEmailDomains,
-      }),
+    const org = await orgs.findOne({ where: { id: orgId } });
+    if (!org) throw new NotFoundException('Organization not found');
+    const before = {
+      name: org.name,
+      country: org.country,
+      defaultCurrency: org.defaultCurrency,
+      defaultLocale: org.defaultLocale,
+    };
+    if (name !== undefined) org.name = name;
+    if (country !== undefined) org.country = country;
+    if (dto.defaultCurrency !== undefined) org.defaultCurrency = dto.defaultCurrency;
+    if (dto.defaultLocale !== undefined) org.defaultLocale = dto.defaultLocale;
+    const saved = await orgs.save(org);
+    await this.recordAudit(
+      actorUserId,
+      orgId,
+      'organization.settings.updated',
+      'organization',
+      orgId,
+      before,
+      {
+        name: saved.name,
+        country: saved.country,
+        defaultCurrency: saved.defaultCurrency,
+        defaultLocale: saved.defaultLocale,
+      },
     );
-    const memberships = await this.db.repo(MembershipEntity);
-    await memberships.save(
-      memberships.create({
-        userId: actorUserId,
-        organizationId: org.id,
-        role: 'org_owner',
-        status: 'active',
-      }),
-    );
-    return org;
+    return saved;
   }
 
   async listMyOrgs(userId: string) {
@@ -146,23 +355,29 @@ export class OrgsService {
    * Repeating the same request is the safe delivery retry: it never changes an
    * existing role or reactivates a revoked membership. */
   async invite(orgId: string, dto: InviteUserDto, actorId: string): Promise<InvitationResult> {
-    if (dto.role === 'platform_admin') {
-      await this.assertCanAssignPlatformRole(actorId, orgId);
-    }
-
     const email = normalizeEmailIdentity(dto.email);
     const user = await this.identities.findOrCreateByEmail(email, {
-      name: dto.name ?? email.split('@')[0],
+      name: dto.name?.trim() || email.split('@')[0],
     });
-    const memberships = await this.db.repo(MembershipEntity);
-    let membership = await memberships.findOne({
-      where: { userId: user.id, organizationId: orgId },
-    });
-    let membershipChange: 'created' | 'unchanged' = 'unchanged';
+    let access: {
+      membership: MembershipEntity;
+      membershipChange: 'created' | 'unchanged';
+    };
 
-    if (!membership) {
-      try {
-        membership = await memberships.save(
+    try {
+      access = await this.db.transaction(async (manager) => {
+        const actorPolicy = await this.membershipActorPolicy(actorId, orgId, manager);
+        const memberships = await this.repository(MembershipEntity, manager);
+        const existing = await memberships.findOne({
+          where: { userId: user.id, organizationId: orgId },
+        });
+        if (existing) {
+          this.assertInvitationMatchesMembership(existing, dto.role, orgId);
+          return { membership: existing, membershipChange: 'unchanged' as const };
+        }
+
+        this.assertRoleAssignment(actorPolicy, dto.role);
+        const membership = await memberships.save(
           memberships.create({
             userId: user.id,
             organizationId: orgId,
@@ -170,23 +385,34 @@ export class OrgsService {
             status: 'active',
           }),
         );
-        membershipChange = 'created';
-      } catch (error) {
-        if (!isUniqueViolation(error)) throw error;
-        membership = await memberships.findOne({
-          where: { userId: user.id, organizationId: orgId },
-        });
-        if (!membership) throw error;
-      }
+        await this.recordAudit(
+          actorId,
+          orgId,
+          'organization.membership.created',
+          'membership',
+          membership.id,
+          null,
+          { userId: user.id, role: membership.role, status: membership.status },
+          manager,
+        );
+        return { membership, membershipChange: 'created' as const };
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      const memberships = await this.db.repo(MembershipEntity);
+      const existing = await memberships.findOne({
+        where: { userId: user.id, organizationId: orgId },
+      });
+      if (!existing) throw error;
+      this.assertInvitationMatchesMembership(existing, dto.role, orgId);
+      access = { membership: existing, membershipChange: 'unchanged' };
     }
-
-    this.assertInvitationMatchesMembership(membership, dto.role, orgId);
 
     const baseResult = {
       userId: user.id,
       organizationId: orgId,
-      role: membership.role,
-      membership: { status: 'active' as const, change: membershipChange },
+      role: access.membership.role,
+      membership: { status: 'active' as const, change: access.membershipChange },
     };
 
     try {
@@ -237,24 +463,96 @@ export class OrgsService {
   }
 
   async updateMembership(orgId: string, userId: string, role: string, actorId: string) {
-    if (role === 'platform_admin') {
-      await this.assertCanAssignPlatformRole(actorId, orgId);
-    }
-    const memberships = await this.db.repo(MembershipEntity);
-    const m = await memberships.findOne({ where: { userId, organizationId: orgId } });
-    if (!m) throw new NotFoundException('Membership not found');
-    m.role = role;
-    await memberships.save(m);
-    return { userId, organizationId: orgId, role };
+    return this.db.transaction(async (manager) => {
+      const policy = await this.membershipActorPolicy(actorId, orgId, manager);
+      const memberships = await this.repository(MembershipEntity, manager);
+      const membership = await memberships.findOne({
+        where: { userId, organizationId: orgId, status: 'active' },
+      });
+      if (!membership) throw new NotFoundException('Active membership not found');
+      this.assertCanManageTarget(policy, membership);
+      this.assertRoleAssignment(policy, role);
+      if (membership.role === role) {
+        return { userId, organizationId: orgId, role };
+      }
+      if (actorId === userId && policy.actor.role !== 'org_owner') {
+        throw new ForbiddenException('Non-owner administrators cannot change their own role');
+      }
+      if (membership.role === 'org_owner') {
+        const ownerCount = await memberships.count({
+          where: { organizationId: orgId, role: 'org_owner', status: 'active' },
+        });
+        if (ownerCount <= 1) {
+          throw new ForbiddenException('The organization must keep at least one active owner');
+        }
+      }
+
+      const previousRole = membership.role;
+      membership.role = role;
+      await memberships.save(membership);
+      await this.recordAudit(
+        actorId,
+        orgId,
+        'organization.membership.role_updated',
+        'membership',
+        membership.id,
+        { role: previousRole },
+        { role },
+        manager,
+      );
+      return { userId, organizationId: orgId, role };
+    });
   }
 
-  async removeMember(orgId: string, userId: string) {
-    const memberships = await this.db.repo(MembershipEntity);
-    const m = await memberships.findOne({ where: { userId, organizationId: orgId } });
-    if (!m) throw new NotFoundException('Membership not found');
-    m.status = 'revoked';
-    await memberships.save(m);
-    return { userId, organizationId: orgId, status: 'revoked' };
+  async removeMember(orgId: string, userId: string, actorId: string) {
+    return this.db.transaction(async (manager) => {
+      const policy = await this.membershipActorPolicy(actorId, orgId, manager);
+      const memberships = await this.repository(MembershipEntity, manager);
+      const membership = await memberships.findOne({
+        where: { userId, organizationId: orgId, status: 'active' },
+      });
+      if (!membership) throw new NotFoundException('Active membership not found');
+      this.assertCanManageTarget(policy, membership);
+
+      if (membership.role === 'org_owner') {
+        const ownerCount = await memberships.count({
+          where: { organizationId: orgId, role: 'org_owner', status: 'active' },
+        });
+        if (ownerCount <= 1) {
+          throw new ForbiddenException('The organization must keep at least one active owner');
+        }
+      }
+
+      membership.status = 'revoked';
+      await memberships.save(membership);
+      await this.recordAudit(
+        actorId,
+        orgId,
+        'organization.membership.revoked',
+        'membership',
+        membership.id,
+        { status: 'active', role: membership.role },
+        { status: 'revoked', role: membership.role },
+        manager,
+      );
+      return { userId, organizationId: orgId, status: 'revoked' };
+    });
+  }
+
+  private async recordAudit(
+    actorUserId: string,
+    actorOrgId: string,
+    action: string,
+    entityType: string,
+    entityId: string,
+    before: Record<string, unknown> | null,
+    after: Record<string, unknown>,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const audit = await this.repository(AuditLogEntity, manager);
+    await audit.save(
+      audit.create({ actorUserId, actorOrgId, action, entityType, entityId, before, after }),
+    );
   }
 }
 

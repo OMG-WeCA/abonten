@@ -5,4 +5,5 @@ export interface AuthenticatedUser {
   email: string;
   activeOrgId?: string;
   role?: OrganizationRole;
+  sessionVersion: number;
 }

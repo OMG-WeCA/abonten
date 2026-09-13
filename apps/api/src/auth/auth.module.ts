@@ -12,6 +12,7 @@ import { EmailCodeService } from './email-code.service';
 import { MicrosoftAuthService } from './microsoft-auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UserIdentityService } from './user-identity.service';
+import { StorageService } from '../common/storage.service';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { UserIdentityService } from './user-identity.service';
     EmailCodeService,
     MicrosoftAuthService,
     UserIdentityService,
+    StorageService,
     JwtStrategy,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],

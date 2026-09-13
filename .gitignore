@@ -40,6 +40,7 @@ out/
 .nuxt/
 .cache/
 .turbo/
+.test-dist/
 coverage/
 *.tsbuildinfo
 .npm/

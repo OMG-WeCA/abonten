@@ -28,6 +28,7 @@ export { UserEntity } from '../../auth/entities/user.entity';
 export { MembershipEntity } from '../../auth/entities/membership.entity';
 export { UserCapabilityOverrideEntity } from '../../auth/entities/user-capability-override.entity';
 export { RefreshTokenEntity } from '../../auth/entities/refresh-token.entity';
+export { OrganizationCreationRequestEntity } from '../../orgs/entities/organization-creation-request.entity';
 
 import { OrganizationEntity } from './organization.entity';
 import { BillboardSiteEntity } from './billboard-site.entity';
@@ -55,6 +56,7 @@ import { UserEntity } from '../../auth/entities/user.entity';
 import { MembershipEntity } from '../../auth/entities/membership.entity';
 import { UserCapabilityOverrideEntity } from '../../auth/entities/user-capability-override.entity';
 import { RefreshTokenEntity } from '../../auth/entities/refresh-token.entity';
+import { OrganizationCreationRequestEntity } from '../../orgs/entities/organization-creation-request.entity';
 
 /** All entities, for DataSource / DatabaseModule registration. */
 export const ENTITIES = [
@@ -84,4 +86,5 @@ export const ENTITIES = [
   MembershipEntity,
   UserCapabilityOverrideEntity,
   RefreshTokenEntity,
+  OrganizationCreationRequestEntity,
 ];

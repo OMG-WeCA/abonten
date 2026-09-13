@@ -12,7 +12,7 @@ const navLinks = [
   { href: '/for-clients', label: 'For Clients' },
 ];
 
-const DEMO_MAILTO = 'mailto:hello@abonten.com?subject=Abonten%20demo%20request';
+const ACCOUNT_HREF = '/sign-in';
 
 export function Navbar() {
   const pathname = usePathname();
@@ -89,8 +89,8 @@ export function Navbar() {
         </nav>
 
         <div className="hidden md:block">
-          <Button href={DEMO_MAILTO} size="md">
-            Get Started
+          <Button href={ACCOUNT_HREF} size="md">
+            Sign in
           </Button>
         </div>
 
@@ -137,8 +137,8 @@ export function Navbar() {
                 </Link>
               );
             })}
-            <Button href={DEMO_MAILTO} size="md" className="mt-3 min-h-11 w-full">
-              Get Started
+            <Button href={ACCOUNT_HREF} size="md" className="mt-3 min-h-11 w-full">
+              Sign in
             </Button>
           </nav>
         </div>

@@ -89,7 +89,7 @@ export default function ForClientsPage() {
         secondaryLabel="How verification works"
         secondaryHref="#features"
         trust="Time-stamped · geo-tagged · immutable proof"
-        image={{ src: '/abonten/images/hero-night.jpg', alt: 'A city at night with illuminated billboards' }}
+        image={{ src: '/images/hero-night.jpg', alt: 'A city at night with illuminated billboards' }}
       />
 
       <Section variant="surface" size="lg">

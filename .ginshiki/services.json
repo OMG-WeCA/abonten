@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "services": [
+    {
+      "name": "Abonten Web",
+      "port": 3001
+    },
+    {
+      "name": "Abonten API",
+      "port": 3000
+    },
+    {
+      "name": "Mailpit Inbox",
+      "port": 8025
+    }
+  ]
+}

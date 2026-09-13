@@ -17,19 +17,24 @@ specification and [`AGENTS.md`](./AGENTS.md) for agent guidance.
 
 ```sh
 pnpm install
-docker compose up -d --wait # start services and wait for their health checks
-pnpm db:migrate             # create/update the schema from versioned migrations
-pnpm dev                    # turbo runs all dev servers
+./scripts/start-dev.sh # dependencies, migrations, API, and web
 ```
 
-TypeORM synchronization is disabled in every environment, so run `pnpm db:migrate`
-before the first development start and after pulling new migrations. To populate the
-local database with sample organizations, users, and inventory as well, run `pnpm seed`
-instead; the seed command applies migrations before its idempotent upserts.
+The startup script is safe to run again: it reuses healthy dependency containers and app
+processes, then applies pending migrations. Logs and PID files stay outside the repository
+under `/tmp/abonten-dev`.
+
+TypeORM synchronization is disabled in every environment. To populate a new local database
+with sample organizations, users, and inventory, run `pnpm seed` once; the seed command
+applies migrations before its idempotent upserts.
 
 - API health: `http://localhost:3000/health`
 - Swagger: `http://localhost:3000/api/docs`
 - Web: `http://localhost:3001`
+
+Web routing defaults to `/`. For subpath hosting, set `NEXT_PUBLIC_BASE_PATH` to a
+leading-slash path without a trailing slash before starting or building the app.
+Navigation, images, and the Microsoft sign-in return route use the same prefix.
 
 Build & checks:
 

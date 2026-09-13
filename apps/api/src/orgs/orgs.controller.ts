@@ -18,7 +18,12 @@ import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CapabilitiesGuard } from '../capabilities/capabilities.guard';
 import { Capability } from '../capabilities/capability.enum';
 import { RequireCapabilities } from '../capabilities/require-capabilities.decorator';
-import { CreateOrgDto, InviteUserDto, UpdateOrgMemberDto } from './dto/orgs.dto';
+import {
+  CreateOrgDto,
+  InviteUserDto,
+  UpdateOrganizationSettingsDto,
+  UpdateOrgMemberDto,
+} from './dto/orgs.dto';
 import { OrgsService } from './orgs.service';
 
 type AuthReq = Request & { user?: AuthenticatedUser };
@@ -32,7 +37,7 @@ function orgContext(req: AuthReq): string | undefined {
 // For /orgs/:orgId/... routes, ensure the URL org matches that context so a user
 // can't pass a different X-Org-Id (where they have MEMBERSHIP_MANAGE) to act on
 // another org in the URL.
-function assertOrgMatch(req: AuthReq, orgId: string): void {
+export function assertOrgMatch(req: AuthReq, orgId: string): void {
   if (orgId !== orgContext(req)) {
     throw new ForbiddenException('Organization context does not match the URL');
   }
@@ -60,6 +65,19 @@ export class OrgsController {
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
+  @RequireCapabilities(Capability.ORG_SETTINGS_EDIT)
+  @Patch(':orgId')
+  @ApiOperation({ summary: 'Update the active organization’s current settings' })
+  async updateSettings(
+    @Param('orgId') orgId: string,
+    @Body() dto: UpdateOrganizationSettingsDto,
+    @Req() req: AuthReq,
+  ) {
+    assertOrgMatch(req, orgId);
+    return this.orgs.updateSettings(orgId, dto, req.user?.userId ?? '');
+  }
+
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.MEMBERSHIP_MANAGE)
   @Get(':orgId/members')
   @ApiOperation({ summary: 'List members of an organization' })
@@ -72,11 +90,7 @@ export class OrgsController {
   @RequireCapabilities(Capability.MEMBERSHIP_MANAGE)
   @Post(':orgId/invite')
   @ApiOperation({ summary: 'Invite a user to an organization by email (sends a sign-in code)' })
-  async invite(
-    @Param('orgId') orgId: string,
-    @Body() dto: InviteUserDto,
-    @Req() req: AuthReq,
-  ) {
+  async invite(@Param('orgId') orgId: string, @Body() dto: InviteUserDto, @Req() req: AuthReq) {
     assertOrgMatch(req, orgId);
     return this.orgs.invite(orgId, dto, req.user?.userId ?? '');
   }
@@ -99,8 +113,12 @@ export class OrgsController {
   @RequireCapabilities(Capability.MEMBERSHIP_MANAGE)
   @Delete(':orgId/memberships/:userId')
   @ApiOperation({ summary: 'Remove a member from an organization' })
-  async removeMember(@Param('orgId') orgId: string, @Param('userId') userId: string, @Req() req: AuthReq) {
+  async removeMember(
+    @Param('orgId') orgId: string,
+    @Param('userId') userId: string,
+    @Req() req: AuthReq,
+  ) {
     assertOrgMatch(req, orgId);
-    return this.orgs.removeMember(orgId, userId);
+    return this.orgs.removeMember(orgId, userId, req.user?.userId ?? '');
   }
 }

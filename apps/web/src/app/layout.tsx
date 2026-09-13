@@ -3,8 +3,7 @@ import type { ReactNode } from 'react';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '../components/ThemeProvider';
-import { Navbar } from '../components/Navbar';
-import { Footer } from '../components/Footer';
+import { AppShell } from '../components/AppShell';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -30,9 +29,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <body className={`${inter.variable} min-h-screen bg-background text-foreground antialiased`}>
         <ThemeProvider>
-          <Navbar />
-          <main className="page-fade">{children}</main>
-          <Footer />
+          <AppShell>{children}</AppShell>
         </ThemeProvider>
       </body>
     </html>

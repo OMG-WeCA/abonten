@@ -106,7 +106,7 @@ export default function Home() {
         secondaryLabel="See how it works"
         secondaryHref="#how-it-works"
         trust="English & French · NGN · GHS · XAF · XOF · USD · EUR"
-        image={{ src: '/abonten/images/hero-billboard.jpg', alt: 'A roadside billboard in Nigeria' }}
+        image={{ src: '/images/hero-billboard.jpg', alt: 'A roadside billboard in Nigeria' }}
       />
 
       {/* City ticker */}
@@ -158,7 +158,7 @@ export default function Home() {
       </Section>
 
       {/* Image statement band */}
-      <ImageBand src="/abonten/images/home-aerial.jpg" alt="Aerial view of Lagos, Nigeria">
+      <ImageBand src="/images/home-aerial.jpg" alt="Aerial view of Lagos, Nigeria">
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-accent-gold">
           Why Abonten
         </p>

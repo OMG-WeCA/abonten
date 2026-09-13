@@ -127,7 +127,7 @@ export default function ForPlannersPage() {
         secondaryLabel="Explore the platform"
         secondaryHref="#features"
         trust="One marketplace · every media partner · defensible KPIs"
-        image={{ src: '/abonten/images/hero-street.jpg', alt: 'A busy West African street with outdoor ads' }}
+        image={{ src: '/images/hero-street.jpg', alt: 'A busy West African street with outdoor ads' }}
       />
 
       <Section variant="surface" size="lg">
