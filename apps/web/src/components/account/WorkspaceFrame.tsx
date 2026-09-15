@@ -4,14 +4,18 @@ import {
   Building2,
   ChevronDown,
   CircleUserRound,
+  Landmark as LandmarkIcon,
   LayoutGrid,
   LogOut,
   RefreshCw,
   Settings2,
+  ShieldCheck,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { getAccountCopy, type AccountLocale } from '../../lib/account-locale';
+import { getSitesCopy } from '../../lib/sites-locale';
+import { canSeeSitesArea } from '../../lib/sites-access';
 import { workspaceAccessState } from '../../lib/account-session-recovery';
 import { useAuth } from '../auth/AuthProvider';
 
@@ -20,12 +24,13 @@ export function WorkspaceFrame({
   current,
 }: {
   children: ReactNode;
-  current: 'dashboard' | 'settings';
+  current: 'dashboard' | 'settings' | 'sites' | 'review';
 }) {
   const router = useRouter();
   const {
     activeOrganization,
     avatarUrl,
+    capabilities,
     organizations,
     profile,
     ready,
@@ -35,6 +40,14 @@ export function WorkspaceFrame({
     switchOrganization,
   } = useAuth();
   const copy = getAccountCopy(profile?.locale);
+  const sitesCopy = getSitesCopy(profile?.locale);
+  // The server only lets media-partner organizations manage billboard sites
+  // (assertMediaPartnerOrg) — the nav mirrors that rule, not just capabilities.
+  const canSeeSites = canSeeSitesArea({
+    capabilities,
+    orgType: activeOrganization?.type,
+  });
+  const canReview = capabilities.includes('PLATFORM_ADMIN');
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState('');
   const accessState = workspaceAccessState({
@@ -129,6 +142,34 @@ export function WorkspaceFrame({
               <LayoutGrid className="h-4 w-4" />
               <span className="hidden sm:inline">{copy.workspace.home}</span>
             </button>
+            {canSeeSites && (
+              <button
+                type="button"
+                onClick={() => router.push('/sites')}
+                className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
+                  current === 'sites'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted hover:bg-surface hover:text-foreground'
+                }`}
+              >
+                <LandmarkIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">{sitesCopy.nav.sites}</span>
+              </button>
+            )}
+            {canReview && (
+              <button
+                type="button"
+                onClick={() => router.push('/admin/review')}
+                className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
+                  current === 'review'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted hover:bg-surface hover:text-foreground'
+                }`}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                <span className="hidden sm:inline">{sitesCopy.nav.review}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => router.push('/settings')}

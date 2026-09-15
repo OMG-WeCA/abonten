@@ -9,8 +9,20 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/lib/api.ts", "src/lib/api.spec.ts"],
+  "include": [
+    "src/lib/api.ts",
+    "src/lib/api.spec.ts",
+    "src/lib/sites-api.ts",
+    "src/lib/sites-api.spec.ts",
+    "src/lib/sites-locale.ts",
+    "src/lib/number-format.ts",
+    "src/lib/number-format.spec.ts",
+    "src/lib/sites-access.ts",
+    "src/lib/sites-access.spec.ts"
+  ],
   "exclude": []
 }

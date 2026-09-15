@@ -18,6 +18,15 @@ export const SESSION_STORAGE_KEY = 'abonten.session';
 const SESSION_REFRESH_LOCK = 'abonten.session.refresh';
 let refreshInFlight: Promise<boolean> | null = null;
 
+/** Bearer + accept headers for absolute asset URLs (plain fetch only). */
+export function fetchAssetHeaders(): Record<string, string> {
+  const token = loadSession()?.accessToken;
+  return {
+    Accept: 'image/*',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 function configuredApiBase(): string {
   return (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
 }
@@ -55,6 +64,8 @@ export function clearSession(): void {
 interface RequestOptions extends RequestInit {
   auth?: boolean;
   retryOnExpiredAccess?: boolean;
+  /** Per-request abort deadline; defaults to 15 s. Uploads use longer budgets. */
+  timeoutMs?: number;
 }
 
 export async function apiFetch(path: string, options: RequestOptions = {}): Promise<Response> {
@@ -199,11 +210,17 @@ function clearActiveOrganizationIfCurrent(refreshToken: string): void {
   });
 }
 
-async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit): Promise<Response> {
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit & { timeoutMs?: number },
+): Promise<Response> {
+  const { timeoutMs = 15_000, ...rest } = init;
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15_000);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  // Combine the caller's signal with the deadline so cancel and timeout both surface.
+  if (init.signal) init.signal.addEventListener('abort', () => controller.abort(), { once: true });
   try {
-    return await fetch(input, { ...init, signal: init.signal ?? controller.signal });
+    return await fetch(input, { ...rest, signal: controller.signal });
   } finally {
     window.clearTimeout(timeout);
   }

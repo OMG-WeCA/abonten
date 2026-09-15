@@ -44,13 +44,36 @@ export default function DashboardPage() {
             {details.lead}
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-muted">{details.detail}</p>
-          <button
-            type="button"
-            onClick={() => router.push('/settings')}
-            className="mt-7 inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white transition hover:bg-primary-hover"
-          >
-            {copy.dashboard.reviewSettings} <ArrowRight className="h-4 w-4" />
-          </button>
+          <div className="mt-7 flex flex-wrap gap-3">
+            {type === 'media_partner' && (
+              <button
+                type="button"
+                onClick={() => router.push('/sites')}
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white transition hover:bg-primary-hover"
+              >
+                <Landmark className="h-4 w-4" />
+                {copy.dashboard.sitesCta}
+              </button>
+            )}
+            {isPlatformAdmin && (
+              <button
+                type="button"
+                onClick={() => router.push('/admin/review')}
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white transition hover:bg-primary-hover"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {copy.dashboard.reviewCta}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => router.push('/settings')}
+              className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-4 text-sm font-bold text-foreground transition hover:bg-surface"
+            >
+              {copy.dashboard.reviewSettings}
+              {type !== 'media_partner' && !isPlatformAdmin && <ArrowRight className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
       </section>
 

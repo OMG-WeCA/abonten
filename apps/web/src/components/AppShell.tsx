@@ -7,7 +7,10 @@ import { Footer } from './Footer';
 import { Navbar } from './Navbar';
 
 function isApplicationRoute(pathname: string): boolean {
-  return ['/sign-in', '/onboarding', '/dashboard', '/settings', '/auth/'].some(
+  // /sites and /admin host the partner inventory workflow and the platform
+  // review queue — operational surfaces that must never render inside the
+  // public marketing shell.
+  return ['/sign-in', '/onboarding', '/dashboard', '/settings', '/auth/', '/sites', '/admin'].some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 }

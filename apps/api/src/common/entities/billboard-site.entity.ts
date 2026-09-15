@@ -59,6 +59,8 @@ export class BillboardSiteEntity {
   @Column({ type: 'text', nullable: true }) description?: string;
   @Column({ default: 'draft' }) status!: string;
   @Column({ name: 'rejection_reason', type: 'text', nullable: true }) rejectionReason?: string | null;
+  /** Idempotent-create operation id (SPEC §7.1): unique per organization. */
+  @Column({ name: 'client_request_id', nullable: true }) clientRequestId?: string;
 
   @Column({ name: 'permit_ref', nullable: true }) permitRef?: string;
   @Column({ name: 'permit_expires_at', type: 'timestamptz', nullable: true }) permitExpiresAt?: Date;

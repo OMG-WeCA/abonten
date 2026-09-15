@@ -15,6 +15,7 @@ export default [
       '**/node_modules/**',
       '**/coverage/**',
       '**/.turbo/**',
+      '**/scripts/**',
     ],
   },
   js.configs.recommended,

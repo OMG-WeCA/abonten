@@ -8,6 +8,10 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  IsPositive,
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
@@ -20,12 +24,14 @@ export class GeoPointDto {
 export class CreateSiteDto {
   @ApiProperty() @IsString() name!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() code?: string;
+  /** Idempotent-create key: replays the original draft on an ambiguous retry. */
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(64) clientRequestId?: string;
   @ApiPropertyOptional({ default: 'billboard' }) @IsOptional() @IsString() type?: string;
   @ApiProperty() @IsString() format!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() subFormat?: string;
 
-  @ApiProperty() @IsNumber() @Type(() => Number) latitude!: number;
-  @ApiProperty() @IsNumber() @Type(() => Number) longitude!: number;
+  @ApiProperty() @IsNumber() @Min(-90) @Max(90) @Type(() => Number) latitude!: number;
+  @ApiProperty() @IsNumber() @Min(-180) @Max(180) @Type(() => Number) longitude!: number;
   @ApiPropertyOptional({ type: [GeoPointDto] })
   @IsOptional()
   @IsArray()
@@ -39,9 +45,9 @@ export class CreateSiteDto {
   @ApiProperty() @IsString() country!: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() marketId?: string;
 
-  @ApiProperty() @IsNumber() @Type(() => Number) width!: number;
-  @ApiProperty() @IsNumber() @Type(() => Number) height!: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Type(() => Number) area?: number;
+  @ApiProperty() @IsNumber() @IsPositive() @Type(() => Number) width!: number;
+  @ApiProperty() @IsNumber() @IsPositive() @Type(() => Number) height!: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Type(() => Number) area?: number;
   @ApiPropertyOptional({ default: 'm' }) @IsOptional() @IsString() units?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Type(() => Number) orientationDeg?: number;
@@ -92,14 +98,17 @@ export class CreateMetadataDto {
 export class UpdateMetadataDto extends PartialType(CreateMetadataDto) {}
 
 export class RateCardRatesDto {
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Type(() => Number) perDay?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Type(() => Number) perWeek?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Type(() => Number) perMonth?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) @Type(() => Number) perDay?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) @Type(() => Number) perWeek?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0.01) @Type(() => Number) perMonth?: number;
 }
 
 export class CreateRateCardDto {
   @ApiProperty() @IsString() currency!: string;
-  @ApiProperty({ type: RateCardRatesDto }) @IsInstance(Object) rates!: RateCardRatesDto;
+  @ApiProperty({ type: RateCardRatesDto })
+  @Type(() => RateCardRatesDto)
+  @ValidateNested()
+  rates!: RateCardRatesDto;
   @ApiPropertyOptional({ type: Object }) @IsOptional() @IsInstance(Object) seasonalRules?: Record<string, unknown>;
   @ApiProperty() @IsDateString() effectiveFrom!: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() effectiveTo?: string;

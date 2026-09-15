@@ -19,9 +19,9 @@ export const accountCopy = {
     dashboard: {
       media_partner: {
         name: 'Partner workspace',
-        lead: 'Your account is ready for the partner workspace.',
+        lead: 'Register and manage your billboard inventory.',
         detail:
-          'Inventory and availability work will appear here when that part of Abonten opens for your organization.',
+          'Add sites with photos, faces, and rates, then submit them for review. Approved sites appear on the marketplace for planners.',
       },
       agency: {
         name: 'Planner workspace',
@@ -39,8 +39,10 @@ export const accountCopy = {
         name: 'Platform workspace',
         lead: 'Your operator context is set.',
         detail:
-          'Platform work is controlled by your assigned access. This account area does not impersonate or expose tenant data.',
+          'Review newly submitted partner sites before they reach the marketplace. This account area does not impersonate or expose tenant data.',
       },
+      sitesCta: 'Open your sites',
+      reviewCta: 'Open the review queue',
       reviewSettings: 'Review account settings',
       signedInAs: 'You’re signed in as',
       activeOrganization: 'Active organization:',
@@ -146,9 +148,9 @@ export const accountCopy = {
     dashboard: {
       media_partner: {
         name: 'Espace partenaire',
-        lead: 'Votre compte est prêt pour l’espace partenaire.',
+        lead: 'Enregistrez et gérez vos panneaux publicitaires.',
         detail:
-          'Les fonctions d’inventaire et de disponibilité apparaîtront ici lorsqu’elles seront ouvertes pour votre organisation.',
+          'Ajoutez des sites avec photos, faces et tarifs, puis soumettez-les en revue. Les sites approuvés apparaissent sur la place de marché pour les planificateurs.',
       },
       agency: {
         name: 'Espace planification',
@@ -166,8 +168,10 @@ export const accountCopy = {
         name: 'Espace plateforme',
         lead: 'Votre contexte opérateur est configuré.',
         detail:
-          'Le travail de plateforme dépend des accès qui vous sont attribués. Cet espace n’usurpe ni n’expose les données des organisations.',
+          'Révisez les sites partenaires récemment soumis avant leur publication sur la place de marché. Cet espace n’usurpe ni n’expose les données des organisations.',
       },
+      sitesCta: 'Ouvrir vos sites',
+      reviewCta: 'Ouvrir la file de revue',
       reviewSettings: 'Vérifier les paramètres du compte',
       signedInAs: 'Vous êtes connecté·e en tant que',
       activeOrganization: 'Organisation active :',

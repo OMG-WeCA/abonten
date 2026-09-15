@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,7 +9,9 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   Req,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -16,7 +19,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type {} from 'multer'; // loads the Express.Multer global type augmentation
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
@@ -67,7 +70,7 @@ export class InventoryController {
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
-  @RequireCapabilities(Capability.INVENTORY_VIEW)
+  @RequireAnyCapabilities(Capability.INVENTORY_VIEW, Capability.MARKETPLACE_VIEW, Capability.PLATFORM_ADMIN)
   @Get('sites/:id')
   @ApiOperation({ summary: 'Site detail with faces, assets, metadata, rate cards' })
   async getSite(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('id') id: string) {
@@ -170,7 +173,21 @@ export class InventoryController {
   @Post('sites/:siteId/assets')
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Upload a reference photo for a site' })
-  @UseInterceptors(FileInterceptor('file')) // memory storage → file.buffer; service persists it
+  // Server-side limits (SPEC §6.2): 10 MB per photo, images only, so direct
+  // multipart posts cannot exhaust API memory or storage. Nest maps Multer's
+  // LIMIT_FILE_SIZE to 413 and the fileFilter error to a 400.
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+      fileFilter: (_req, file, cb) => {
+        if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Only JPEG, PNG, or WebP images are accepted.'), false);
+        }
+      },
+    }),
+  )
   async uploadAsset(
     @Req() req: AuthReq,
     @Param('siteId', new ParseUUIDPipe()) siteId: string,
@@ -178,7 +195,7 @@ export class InventoryController {
     @Body('kind') kind?: string,
     @Body('capturedAt') capturedAt?: string,
   ) {
-    if (!file) throw new Error('No file uploaded');
+    if (!file) throw new BadRequestException('No file uploaded');
     return this.service.addAsset(
       orgContext(req)!,
       siteId,
@@ -195,6 +212,22 @@ export class InventoryController {
   async listAssets(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('siteId') siteId: string) {
     await this.service.assertCanReadSite(user, orgContext(req), siteId);
     return this.service.listAssets(siteId);
+  }
+
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard)
+  @RequireAnyCapabilities(Capability.INVENTORY_VIEW, Capability.MARKETPLACE_VIEW, Capability.PLATFORM_ADMIN)
+  @Get('sites/:siteId/assets/:assetId/file')
+  @ApiOperation({ summary: 'Stream a stored reference photo (owner or platform admin)' })
+  async readAssetFile(
+    @Res({ passthrough: true }) res: Response,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: AuthReq,
+    @Param('siteId', new ParseUUIDPipe()) siteId: string,
+    @Param('assetId', new ParseUUIDPipe()) assetId: string,
+  ) {
+    const result = await this.service.readAsset(user, orgContext(req), siteId, assetId);
+    if ('redirect' in result) return res.redirect(302, result.redirect);
+    return new StreamableFile(result, { type: 'image/*' });
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
