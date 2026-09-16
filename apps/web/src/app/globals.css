@@ -342,3 +342,42 @@ body {
     display: none;
   }
 }
+/* Recompose the partner overview for display-scaled laptops. No page zoom or
+   transform: retain readable text and let secondary, long content scroll. */
+.portfolio-overview { display: grid; gap: 1rem; align-items: start; }
+.partner-dashboard h1 { font-size: clamp(1.5rem, 2.5vw, 2rem); line-height: 1.2; }
+.portfolio-value { padding: 1rem; }
+.portfolio-amounts { gap: .75rem 1.5rem; margin: 1rem 0; }
+.portfolio-amounts > p > span:nth-child(2) {
+  font-size: clamp(1.5rem, 2.7vw, 2rem); line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.portfolio-value > details { margin-top: .25rem; }
+.portfolio-value > details[open] { max-height: 14rem; overflow: auto; }
+@media (min-width: 768px) {
+  .portfolio-overview { grid-template-columns: minmax(0, .9fr) minmax(0, 1.4fr); }
+  .portfolio-overview > * { min-width: 0; }
+  .portfolio-value > div:first-child { gap: .25rem; }
+  .portfolio-amounts { display: grid; gap: .625rem; }
+  .portfolio-amounts > p { flex-wrap: nowrap; gap: .5rem; }
+  .portfolio-amounts > p > span:first-child { min-width: 2rem; }
+  .portfolio-amounts > p > span:last-child { white-space: nowrap; }
+  .inventory-overview > div { padding: 1rem; gap: .75rem; grid-template-columns: 1fr; }
+  .inventory-overview > div > div:first-child { flex-direction: row; justify-content: space-between; align-items: center; gap: .5rem; }
+  .inventory-overview > div > div:first-child > div > span { font-size: 2.5rem; line-height: 1; }
+  .inventory-overview > div > div:first-child > a { margin-top: 0; }
+  .inventory-overview [aria-label] > a { min-height: 2rem; }
+  .inventory-overview [aria-label] > a svg { max-height: 2rem; }
+  .inventory-overview [role="img"] { height: 4rem; }
+  .inventory-overview > div p { margin-top: .5rem; margin-bottom: .5rem; }
+  .inventory-overview dl { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .inventory-overview dl > div { padding: .75rem .5rem; gap: .375rem; align-items: flex-start; }
+  .inventory-overview dl > div > span { margin-top: .5rem; }
+  .inventory-overview dd { font-size: 1.25rem; }
+  .inventory-overview dt { font-size: .75rem; overflow-wrap: anywhere; }
+  .portfolio-breakdown { grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 1rem; }
+  .portfolio-breakdown > section { padding: 1rem; min-width: 0; }
+  .portfolio-breakdown > section:first-child > div { margin-top: .75rem; }
+  .portfolio-breakdown > section:first-child > div > div { padding: .75rem; }
+  .portfolio-breakdown > section:first-child > div > div > div:first-child { height: 4rem; }
+}

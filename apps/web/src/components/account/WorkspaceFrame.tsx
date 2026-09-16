@@ -133,6 +133,7 @@ export function WorkspaceFrame({
             <button
               type="button"
               onClick={() => router.push('/dashboard')}
+              aria-label={copy.workspace.home}
               className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
                 current === 'dashboard'
                   ? 'bg-primary/10 text-primary'
@@ -146,6 +147,7 @@ export function WorkspaceFrame({
               <button
                 type="button"
                 onClick={() => router.push('/sites')}
+                aria-label={sitesCopy.nav.sites}
                 className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
                   current === 'sites'
                     ? 'bg-primary/10 text-primary'
@@ -173,6 +175,7 @@ export function WorkspaceFrame({
             <button
               type="button"
               onClick={() => router.push('/settings')}
+              aria-label={copy.workspace.settings}
               className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
                 current === 'settings'
                   ? 'bg-primary/10 text-primary'
@@ -185,6 +188,7 @@ export function WorkspaceFrame({
             <button
               type="button"
               onClick={() => void signOut().then(() => router.replace('/sign-in'))}
+              aria-label={copy.workspace.signOut}
               className="ml-1 flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold text-muted transition hover:bg-surface hover:text-foreground sm:px-3"
             >
               {avatarUrl ? (
@@ -206,7 +210,7 @@ export function WorkspaceFrame({
           {switchError}
         </p>
       )}
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">{children}</main>
+      <main className={`mx-auto max-w-7xl px-4 sm:px-6 ${current === 'dashboard' ? 'py-4 lg:py-6' : 'py-8 lg:py-10'}`}>{children}</main>
     </div>
   );
 }

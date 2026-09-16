@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { PartnerDashboard } from '../../components/dashboard/PartnerDashboard';
 import { WorkspaceFrame } from '../../components/account/WorkspaceFrame';
 import { useAuth } from '../../components/auth/AuthProvider';
 import { getAccountCopy } from '../../lib/account-locale';
@@ -33,6 +34,8 @@ export default function DashboardPage() {
     activeOrganization?.type === 'media_partner' && capabilities.includes('POP_CAPTURE');
   const isPlatformAdmin = capabilities.includes('PLATFORM_ADMIN');
 
+  if (type === 'media_partner') return <WorkspaceFrame current="dashboard"><PartnerDashboard key={activeOrganization?.organizationId} /></WorkspaceFrame>;
+
   return (
     <WorkspaceFrame current="dashboard">
       <section className="relative overflow-hidden rounded-2xl border border-border bg-surface-2 px-6 py-8 shadow-xl shadow-black/10 sm:px-9 sm:py-10">
@@ -45,16 +48,6 @@ export default function DashboardPage() {
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-muted">{details.detail}</p>
           <div className="mt-7 flex flex-wrap gap-3">
-            {type === 'media_partner' && (
-              <button
-                type="button"
-                onClick={() => router.push('/sites')}
-                className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white transition hover:bg-primary-hover"
-              >
-                <Landmark className="h-4 w-4" />
-                {copy.dashboard.sitesCta}
-              </button>
-            )}
             {isPlatformAdmin && (
               <button
                 type="button"
@@ -71,7 +64,7 @@ export default function DashboardPage() {
               className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-4 text-sm font-bold text-foreground transition hover:bg-surface"
             >
               {copy.dashboard.reviewSettings}
-              {type !== 'media_partner' && !isPlatformAdmin && <ArrowRight className="h-4 w-4" />}
+              {!isPlatformAdmin && <ArrowRight className="h-4 w-4" />}
             </button>
           </div>
         </div>

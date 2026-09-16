@@ -294,3 +294,12 @@ export function endRateCard(
 ): Promise<RateCard> {
   return request(`/rate-cards/${rateCardId}`, { method: 'PATCH', body: JSON.stringify({ effectiveTo }) }, orgId);
 }
+
+export function listSiteRateCards(orgId: string, siteId: string): Promise<RateCard[]> {
+  return request(`/sites/${encodeURIComponent(siteId)}/rate-cards`, { method: 'GET' }, orgId);
+}
+
+export interface ExchangeSnapshot { source: string; asOf: string; rates: Record<string, number> }
+export function getExchangeRates(orgId: string): Promise<ExchangeSnapshot> {
+  return request('/exchange-rates', { method: 'GET' }, orgId);
+}

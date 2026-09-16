@@ -22,7 +22,9 @@
     "src/lib/number-format.ts",
     "src/lib/number-format.spec.ts",
     "src/lib/sites-access.ts",
-    "src/lib/sites-access.spec.ts"
+    "src/lib/sites-access.spec.ts",
+    "src/lib/portfolio-value.ts",
+    "src/lib/portfolio-value.spec.ts"
   ],
   "exclude": []
 }
