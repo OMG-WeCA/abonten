@@ -3,25 +3,33 @@
 import { ArrowLeft, Camera, Loader2, MapPin, PlusCircle, Ruler, SunMedium, Type as TypeIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useRef } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 
 /** Replace a single {{label}} placeholder in upload progress copy. */
 const withLabel = (template: string, label: string): string =>
   template.replace('{{label}}', label);
-import { useState, type ChangeEvent, type FormEvent } from 'react';
+
 import { WorkspaceFrame } from '../../../components/account/WorkspaceFrame';
 import { useAuth } from '../../../components/auth/AuthProvider';
 import { Field, PendingUploadChip, inputClass } from '../../../components/sites/sites-ui';
-import { createSite, uploadAsset } from '../../../lib/sites-api';
+import {
+  createSite,
+  listMarkets,
+  uploadAsset,
+  type Market,
+} from '../../../lib/sites-api';
 import { getSitesCopy } from '../../../lib/sites-locale';
 import { canManageSites } from '../../../lib/sites-access';
 import { parseDecimal } from '../../../lib/number-format';
+import { plausibilityErrors, structureValuesEntered } from '../../../lib/sites-plausibility';
 import { ApiError } from '../../../lib/api';
 
 interface PendingPhoto {
   id: string;
-  kind: 'front' | 'context' | 'night';
+  kind: 'front' | 'context' | 'night' | 'diagram';
   file: File;
+  /** Capture date as entered (yyyy-mm-dd). Required for front photos. */
+  capturedAt: string;
 }
 
 const PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp';
@@ -29,38 +37,60 @@ const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 
 interface FormState {
   name: string;
+  siteCode: string;
+  type: string;
   format: string;
+  subFormat: string;
   latitude: string;
   longitude: string;
   address: string;
   city: string;
   region: string;
   country: string;
+  marketId: string;
   width: string;
   height: string;
   units: string;
   orientationDeg: string;
+  viewingDistance: string;
+  elevation: string;
   illuminationType: string;
   illuminationHours: string;
   description: string;
+  permitRef: string;
+  permitExpiresAt: string;
+  provSource: string;
+  provMethod: string;
+  provDate: string;
 }
 
 const INITIAL: FormState = {
   name: '',
+  siteCode: '',
+  type: 'billboard',
   format: 'static',
+  subFormat: '',
   latitude: '',
   longitude: '',
   address: '',
   city: '',
   region: '',
   country: '',
+  marketId: '',
   width: '',
   height: '',
   units: 'm',
   orientationDeg: '',
+  viewingDistance: '',
+  elevation: '',
   illuminationType: 'none',
   illuminationHours: '',
   description: '',
+  permitRef: '',
+  permitExpiresAt: '',
+  provSource: '',
+  provMethod: '',
+  provDate: '',
 };
 
 export default function RegisterSitePage() {
@@ -74,13 +104,24 @@ export default function RegisterSitePage() {
 
   const [form, setForm] = useState<FormState>(INITIAL);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  const [errorSummary, setErrorSummary] = useState('');
   const [photos, setPhotos] = useState<PendingPhoto[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState<string | null>(null);
   const [uploadCancelled, setUploadCancelled] = useState<string | null>(null);
   const uploadAbortRef = useRef<AbortController | null>(null);
   const uploadCancelledRef = useRef(false);
+  const marketsRef = useRef<Market[] | null>(null);
+  const [markets, setMarkets] = useState<Market[]>([]);
   const kindToUpload = (kind: PendingPhoto['kind']) =>
-    copy.register[kind === 'front' ? 'photoFront' : kind === 'context' ? 'photoContext' : 'photoNight'];
+    copy.register[
+      kind === 'front'
+        ? 'photoFront'
+        : kind === 'context'
+          ? 'photoContext'
+          : kind === 'night'
+            ? 'photoNight'
+            : 'photoDiagram'
+    ];
   const [photoError, setPhotoError] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -91,9 +132,28 @@ export default function RegisterSitePage() {
   const clientRequestRef = useRef<string | null>(null);
   const submitFailedRef = useRef(false);
 
+  // Markets load lazily once the org context resolves (reference data,
+  // cached in a ref so re-renders and org switches do not refetch). A
+  // render-time fetch would race AuthProvider hydration: the first paint
+  // often has canManage false and orgId undefined, so retry on [canManage,
+  // orgId] instead and swallow transient failures until the context is ready.
+  useEffect(() => {
+    if (!canManage || !orgId || (marketsRef.current && marketsRef.current.length > 0)) return;
+    marketsRef.current = [];
+    void listMarkets(orgId)
+      .then((response) => {
+        marketsRef.current = response.items;
+        setMarkets(response.items);
+      })
+      .catch(() => {
+        marketsRef.current = null;
+      });
+  }, [canManage, orgId]);
+
   const set = (key: keyof FormState) => (value: string) => {
     setForm((previous) => ({ ...previous, [key]: value }));
     setErrors((previous) => ({ ...previous, [key]: undefined }));
+    setErrorSummary('');
     if (submitFailedRef.current) {
       // Deliberate edit after a failed save: this is a new logical attempt.
       submitFailedRef.current = false;
@@ -123,9 +183,53 @@ export default function RegisterSitePage() {
         setPhotoError(copy.register.photoError);
         continue;
       }
-      accepted.push({ id: `${Date.now()}-${Math.random().toString(16).slice(2)}`, kind, file });
+      // Front photos default to today: the partner confirms or edits the date
+      // rather than inventing a historical one (SPEC §5.1 item 4).
+      accepted.push({
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        kind,
+        file,
+        capturedAt: kind === 'front' ? new Date().toISOString().slice(0, 10) : '',
+      });
     }
     if (accepted.length > 0) setPhotos((previous) => [...previous, ...accepted]);
+  };
+
+  const setPhotoDate = (photoId: string, value: string) => {
+    setPhotos((previous) => previous.map((p) => (p.id === photoId ? { ...p, capturedAt: value } : p)));
+  };
+
+  /** Maps field keys to input ids so submit failure focuses the first error. */
+  const inputIdFor = (key: keyof FormState): string => {
+    const map: Partial<Record<keyof FormState, string>> = {
+      name: 'siteName',
+      siteCode: 'siteCode',
+      type: 'siteType',
+      format: 'siteFormat',
+      subFormat: 'siteSubFormat',
+      latitude: 'siteLat',
+      longitude: 'siteLng',
+      address: 'siteAddress',
+      city: 'siteCity',
+      region: 'siteRegion',
+      country: 'siteCountry',
+      marketId: 'siteMarket',
+      width: 'siteWidth',
+      height: 'siteHeight',
+      units: 'siteUnits',
+      orientationDeg: 'siteOrientation',
+      viewingDistance: 'siteViewingDistance',
+      elevation: 'siteElevation',
+      illuminationType: 'siteIllum',
+      illuminationHours: 'siteIllumHours',
+      description: 'siteDesc',
+      permitRef: 'sitePermitRef',
+      permitExpiresAt: 'sitePermitExpiry',
+      provSource: 'siteProvSource',
+      provMethod: 'siteProvMethod',
+      provDate: 'siteProvDate',
+    };
+    return map[key] ?? `field-${key}`;
   };
 
   const validate = (): boolean => {
@@ -134,6 +238,9 @@ export default function RegisterSitePage() {
     const lon = parseDecimal(form.longitude);
     const width = parseDecimal(form.width);
     const height = parseDecimal(form.height);
+    const orientation = parseDecimal(form.orientationDeg);
+    const viewingDistance = parseDecimal(form.viewingDistance);
+    const elevation = parseDecimal(form.elevation);
     if (!form.name.trim()) next.name = copy.register.requiredFields;
     if (lat === null) next.latitude = copy.register.requiredFields;
     else if (Math.abs(lat) > 90) next.latitude = copy.register.requiredFields;
@@ -145,20 +252,65 @@ export default function RegisterSitePage() {
     if (height === null || height <= 0) next.height = copy.register.requiredFields;
     if (form.illuminationType !== 'none' && !form.illuminationHours.trim())
       next.illuminationHours = copy.register.requiredFields;
+    // Plausibility (SPEC §5.1 trust contract 6) — same rules as the API.
+    const plausibility = plausibilityErrors({
+      latitude: lat ?? undefined,
+      longitude: lon ?? undefined,
+      country: form.country,
+      orientationDeg: orientation ?? undefined,
+      viewingDistance: viewingDistance ?? undefined,
+      elevation: elevation ?? undefined,
+      illuminationHours: form.illuminationHours.trim() || undefined,
+    });
+    for (const [field, messageKey] of Object.entries(plausibility)) {
+      if (!next[field as keyof FormState]) {
+        next[field as keyof FormState] = copy.register[messageKey as keyof typeof copy.register] as string;
+      }
+    }
+    // Provenance contract (SPEC §5.1 trust contract 3): hand-entered structure
+    // values must say how they are known.
+    const structureEntered = structureValuesEntered({
+      orientationDeg: form.orientationDeg,
+      viewingDistance: form.viewingDistance,
+      elevation: form.elevation,
+    });
+    if (structureEntered && (!form.provSource.trim() || !form.provMethod.trim())) {
+      next.provSource = next.provSource ?? copy.register.provenanceRequired;
+      next.provMethod = next.provMethod ?? copy.register.provenanceRequired;
+    }
     setErrors(next);
-    return Object.keys(next).length === 0;
+    const errored = (Object.entries(next) as Array<[keyof FormState, string]>).filter(([, v]) => v);
+    setErrorSummary(errored.length > 1 ? `${errored.length} ${copy.register.errorSummarySuffix}` : '');
+    if (errored.length > 0) {
+      // First errored field receives focus (execution plan §1.5.3).
+      const el = document.getElementById(inputIdFor(errored[0][0]));
+      el?.focus?.();
+      return false;
+    }
+    return true;
   };
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitError('');
     if (!validate() || !orgId || saving) return;
+    if (photos.some((p) => p.kind === 'front' && !p.capturedAt)) {
+      setSubmitError(copy.register.captureDateRequired);
+      return;
+    }
     setSaving(true);
     const lat = parseDecimal(form.latitude) as number;
     const lon = parseDecimal(form.longitude) as number;
     const width = parseDecimal(form.width) as number;
     const height = parseDecimal(form.height) as number;
     const orientation = parseDecimal(form.orientationDeg);
+    const viewingDistance = parseDecimal(form.viewingDistance);
+    const elevation = parseDecimal(form.elevation);
+    const structureEntered = structureValuesEntered({
+      orientationDeg: form.orientationDeg,
+      viewingDistance: form.viewingDistance,
+      elevation: form.elevation,
+    });
     if (!clientRequestRef.current) {
       clientRequestRef.current =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -169,22 +321,39 @@ export default function RegisterSitePage() {
       const site = await createSite(orgId, {
         clientRequestId: clientRequestRef.current,
         name: form.name.trim(),
+        ...(form.siteCode.trim() ? { code: form.siteCode.trim() } : {}),
+        type: form.type,
         format: form.format,
+        ...(form.subFormat.trim() ? { subFormat: form.subFormat.trim() } : {}),
         latitude: lat,
         longitude: lon,
         ...(form.address.trim() ? { address: form.address.trim() } : {}),
         city: form.city.trim(),
         ...(form.region.trim() ? { region: form.region.trim() } : {}),
         country: form.country.trim(),
+        ...(form.marketId ? { marketId: form.marketId } : {}),
         width,
         height,
         units: form.units,
         ...(orientation !== null ? { orientationDeg: orientation } : {}),
+        ...(viewingDistance !== null ? { viewingDistance } : {}),
+        ...(elevation !== null ? { elevation } : {}),
         illuminationType: form.illuminationType,
         ...(form.illuminationType !== 'none' && form.illuminationHours.trim()
           ? { illuminationHours: form.illuminationHours.trim() }
           : {}),
         ...(form.description.trim() ? { description: form.description.trim() } : {}),
+        ...(form.permitRef.trim() ? { permitRef: form.permitRef.trim() } : {}),
+        ...(form.permitExpiresAt ? { permitExpiresAt: form.permitExpiresAt } : {}),
+        ...(structureEntered
+          ? {
+              structureProvenance: {
+                source: form.provSource.trim(),
+                method: form.provMethod.trim(),
+                ...(form.provDate ? { collectedAt: form.provDate } : {}),
+              },
+            }
+          : {}),
       });
       // Upload reference photos against the new draft; a failed upload is not
       // fatal, but the partner is told so they can retry on the site page.
@@ -196,7 +365,7 @@ export default function RegisterSitePage() {
         const controller = new AbortController();
         uploadAbortRef.current = controller;
         try {
-          await uploadAsset(orgId, site.id, photo.kind, photo.file, controller.signal);
+          await uploadAsset(orgId, site.id, photo.kind, photo.file, controller.signal, photo.capturedAt || undefined);
         } catch {
           if (uploadCancelledRef.current) {
             uploadCancelledRef.current = false;
@@ -228,6 +397,12 @@ export default function RegisterSitePage() {
     </h2>
   );
 
+  const structureEntered = structureValuesEntered({
+    orientationDeg: form.orientationDeg,
+    viewingDistance: form.viewingDistance,
+    elevation: form.elevation,
+  });
+
   return (
     <WorkspaceFrame current="sites">
       <button
@@ -256,6 +431,30 @@ export default function RegisterSitePage() {
                 className={inputClass}
               />
             </Field>
+            <Field label={copy.register.siteCode} htmlFor="siteCode" hint={copy.register.siteCodeHint}>
+              <input
+                id="siteCode"
+                value={form.siteCode}
+                onChange={(event) => set('siteCode')(event.target.value)}
+                maxLength={40}
+                className={inputClass}
+              />
+            </Field>
+            <Field label={copy.register.siteType} htmlFor="siteType">
+              <select
+                id="siteType"
+                value={form.type}
+                onChange={(event) => set('type')(event.target.value)}
+                className={inputClass}
+              >
+                <option value="billboard">{copy.register.typeBillboard}</option>
+                <option value="unipole">{copy.register.typeUnipole}</option>
+                <option value="gantry">{copy.register.typeGantry}</option>
+                <option value="building_wrap">{copy.register.typeBuildingWrap}</option>
+                <option value="spectacular">{copy.register.typeSpectacular}</option>
+                <option value="other">{copy.register.typeOther}</option>
+              </select>
+            </Field>
             <Field label={copy.register.format} htmlFor="siteFormat">
               <select
                 id="siteFormat"
@@ -266,7 +465,21 @@ export default function RegisterSitePage() {
                 <option value="static">{copy.register.formatStatic}</option>
                 <option value="digital_led">{copy.register.formatLed}</option>
                 <option value="3d">{copy.register.format3d}</option>
+                <option value="tri_vision">{copy.register.formatTriVision}</option>
+                <option value="mural">{copy.register.formatMural}</option>
+                <option value="transit">{copy.register.formatTransit}</option>
+                <option value="street_furniture">{copy.register.formatStreetFurniture}</option>
               </select>
+            </Field>
+            <Field label={copy.register.subFormat} htmlFor="siteSubFormat" hint={copy.register.subFormatHint}>
+              <input
+                id="siteSubFormat"
+                value={form.subFormat}
+                onChange={(event) => set('subFormat')(event.target.value)}
+                maxLength={60}
+                placeholder={copy.register.subFormatPlaceholder}
+                className={inputClass}
+              />
             </Field>
           </div>
         </section>
@@ -343,6 +556,26 @@ export default function RegisterSitePage() {
                 <option value="Cameroon" />
               </datalist>
             </Field>
+            <Field
+              label={copy.register.market}
+              htmlFor="siteMarket"
+              hint={copy.register.marketHint}
+              className="sm:col-span-2"
+            >
+              <select
+                id="siteMarket"
+                value={form.marketId}
+                onChange={(event) => set('marketId')(event.target.value)}
+                className={inputClass}
+              >
+                <option value="">{copy.detail.permitNone}</option>
+                {markets.map((market) => (
+                  <option key={market.id} value={market.id}>
+                    {market.name} ({market.country})
+                  </option>
+                ))}
+              </select>
+            </Field>
           </div>
         </section>
 
@@ -350,17 +583,29 @@ export default function RegisterSitePage() {
           {sectionHeading(<Ruler className="h-4 w-4" />, copy.register.sectionPhysical)}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Field label={copy.register.width} htmlFor="siteWidth" error={errors.width}>
-              <input
-                id="siteWidth"
-                type="text"
-                step="any"
-                min="0"
-                inputMode="decimal"
-                value={form.width}
-                onChange={(event) => set('width')(event.target.value)}
-                aria-invalid={Boolean(errors.width)}
-                className={inputClass}
-              />
+              <span className="flex gap-2">
+                <input
+                  id="siteWidth"
+                  type="text"
+                  step="any"
+                  min="0"
+                  inputMode="decimal"
+                  value={form.width}
+                  onChange={(event) => set('width')(event.target.value)}
+                  aria-invalid={Boolean(errors.width)}
+                  className={inputClass}
+                />
+                <select
+                  id="siteUnits"
+                  value={form.units}
+                  onChange={(event) => set('units')(event.target.value)}
+                  aria-label={copy.register.units}
+                  className="w-20 shrink-0 rounded-lg border border-border bg-surface-2 px-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25"
+                >
+                  <option value="m">m</option>
+                  <option value="ft">ft</option>
+                </select>
+              </span>
             </Field>
             <Field label={copy.register.height} htmlFor="siteHeight" error={errors.height}>
               <input
@@ -375,21 +620,11 @@ export default function RegisterSitePage() {
                 className={inputClass}
               />
             </Field>
-            <Field label={copy.register.units} htmlFor="siteUnits">
-              <select
-                id="siteUnits"
-                value={form.units}
-                onChange={(event) => set('units')(event.target.value)}
-                className={inputClass}
-              >
-                <option value="m">m</option>
-                <option value="ft">ft</option>
-              </select>
-            </Field>
             <Field
               label={copy.register.orientation}
               htmlFor="siteOrientation"
               hint={copy.register.orientationHint}
+              error={errors.orientationDeg}
             >
               <input
                 id="siteOrientation"
@@ -400,11 +635,102 @@ export default function RegisterSitePage() {
                 inputMode="numeric"
                 value={form.orientationDeg}
                 onChange={(event) => set('orientationDeg')(event.target.value)}
+                aria-invalid={Boolean(errors.orientationDeg)}
+                className={inputClass}
+              />
+            </Field>
+            <Field
+              label={copy.register.viewingDistance}
+              htmlFor="siteViewingDistance"
+              hint={copy.register.viewingDistanceHint}
+              error={errors.viewingDistance}
+            >
+              <input
+                id="siteViewingDistance"
+                type="text"
+                step="any"
+                min="0"
+                inputMode="decimal"
+                value={form.viewingDistance}
+                onChange={(event) => set('viewingDistance')(event.target.value)}
+                aria-invalid={Boolean(errors.viewingDistance)}
+                className={inputClass}
+              />
+            </Field>
+            <Field
+              label={copy.register.elevation}
+              htmlFor="siteElevation"
+              hint={copy.register.elevationHint}
+              error={errors.elevation}
+            >
+              <input
+                id="siteElevation"
+                type="text"
+                step="any"
+                min="0"
+                inputMode="decimal"
+                value={form.elevation}
+                onChange={(event) => set('elevation')(event.target.value)}
+                aria-invalid={Boolean(errors.elevation)}
                 className={inputClass}
               />
             </Field>
             <p className="text-xs leading-5 text-muted sm:col-span-2">{copy.register.areaNote}</p>
           </div>
+          {structureEntered && (
+            <div className="mt-4 rounded-lg border border-border bg-surface-2 px-4 py-4">
+              <h3 className="text-sm font-bold">{copy.register.provenanceHeading}</h3>
+              <p className="mt-1 text-xs leading-5 text-muted">{copy.register.provenanceHint}</p>
+              <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                <Field
+                  label={copy.register.provenanceSource}
+                  htmlFor="siteProvSource"
+                  error={errors.provSource}
+                >
+                  <input
+                    id="siteProvSource"
+                    value={form.provSource}
+                    onChange={(event) => set('provSource')(event.target.value)}
+                    maxLength={80}
+                    list="provenanceSources"
+                    placeholder={copy.register.provenanceSourcePlaceholder}
+                    aria-invalid={Boolean(errors.provSource)}
+                    className={inputClass}
+                  />
+                  <datalist id="provenanceSources">
+                    <option value="Google Maps street view" />
+                    <option value="Site visit" />
+                    <option value="Survey plan" />
+                  </datalist>
+                </Field>
+                <Field
+                  label={copy.register.provenanceMethod}
+                  htmlFor="siteProvMethod"
+                  error={errors.provMethod}
+                >
+                  <input
+                    id="siteProvMethod"
+                    value={form.provMethod}
+                    onChange={(event) => set('provMethod')(event.target.value)}
+                    maxLength={80}
+                    placeholder={copy.register.provenanceMethodPlaceholder}
+                    aria-invalid={Boolean(errors.provMethod)}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label={copy.register.provenanceDate} htmlFor="siteProvDate">
+                  <input
+                    id="siteProvDate"
+                    type="date"
+                    value={form.provDate}
+                    onChange={(event) => set('provDate')(event.target.value)}
+                    max={new Date().toISOString().slice(0, 10)}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="rounded-xl border border-border bg-surface px-5 py-5">
@@ -440,6 +766,24 @@ export default function RegisterSitePage() {
                 />
               </Field>
             )}
+            <Field label={copy.register.permitRef} htmlFor="sitePermitRef" hint={copy.register.permitRefHint}>
+              <input
+                id="sitePermitRef"
+                value={form.permitRef}
+                onChange={(event) => set('permitRef')(event.target.value)}
+                maxLength={120}
+                className={inputClass}
+              />
+            </Field>
+            <Field label={copy.register.permitExpiry} htmlFor="sitePermitExpiry">
+              <input
+                id="sitePermitExpiry"
+                type="date"
+                value={form.permitExpiresAt}
+                onChange={(event) => set('permitExpiresAt')(event.target.value)}
+                className={inputClass}
+              />
+            </Field>
             <Field label={copy.register.description} htmlFor="siteDesc" className="sm:col-span-2">
               <textarea
                 id="siteDesc"
@@ -462,15 +806,13 @@ export default function RegisterSitePage() {
             </p>
           )}
           <div className="mt-4 flex flex-wrap gap-3">
-            {(['front', 'context', 'night'] as const).map((kind) => (
+            {(['front', 'context', 'night', 'diagram'] as const).map((kind) => (
               <label
                 key={kind}
                 className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-border px-3 text-sm font-semibold transition hover:bg-surface-2"
               >
                 <PlusCircle className="h-4 w-4 text-primary" />
-                {copy.register[
-                  kind === 'front' ? 'photoFront' : kind === 'context' ? 'photoContext' : 'photoNight'
-                ]}
+                {kindToUpload(kind)}
                 <input
                   type="file"
                   accept={PHOTO_ACCEPT}
@@ -482,17 +824,40 @@ export default function RegisterSitePage() {
             ))}
           </div>
           {photos.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="mt-3 space-y-2">
               <span className="text-xs font-semibold text-muted">
                 {photos.length} {copy.register.photosReady}
               </span>
               {photos.map((photo) => (
-                <PendingUploadChip
+                <div
                   key={photo.id}
-                  label={photo.file.name}
-                  removeLabel={copy.register.photoRemove}
-                  onRemove={() => setPhotos((previous) => previous.filter((p) => p.id !== photo.id))}
-                />
+                  className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2"
+                >
+                  <PendingUploadChip
+                    label={photo.file.name}
+                    removeLabel={copy.register.photoRemove}
+                    onRemove={() => setPhotos((previous) => previous.filter((p) => p.id !== photo.id))}
+                  />
+                  <Field
+                    label={
+                      photo.kind === 'front'
+                        ? copy.register.captureDate
+                        : `${kindToUpload(photo.kind)} — ${copy.register.captureDate}`
+                    }
+                    htmlFor={`photoDate-${photo.id}`}
+                    hint={photo.kind === 'front' ? undefined : copy.register.captureDateHint}
+                    className="min-w-44 flex-1"
+                  >
+                    <input
+                      id={`photoDate-${photo.id}`}
+                      type="date"
+                      value={photo.capturedAt}
+                      onChange={(event) => setPhotoDate(photo.id, event.target.value)}
+                      max={new Date().toISOString().slice(0, 10)}
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
               ))}
             </div>
           )}
@@ -527,6 +892,11 @@ export default function RegisterSitePage() {
           </div>
         )}
 
+        {errorSummary && (
+          <p role="alert" className="rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error">
+            {errorSummary}
+          </p>
+        )}
         {submitError && (
           <p role="alert" className="rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error">
             {submitError}

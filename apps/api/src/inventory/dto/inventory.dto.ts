@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsIn,
   IsInstance,
   IsNumber,
   IsOptional,
@@ -11,6 +12,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
   IsPositive,
   ValidateNested,
 } from 'class-validator';
@@ -20,6 +22,17 @@ export class GeoPointDto {
   @ApiProperty() @IsNumber() @Type(() => Number) longitude!: number;
   @ApiProperty() @IsNumber() @Type(() => Number) latitude!: number;
 }
+
+/** Structured provenance for hand-entered structure attributes (SPEC §5.1
+ * trust contract 3): stored as a site_metadata record (dimension 'structure'). */
+export class StructureProvenanceDto {
+  @ApiProperty() @IsString() @MinLength(2) source!: string;
+  @ApiProperty() @IsString() @MinLength(2) method!: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() collectedAt?: string;
+}
+
+export const VERIFICATION_STATES = ['unverified', 'partner_declared', 'field_verified', 'third_party'] as const;
+export type VerificationState = (typeof VERIFICATION_STATES)[number];
 
 export class CreateSiteDto {
   @ApiProperty() @IsString() name!: string;
@@ -59,6 +72,13 @@ export class CreateSiteDto {
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() permitRef?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() permitExpiresAt?: string;
+  /** Required when orientation/viewing distance/elevation is entered or changed
+   * by hand (SPEC §5.1 trust contract 3): "if you typed it, say how you know it". */
+  @ApiPropertyOptional({ type: StructureProvenanceDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StructureProvenanceDto)
+  structureProvenance?: StructureProvenanceDto;
 }
 
 export class UpdateSiteDto extends PartialType(CreateSiteDto) {}
@@ -81,6 +101,14 @@ export class CreateFaceDto {
   @ApiProperty({ default: 'm' }) @IsString() units!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() printableArea?: string;
   @ApiPropertyOptional({ default: true }) @IsOptional() @IsBoolean() bookable?: boolean;
+  // Digital-face attributes (SPEC §5.1 trust contract 2) — collected for
+  // digital_led faces; nullable everywhere so static faces are unaffected.
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(1) @Type(() => Number) pixelWidth?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(1) @Type(() => Number) pixelHeight?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @IsPositive() @Type(() => Number) spotLengthSeconds?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @IsPositive() @Type(() => Number) loopLengthSeconds?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(1) @Type(() => Number) spotsPerLoop?: number;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() proofOfPlay?: boolean;
 }
 
 export class UpdateFaceDto extends PartialType(CreateFaceDto) {}
@@ -93,6 +121,10 @@ export class CreateMetadataDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Type(() => Number) confidence?: number;
   @ApiPropertyOptional() @IsOptional() @IsDateString() collectedAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() expiresAt?: string;
+  @ApiPropertyOptional({ enum: VERIFICATION_STATES, default: 'unverified' })
+  @IsOptional()
+  @IsIn(VERIFICATION_STATES as unknown as string[])
+  verification?: string;
 }
 
 export class UpdateMetadataDto extends PartialType(CreateMetadataDto) {}

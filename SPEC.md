@@ -252,6 +252,41 @@ station panels), 3D and spectacular displays, and tri-vision panels.
   blackout/seasonal rules.
 - **Compliance:** permit reference, permit expiry, regulatory class (where applicable).
 
+**Inventory trust contract (merged from the accepted inventory execution plan, 2026-09-17).**
+
+1. **Collectable at registration (was stored-but-uncollected):** site code (partner-entered;
+   auto-generated when omitted), panel type, sub-format, average viewing distance, elevation,
+   permit reference and permit expiry, and market/zone linkage are all collectable in the
+   registration and edit forms. All seven SPEC format values (`static`, `digital_led`, `3d`,
+   `tri_vision`, `mural`, `transit`, `street_furniture`) are selectable in the UI.
+2. **Digital face attributes.** When a face belongs to a site with `format = digital_led`, the
+   face additionally carries: screen pixel dimensions (`pixel_width` × `pixel_height`), spot
+   length (seconds), loop length (seconds), spots per loop, and a proof-of-play capability flag.
+   These are first-class `SiteFace` fields (additive schema) and are required before any DOOH
+   share-of-voice or delivery maths can be computed in later phases.
+3. **Provenance at entry.** Whenever orientation, viewing distance, or elevation is entered or
+   changed outside a map-assisted capture flow, the mutation must carry structured provenance
+   (source, method, optional collection date), which is stored as a `site_metadata` record with
+   `dimension = 'structure'` and `verification = 'partner_declared'`. "If you typed it, say how
+   you know it."
+4. **Verification states.** `site_metadata` records carry `verification` ∈ `unverified` (default),
+   `partner_declared`, `field_verified`, `third_party` so later phases can filter by evidence
+   level. Enrichment records also carry a `data_class` (`demo` | `production`): demo-class rows
+   are excluded from production reads, planning surfaces, and any model input, and are labelled
+   wherever they render.
+5. **Reference photos.** `front` assets require `captured_at` at upload; UI guidance warns when a
+   supplied capture date is older than 12 months. Unknown capture dates are left empty rather
+   than invented.
+6. **Entry plausibility checks (server-enforced).** Orientation within 0–359°; positive viewing
+   distance and elevation; illumination hours matched against a time-range pattern; coordinates
+   inside the declared country's bounding box when the country is one of Nigeria, Ghana, or
+   Cameroon.
+7. **Deliberate deferrals (approved):** geo-fenced polygon *capture* stays V1 (the column, DTO and
+   storage are live; the map-drawing UI is not); availability calendars/holds/blackouts stay V1
+   per §5.6/§6.2; viewing angle, traffic exposure, bleed/substrate/file requirements, minimum
+   booking duration, and regulatory class stay V1 with provenance (they are model inputs for the
+   measurement phase, not capture blockers for the inventory product).
+
 **Lifecycle / states.**
 
 ```
@@ -565,17 +600,23 @@ API-first access per organization.
 
 **SiteFace** (bookable unit)
 `id`, `site_id`, `face_label`, `width`, `height`, `area`, `units`, `printable_area`, `bookable`,
-audit. A site may have one or many faces; booking targets a face.
+`pixel_width?`, `pixel_height?`, `spot_length_seconds?`, `loop_length_seconds?`, `spots_per_loop?`,
+`proof_of_play?`, audit. A site may have one or many faces; booking targets a face. The
+`pixel_*`/`spot_*`/`loop_*`/`spots_per_loop`/`proof_of_play` fields apply to digital faces
+(`format = digital_led`) per §5.1.
 
 **SiteAsset** (media)
 `id`, `site_id` (or `face_id`), `kind` (`front` | `context` | `night` | `diagram`), `storage_ref`,
-`captured_at`, audit.
+`captured_at` (required for `front`; §5.1), audit.
 
 **SiteMetadata** (enrichment, §5.2)
 `id`, `site_id`, `dimension` (`traffic` | `visibility` | `audience` | `poi` | `illumination` |
-`environment`), `payload` (JSON, dimension-specific), `source`, `method`, `confidence`,
-`collected_at`, `expires_at`, audit. One site has many enrichment records across dimensions and
-vintages.
+`environment` | `structure`), `payload` (JSON, dimension-specific), `source`, `method`, `confidence`,
+`collected_at`, `expires_at`, `verification` (`unverified` default | `partner_declared` |
+`field_verified` | `third_party`), `data_class` (`demo` | `production`), audit. One site has many
+enrichment records across dimensions and vintages. The `structure` dimension carries partner
+declared orientation/viewing-distance/elevation provenance (§5.1); `data_class = demo` rows are
+excluded from production reads and model inputs.
 
 **Market / GeoArea**
 `id`, `name`, `country`, `parent_id` (hierarchy: country → region → city → market/zone), `bounds`,

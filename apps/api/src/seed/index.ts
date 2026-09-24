@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { AppDataSource } from '../data-source';
 import { seedBillboardSites } from './billboard-sites.seed';
 import { seedCapabilityOverrides } from './capability-overrides.seed';
+import { seedMarkets } from './markets.seed';
 import { seedMemberships } from './memberships.seed';
 import { seedOrganizations } from './organizations.seed';
 import { seedRateCards } from './rate-cards.seed';
@@ -33,8 +34,10 @@ async function main(): Promise<void> {
     console.log('Running migrations...');
     await AppDataSource.runMigrations();
     console.log('Seeding...');
-    // Dependency order: orgs -> users -> memberships -> overrides -> sites -> faces -> metadata.
+    // Dependency order: orgs -> users -> memberships -> overrides -> markets
+    // -> sites -> faces -> metadata.
     await seedOrganizations(AppDataSource);
+    await seedMarkets(AppDataSource);
     await seedUsers(AppDataSource);
     await seedMemberships(AppDataSource);
     await seedCapabilityOverrides(AppDataSource);

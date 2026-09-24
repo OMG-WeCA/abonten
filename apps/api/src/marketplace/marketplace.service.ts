@@ -5,6 +5,7 @@ import { SiteFaceEntity } from '../common/entities/site-face.entity';
 import { SiteAssetEntity } from '../common/entities/site-asset.entity';
 import { SiteMetadataEntity } from '../common/entities/site-metadata.entity';
 import { RateCardEntity } from '../common/entities/rate-card.entity';
+import { METADATA_COLUMNS, PRODUCTION_METADATA_WHERE } from '../common/metadata-filter';
 import type { MarketplaceQueryDto } from './dto/marketplace.dto';
 
 const SITE_COLUMNS =
@@ -93,13 +94,16 @@ export class MarketplaceService {
 
     const whereSql = where.join(' AND ');
     const offset = (page - 1) * limit;
+    // Demo-class rows (seeded showcase fiction) never aggregate into the
+    // planner's key-metadata map: the predicate lives inside the subselect so
+    // the aggregate physically cannot include one.
     const rows = await repo.query(
       `SELECT s.id, s.code, s.name, s.format, s.city, s.country, s.illumination_type AS "illuminationType",
         s.width, s.height, s.area, s.latitude, s.longitude,
         (SELECT count(*) FROM site_faces WHERE site_id = s.id::text) AS "faceCount",
         (SELECT min((rates->>'perDay')::numeric) FROM rate_cards WHERE site_id = s.id::text) AS "startingPrice",
         (SELECT storage_ref FROM site_assets WHERE site_id = s.id::text ORDER BY created_at LIMIT 1) AS "thumbnail",
-        (SELECT jsonb_object_agg(dimension, payload) FROM site_metadata WHERE site_id = s.id::text) AS "keyMetadata"
+        (SELECT jsonb_object_agg(dimension, payload) FROM site_metadata WHERE site_id = s.id::text AND ${PRODUCTION_METADATA_WHERE}) AS "keyMetadata"
        FROM billboard_sites s WHERE ${whereSql} ORDER BY s.created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       params,
     );
@@ -119,7 +123,13 @@ export class MarketplaceService {
     const [faces, assets, metadata, rateCards] = await Promise.all([
       this.db.repo(SiteFaceEntity).then((r) => r.find({ where: { siteId } })),
       this.db.repo(SiteAssetEntity).then((r) => r.find({ where: { siteId } })),
-      this.db.repo(SiteMetadataEntity).then((r) => r.find({ where: { siteId } })),
+      // Demo-class rows never reach the buyer detail surface (§1.4.1).
+      this.db.repo(SiteMetadataEntity).then((r) =>
+        r.query(
+          `SELECT ${METADATA_COLUMNS} FROM site_metadata WHERE site_id = $1 AND ${PRODUCTION_METADATA_WHERE} ORDER BY created_at ASC`,
+          [siteId],
+        ),
+      ),
       this.db.repo(RateCardEntity).then((r) => r.find({ where: { siteId } })),
     ]);
     return { ...site, faces, assets, metadata, rateCards };

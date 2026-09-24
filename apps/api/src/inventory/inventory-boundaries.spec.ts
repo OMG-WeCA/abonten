@@ -3,12 +3,14 @@ import { describe, it } from 'node:test';
 import {
   BadRequestException,
   ForbiddenException,
+  NotFoundException,
   PayloadTooLargeException,
 } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import type { ExecutionContext } from '@nestjs/common';
 import type { Reflector } from '@nestjs/core';
 import { DatabaseService } from '../common/database.service';
+import { AuditLogEntity } from '../common/entities/audit-log.entity';
 import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
 import { OrganizationEntity } from '../common/entities/organization.entity';
 import { RateCardEntity } from '../common/entities/rate-card.entity';
@@ -95,6 +97,12 @@ class MemRepo {
 
   async query(sql: string, params: unknown[]): Promise<Row[]> {
     const s = sql.replace(/\s+/g, ' ').trim();
+    if (s.includes('FROM site_metadata WHERE site_id')) {
+      // Production reads exclude demo-class rows (data_class defaults production).
+      return this.table.filter(
+        (r) => r.siteId === params[0] && (r.dataClass ?? 'production') !== 'demo',
+      );
+    }
     if (this.variant === 'plain') throw new Error(`Unexpected query on plain repo: ${s}`);
     if (s.startsWith('INSERT INTO billboard_sites')) {
       if ((this.opts.conflictsPending?.count ?? 0) > 0) {
@@ -132,12 +140,26 @@ class MemRepo {
     if (s.startsWith('UPDATE billboard_sites SET')) {
       const row = this.table.find((r) => r.id === params[params.length - 1]);
       assert.ok(row, 'UPDATE target row missing');
-      if (s.includes("SET status = 'decommissioned'")) row.status = 'decommissioned';
-      else if (s.includes('rejection_reason')) {
-        row.status = params[0];
-        row.rejectionReason = params[1];
-      } else row.status = params[0];
+      // Generic SET parser: assignments are `col = $n`, `col = 'lit'`, `col = NULL`,
+      // or `col = $n::json`; cast suffixes are ignored, literal numbers cast.
+      const setClause = s.slice(s.indexOf('SET') + 3, s.lastIndexOf('WHERE'));
+      for (const pair of setClause.split(', ')) {
+        const m = pair.match(/^\s*([a-z_]+)\s*=\s*(.+?)\s*$/);
+        if (!m) continue;
+        const col = toCamel(m[1]);
+        const rhs = m[2].replace(/::\w+$/, '');
+        if (/^\$\d+$/.test(rhs)) row[col] = params[Number(rhs.slice(1)) - 1];
+        else if (rhs === 'NULL') row[col] = null;
+        else if (/^\d+(\.\d+)?$/.test(rhs)) row[col] = Number(rhs);
+        else row[col] = rhs.replace(/^'|'$/g, '');
+      }
       return [];
+    }
+    if (s.includes('FROM site_metadata WHERE site_id =')) {
+      // Production reads exclude demo-class rows (data_class defaults production).
+      return this.table.filter(
+        (r) => r.siteId === params[0] && (r.dataClass ?? 'production') !== 'demo',
+      );
     }
     throw new Error(`Unexpected query: ${s}`);
   }
@@ -184,21 +206,29 @@ function buildFixture(opts: FixtureOptions = {}) {
     },
   ];
   const assets: Row[] = (opts.assets ?? []).map((a, i) => ({ id: `asset-${i + 1}`, ...a }));
+  const metadata: Row[] = [];
+  const audit: Row[] = [];
   const memberships = opts.memberships ?? [
     { userId: 'partner-user', organizationId: 'org-partner', role: 'inventory_manager' },
   ];
-  const repoFor = async (target: unknown) => {
+  const siteExecutorOpts = {
+    replaysToSkip: { count: opts.simulateRace ? 1 : 0 },
+    conflictsPending: { count: opts.simulateRace ? 1 : 0 },
+    assetTable: assets,
+  };
+  // One site-repo instance per fixture so the race/replay counters stay
+  // consistent across the replay SELECT → conflicting INSERT → catch-replay
+  // chain within a single createSite call.
+  const siteRepo = new MemRepo(sites, 'site', siteExecutorOpts);
+  // Sync: TypeORM's EntityManager.getRepository is synchronous.
+  const repoFor = (target: unknown) => {
     if (target === BillboardSiteEntity) {
-      return new MemRepo(sites, 'site', {
-        replaysToSkip: { count: opts.simulateRace ? 1 : 0 },
-        conflictsPending: { count: opts.simulateRace ? 1 : 0 },
-        assetTable: assets,
-      });
+      return siteRepo;
     }
     if (target === SiteAssetEntity) return new MemRepo(assets, 'asset');
-    if (target === SiteFaceEntity || target === SiteMetadataEntity || target === RateCardEntity) {
-      return new MemRepo([], 'plain');
-    }
+    if (target === SiteFaceEntity || target === RateCardEntity) return new MemRepo([], 'plain');
+    if (target === SiteMetadataEntity) return new MemRepo(metadata, 'plain');
+    if (target === AuditLogEntity) return new MemRepo(audit, 'plain');
     if (target === MembershipEntity) {
       return {
         async findOne({ where }: { where: Record<string, unknown> }) {
@@ -217,10 +247,39 @@ function buildFixture(opts: FixtureOptions = {}) {
     }
     throw new Error('Unexpected repository');
   };
-  const db = { repo: repoFor } as unknown as DatabaseService;
+  // Transaction support: mutations + their audit rows commit together; a throw
+  // rolls every table back to the pre-transaction snapshot. Site SQL runs
+  // through the same hoisted siteRepo so race/replay counters stay consistent.
+  const transaction = async (work: (manager: unknown) => Promise<unknown>) => {
+    const snap = {
+      sites: JSON.parse(JSON.stringify(sites)) as Row[],
+      assets: JSON.parse(JSON.stringify(assets)) as Row[],
+      metadata: JSON.parse(JSON.stringify(metadata)) as Row[],
+      audit: JSON.parse(JSON.stringify(audit)) as Row[],
+    };
+    const manager = {
+      query: (sql: string, params: unknown[]) => {
+        if (sql.includes('billboard_sites')) return siteRepo.query(sql, params);
+        if (sql.includes('site_assets')) return new MemRepo(assets, 'asset').query(sql, params);
+        if (sql.includes('site_metadata')) return new MemRepo(metadata, 'plain').query(sql, params);
+        throw new Error(`Unexpected manager query: ${sql}`);
+      },
+      getRepository: (target: unknown) => repoFor(target),
+    };
+    try {
+      return await work(manager);
+    } catch (err) {
+      sites.splice(0, sites.length, ...snap.sites);
+      assets.splice(0, assets.length, ...snap.assets);
+      metadata.splice(0, metadata.length, ...snap.metadata);
+      audit.splice(0, audit.length, ...snap.audit);
+      throw err;
+    }
+  };
+  const db = { repo: async (t: unknown) => repoFor(t), transaction } as unknown as DatabaseService;
   const storage = new FakeStorage();
   const service = new InventoryService(db, new CapabilityResolverService(), storage as unknown as StorageService);
-  return { service, sites, assets, storage };
+  return { service, sites, assets, metadata, audit, storage };
 }
 
 const USER: AuthenticatedUser = { userId: 'partner-user', email: 'kwame@example.test', sessionVersion: 0 };
@@ -318,7 +377,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
     it('rejects a submit without a front-on photo with all server-side problems', async () => {
       const { service } = buildFixture({ site: { format: null, width: 0, latitude: 95, longitude: 200 } });
       await assert.rejects(
-        () => service.submitSite('org-partner', 'site-1'),
+        () => service.submitSite(USER, 'org-partner', 'site-1'),
         (err: unknown) => {
           assert.ok(err instanceof BadRequestException);
           const msg = (err as BadRequestException).message;
@@ -339,7 +398,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
       });
       assets.length = 0; // photo disappeared after submit (the drift the red team probed)
       await assert.rejects(
-        () => service.approveSite('site-1'),
+        () => service.approveSite(USER, 'org-partner', 'site-1'),
         (err: unknown) => {
           assert.ok(err instanceof BadRequestException);
           assert.match((err as BadRequestException).message, /front-on reference photo/);
@@ -352,9 +411,9 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
       const { service, sites } = buildFixture({
         assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
       });
-      await service.submitSite('org-partner', 'site-1');
+      await service.submitSite(USER, 'org-partner', 'site-1');
       assert.equal(sites[0].status, 'pending_review');
-      const approved = await service.approveSite('site-1');
+      const approved = await service.approveSite(USER, 'org-partner', 'site-1');
       assert.equal(approved.status, 'listed');
       assert.equal(sites[0].status, 'listed');
     });
@@ -364,7 +423,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
     it('rejects an unknown kind before storing anything', async () => {
       const { service, storage } = buildFixture();
       await assert.rejects(
-        () => service.addAsset('org-partner', 'site-1', 'selfie', png()),
+        () => service.addAsset(USER, 'org-partner', 'site-1', 'selfie', png()),
         (err: unknown) => {
           assert.ok(err instanceof BadRequestException);
           assert.match((err as BadRequestException).message, /Unknown photo kind/);
@@ -377,14 +436,14 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
     it('rejects a photo larger than 10 MB with 413', async () => {
       const { service, storage } = buildFixture();
       const big = { ...png(), buffer: Buffer.alloc(PHOTO_MAX_BYTES + 1) };
-      await assert.rejects(() => service.addAsset('org-partner', 'site-1', 'front', big), PayloadTooLargeException);
+      await assert.rejects(() => service.addAsset(USER, 'org-partner', 'site-1', 'front', big, new Date('2026-08-01')), PayloadTooLargeException);
       assert.equal(storage.stored.length, 0);
     });
 
     it('rejects non-image MIME and PNG files with a forged signature', async () => {
       const { service, storage } = buildFixture();
       await assert.rejects(
-        () => service.addAsset('org-partner', 'site-1', 'front', { ...png(), mimetype: 'text/plain' }),
+        () => service.addAsset(USER, 'org-partner', 'site-1', 'front', { ...png(), mimetype: 'text/plain' }, new Date('2026-08-01')),
         (err: unknown) => {
           assert.ok(err instanceof BadRequestException);
           assert.match((err as BadRequestException).message, /JPEG, PNG, or WebP/);
@@ -392,13 +451,13 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
         },
       );
       const forged = { ...png(), buffer: Buffer.alloc(24) }; // claims image/png, wrong magic bytes
-      await assert.rejects(() => service.addAsset('org-partner', 'site-1', 'front', forged), BadRequestException);
+      await assert.rejects(() => service.addAsset(USER, 'org-partner', 'site-1', 'front', forged, new Date('2026-08-01')), BadRequestException);
       assert.equal(storage.stored.length, 0);
     });
 
     it('checks site ownership before touching storage', async () => {
       const { service, storage } = buildFixture();
-      await assert.rejects(() => service.addAsset('org-other', 'site-1', 'front', png()), ForbiddenException);
+      await assert.rejects(() => service.addAsset(USER, 'org-other', 'site-1', 'front', png(), new Date('2026-08-01')), ForbiddenException);
       assert.equal(storage.stored.length, 0);
     });
 
@@ -426,12 +485,12 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
       } as unknown as DatabaseService;
       const storage = new FakeStorage();
       const broken = new InventoryService(brokenDb, new CapabilityResolverService(), storage as unknown as StorageService);
-      await assert.rejects(() => broken.addAsset('org-partner', 'site-1', 'front', png()));
+      await assert.rejects(() => broken.addAsset(USER, 'org-partner', 'site-1', 'front', png(), new Date('2026-08-01')));
       assert.deepEqual(storage.removed, storage.stored.map((s) => s.ref));
       assert.equal(storage.stored.length, 1);
 
       const ok = buildFixture();
-      const asset = await ok.service.addAsset('org-partner', 'site-1', 'front', png());
+      const asset = await ok.service.addAsset(USER, 'org-partner', 'site-1', 'front', png(), new Date('2026-08-01'));
       assert.equal(asset.kind, 'front');
       assert.match(String(asset.storageRef), /^assets\/site-1\//);
       assert.equal(ok.storage.stored.length, 1);
@@ -445,7 +504,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
         assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
       });
       await assert.rejects(
-        () => service.deleteAsset('org-partner', 'site-1', 'asset-1'),
+        () => service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-1'),
         (err: unknown) => {
           assert.ok(err instanceof ForbiddenException);
           assert.match((err as ForbiddenException).message, /upload a replacement front-on photo/);
@@ -462,7 +521,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
           site: { status },
           assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
         });
-        await assert.rejects(() => service.deleteAsset('org-partner', 'site-1', 'asset-1'), ForbiddenException);
+        await assert.rejects(() => service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-1'), ForbiddenException);
       }
     });
 
@@ -474,7 +533,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
           { siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/new.png' },
         ],
       });
-      const res = await replacement.service.deleteAsset('org-partner', 'site-1', 'asset-1');
+      const res = await replacement.service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-1');
       assert.equal(res.deleted, true);
       assert.equal(replacement.assets.length, 1);
       assert.deepEqual(replacement.storage.removed, ['assets/site-1/old.png']);
@@ -482,8 +541,37 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
       const draft = buildFixture({
         assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
       });
-      await draft.service.deleteAsset('org-partner', 'site-1', 'asset-1');
+      await draft.service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-1');
       assert.equal(draft.assets.length, 0);
+    });
+
+    it('403s a cross-tenant INVENTORY_EDIT holder on any asset delete (marketplace-visible ids)', async () => {
+      // The attack path: another org's LISTED site is visible through the
+      // marketplace with its asset ids; deletion must still refuse, including
+      // the non-front kinds the last-front-photo guard never protects.
+      const { service, assets, storage, audit } = buildFixture({
+        site: { status: 'listed' },
+        assets: [{ siteId: 'site-1', kind: 'context', storageRef: 'assets/site-1/context.png' }],
+      });
+      await assert.rejects(
+        () => service.deleteAsset(OTHER_TENANT, 'org-other', 'site-1', 'asset-1'),
+        ForbiddenException,
+      );
+      assert.equal(assets.length, 1);
+      assert.deepEqual(storage.removed, []);
+      assert.equal(audit.length, 0);
+    });
+
+    it('404s an unknown site id without writing an audit row', async () => {
+      const { service, assets, audit } = buildFixture({
+        assets: [{ siteId: 'site-1', kind: 'context', storageRef: 'assets/site-1/context.png' }],
+      });
+      await assert.rejects(
+        () => service.deleteAsset(USER, 'org-partner', 'site-nope', 'asset-1'),
+        NotFoundException,
+      );
+      assert.equal(assets.length, 1);
+      assert.equal(audit.length, 0);
     });
   });
 
@@ -550,7 +638,8 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
 
     it('admits a MARKETPLACE_VIEW holder at the guard; the service decides by status', async () => {
       const memberships = [{ userId: 'planner-user', organizationId: 'org-agency', role: 'planner' }];
-      const repoFor = async (target: unknown) => {
+      // Sync: TypeORM's EntityManager.getRepository is synchronous.
+  const repoFor = (target: unknown) => {
         if (target === MembershipEntity) {
           return {
             async findOne({ where }: { where: Record<string, unknown> }) {
@@ -572,7 +661,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
             key === REQUIRE_ANY_CAPABILITIES_KEY ? [Capability.MARKETPLACE_VIEW] : undefined,
         } as unknown as Reflector,
         new CapabilityResolverService(),
-        { repo: repoFor } as unknown as DatabaseService,
+        { repo: async (t: unknown) => repoFor(t) } as unknown as DatabaseService,
       );
       const context = {
         getHandler: () => () => undefined,

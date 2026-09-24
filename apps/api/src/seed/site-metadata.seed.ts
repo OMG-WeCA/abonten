@@ -119,7 +119,9 @@ const METADATA = [
 export async function seedSiteMetadata(ds: DataSource): Promise<void> {
   const repo = ds.getRepository(SiteMetadataEntity);
   for (const m of METADATA) {
-    await repo.save(repo.create(m));
+    // Seeded enrichment is demo showcase data (execution plan §1.4.1): the
+    // enforceable data class keeps it out of production reads/model inputs.
+    await repo.save(repo.create({ ...m, dataClass: 'demo', verification: 'unverified' }));
   }
   console.log(`  site metadata: ${METADATA.length}`);
 }

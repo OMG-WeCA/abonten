@@ -79,6 +79,13 @@ export interface SiteFace {
   units: string;
   printableArea?: string | null;
   bookable: boolean;
+  /** Digital-face attributes (SPEC §5.1): collected for digital_led faces. */
+  pixelWidth?: number | null;
+  pixelHeight?: number | null;
+  spotLengthSeconds?: number | null;
+  loopLengthSeconds?: number | null;
+  spotsPerLoop?: number | null;
+  proofOfPlay?: boolean | null;
 }
 
 export interface SiteAsset {
@@ -101,6 +108,8 @@ export interface SiteMetadata {
   confidence?: number | null;
   collectedAt?: string | null;
   expiresAt?: string | null;
+  verification?: string | null;
+  dataClass?: string | null;
 }
 
 export interface RateCard {
@@ -119,19 +128,45 @@ export interface SiteDraftInput {
   code?: string;
   type?: string;
   format: string;
+  subFormat?: string;
   latitude: number;
   longitude: number;
   address?: string;
   city: string;
   region?: string;
   country: string;
+  marketId?: string;
   width: number;
   height: number;
   units?: string;
   orientationDeg?: number;
+  viewingDistance?: number;
+  elevation?: number;
   illuminationType: string;
   illuminationHours?: string;
   description?: string;
+  permitRef?: string;
+  permitExpiresAt?: string;
+  /** Provenance for hand-entered structure values (SPEC §5.1 trust contract 3). */
+  structureProvenance?: { source: string; method: string; collectedAt?: string };
+}
+
+/** Digital-face attributes sent with a face create/update. */
+export interface DigitalFaceAttrs {
+  pixelWidth?: number;
+  pixelHeight?: number;
+  spotLengthSeconds?: number;
+  loopLengthSeconds?: number;
+  spotsPerLoop?: number;
+  proofOfPlay?: boolean;
+}
+
+/** Seasonal pricing rules for a rate card (SPEC §6.3 seasonal_rules). */
+export interface SeasonalRule {
+  label: string;
+  from: string;
+  to: string;
+  multiplier: number;
 }
 
 function orgHeaders(orgId: string | undefined): Record<string, string> {
@@ -204,13 +239,28 @@ export function createSite(
 
 export type SitePatch = Omit<
   Partial<SiteDraftInput>,
-  'orientationDeg' | 'illuminationHours' | 'address' | 'region' | 'description'
+  | 'orientationDeg'
+  | 'viewingDistance'
+  | 'elevation'
+  | 'illuminationHours'
+  | 'address'
+  | 'region'
+  | 'description'
+  | 'permitRef'
+  | 'permitExpiresAt'
+  | 'subFormat'
 > & {
   orientationDeg?: number | null;
+  viewingDistance?: number | null;
+  elevation?: number | null;
   illuminationHours?: string | null;
   address?: string | null;
   region?: string | null;
   description?: string | null;
+  permitRef?: string | null;
+  permitExpiresAt?: string | null;
+  subFormat?: string | null;
+  structureProvenance?: SiteDraftInput['structureProvenance'];
 };
 
 export function updateSite(
@@ -242,9 +292,33 @@ export function rejectSite(
 export function addFace(
   orgId: string | undefined,
   siteId: string,
-  face: { faceLabel: string; width: number; height: number; area: number; units: string; bookable: boolean },
+  face: {
+    faceLabel: string;
+    width: number;
+    height: number;
+    area: number;
+    units: string;
+    bookable: boolean;
+    printableArea?: string;
+  } & DigitalFaceAttrs,
 ): Promise<SiteFace> {
   return request(`/sites/${siteId}/faces`, { method: 'POST', body: JSON.stringify(face) }, orgId);
+}
+
+export function updateFace(
+  orgId: string | undefined,
+  faceId: string,
+  patch: Partial<{
+    faceLabel: string;
+    width: number;
+    height: number;
+    area: number;
+    units: string;
+    printableArea: string | null;
+    bookable: boolean;
+  }> & DigitalFaceAttrs,
+): Promise<SiteFace> {
+  return request(`/faces/${faceId}`, { method: 'PATCH', body: JSON.stringify(patch) }, orgId);
 }
 
 export function removeFace(orgId: string | undefined, faceId: string): Promise<void> {
@@ -258,10 +332,12 @@ export function uploadAsset(
   kind: string,
   file: File,
   signal?: AbortSignal,
+  capturedAt?: string,
 ): Promise<SiteAsset> {
   const form = new FormData();
   form.append('file', file);
   form.append('kind', kind);
+  if (capturedAt) form.append('capturedAt', capturedAt);
   // Photos up to PHOTO_MAX_BYTES ride on mobile uplinks; give them a long budget.
   return request(
     `/sites/${siteId}/assets`,
@@ -282,6 +358,7 @@ export function addRateCard(
     currency: string;
     rates: { perDay?: number; perWeek?: number; perMonth?: number };
     effectiveFrom: string;
+    seasonalRules?: { rules: SeasonalRule[] };
   },
 ): Promise<RateCard> {
   return request(`/sites/${siteId}/rate-cards`, { method: 'POST', body: JSON.stringify(card) }, orgId);
@@ -297,6 +374,22 @@ export function endRateCard(
 
 export function listSiteRateCards(orgId: string, siteId: string): Promise<RateCard[]> {
   return request(`/sites/${encodeURIComponent(siteId)}/rate-cards`, { method: 'GET' }, orgId);
+}
+
+export interface Market {
+  id: string;
+  name: string;
+  country: string;
+}
+
+/** Read-only market/zone reference list (SPEC §5.1 "market/zone"). */
+export function listMarkets(orgId: string | undefined): Promise<{ items: Market[] }> {
+  // apiJson resolves the path against the API base itself; do not pre-wrap
+  // with apiUrl or the URL becomes BASE + 'https://BASE/api/...'.
+  return apiJson<{ items: Market[] }>('/api/markets', {
+    method: 'GET',
+    headers: orgHeaders(orgId),
+  });
 }
 
 export interface ExchangeSnapshot { source: string; asOf: string; rates: Record<string, number> }

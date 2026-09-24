@@ -58,7 +58,7 @@ export class InventoryController {
   @Post('sites')
   @ApiOperation({ summary: 'Create a new billboard site (media partner)' })
   async createSite(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Body() dto: CreateSiteDto) {
-    return this.service.createSite(orgContext(req)!, dto);
+    return this.service.createSite(orgContext(req)!, dto, { userId: user.userId, orgId: orgContext(req) });
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
@@ -89,48 +89,48 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_DELETE)
   @Delete('sites/:id')
   @ApiOperation({ summary: 'Soft-delete a site (→ decommissioned)' })
-  async deleteSite(@Req() req: AuthReq, @Param('id') id: string) {
-    return this.service.deleteSite(orgContext(req)!, id);
+  async deleteSite(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('id') id: string) {
+    return this.service.deleteSite(user, orgContext(req)!, id);
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.INVENTORY_EDIT)
   @Post('sites/:id/submit')
   @ApiOperation({ summary: 'Submit a site for review (draft → pending_review)' })
-  async submitSite(@Req() req: AuthReq, @Param('id') id: string) {
-    return this.service.submitSite(orgContext(req)!, id);
+  async submitSite(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('id') id: string) {
+    return this.service.submitSite(user, orgContext(req)!, id);
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.PLATFORM_ADMIN)
   @Post('sites/:id/approve')
   @ApiOperation({ summary: 'Approve a site (platform admin; → listed)' })
-  async approveSite(@Param('id') id: string) {
-    return this.service.approveSite(id);
+  async approveSite(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('id') id: string) {
+    return this.service.approveSite(user, orgContext(req), id);
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.PLATFORM_ADMIN)
   @Post('sites/:id/reject')
   @ApiOperation({ summary: 'Reject a site (platform admin; → draft with reason)' })
-  async rejectSite(@Param('id') id: string, @Body() dto: RejectSiteDto) {
-    return this.service.rejectSite(id, dto.reason);
+  async rejectSite(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('id') id: string, @Body() dto: RejectSiteDto) {
+    return this.service.rejectSite(user, orgContext(req), id, dto.reason);
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.PLATFORM_ADMIN)
   @Post('sites/:id/suspend')
   @ApiOperation({ summary: 'Suspend a site (platform admin)' })
-  async suspendSite(@Param('id') id: string) {
-    return this.service.suspendSite(id);
+  async suspendSite(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('id') id: string) {
+    return this.service.suspendSite(user, orgContext(req), id);
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.PLATFORM_ADMIN)
   @Post('sites/:id/unsuspend')
   @ApiOperation({ summary: 'Reactivate a suspended site (platform admin)' })
-  async unsuspendSite(@Param('id') id: string) {
-    return this.service.unsuspendSite(id);
+  async unsuspendSite(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('id') id: string) {
+    return this.service.unsuspendSite(user, orgContext(req), id);
   }
 
   // --------------------------------------------------------------- faces
@@ -138,8 +138,8 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_CREATE)
   @Post('sites/:siteId/faces')
   @ApiOperation({ summary: 'Add a face to a site' })
-  async addFace(@Req() req: AuthReq, @Param('siteId') siteId: string, @Body() dto: CreateFaceDto) {
-    return this.service.addFace(orgContext(req)!, siteId, dto);
+  async addFace(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('siteId') siteId: string, @Body() dto: CreateFaceDto) {
+    return this.service.addFace(user, orgContext(req)!, siteId, dto);
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
@@ -155,16 +155,16 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_EDIT)
   @Patch('faces/:faceId')
   @ApiOperation({ summary: 'Update a face' })
-  async updateFace(@Req() req: AuthReq, @Param('faceId') faceId: string, @Body() dto: UpdateFaceDto) {
-    return this.service.updateFace(orgContext(req)!, faceId, dto);
+  async updateFace(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('faceId') faceId: string, @Body() dto: UpdateFaceDto) {
+    return this.service.updateFace(user, orgContext(req)!, faceId, dto);
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.INVENTORY_DELETE)
   @Delete('faces/:faceId')
   @ApiOperation({ summary: 'Remove a face' })
-  async removeFace(@Req() req: AuthReq, @Param('faceId') faceId: string) {
-    return this.service.removeFace(orgContext(req)!, faceId);
+  async removeFace(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('faceId') faceId: string) {
+    return this.service.removeFace(user, orgContext(req)!, faceId);
   }
 
   // --------------------------------------------------------------- assets
@@ -189,6 +189,7 @@ export class InventoryController {
     }),
   )
   async uploadAsset(
+    @CurrentUser() user: AuthenticatedUser,
     @Req() req: AuthReq,
     @Param('siteId', new ParseUUIDPipe()) siteId: string,
     @UploadedFile() file: Express.Multer.File,
@@ -197,6 +198,7 @@ export class InventoryController {
   ) {
     if (!file) throw new BadRequestException('No file uploaded');
     return this.service.addAsset(
+      user,
       orgContext(req)!,
       siteId,
       kind ?? 'front',
@@ -234,8 +236,8 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_EDIT)
   @Delete('sites/:siteId/assets/:assetId')
   @ApiOperation({ summary: 'Delete an asset (and its stored object)' })
-  async deleteAsset(@Req() req: AuthReq, @Param('siteId') siteId: string, @Param('assetId') assetId: string) {
-    return this.service.deleteAsset(orgContext(req)!, siteId, assetId);
+  async deleteAsset(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('siteId') siteId: string, @Param('assetId') assetId: string) {
+    return this.service.deleteAsset(user, orgContext(req)!, siteId, assetId);
   }
 
   // --------------------------------------------------------------- metadata
@@ -243,8 +245,8 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_EDIT)
   @Post('sites/:siteId/metadata')
   @ApiOperation({ summary: 'Add enrichment data to a site' })
-  async addMetadata(@Req() req: AuthReq, @Param('siteId') siteId: string, @Body() dto: CreateMetadataDto) {
-    return this.service.addMetadata(orgContext(req)!, siteId, dto);
+  async addMetadata(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('siteId') siteId: string, @Body() dto: CreateMetadataDto) {
+    return this.service.addMetadata(user, orgContext(req)!, siteId, dto);
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
@@ -261,11 +263,12 @@ export class InventoryController {
   @Patch('sites/:siteId/metadata/:metadataId')
   @ApiOperation({ summary: 'Update an enrichment record' })
   async updateMetadata(
+    @CurrentUser() user: AuthenticatedUser,
     @Req() req: AuthReq,
     @Param('metadataId') metadataId: string,
     @Body() dto: UpdateMetadataDto,
   ) {
-    return this.service.updateMetadata(orgContext(req)!, metadataId, dto);
+    return this.service.updateMetadata(user, orgContext(req)!, metadataId, dto);
   }
 
   // --------------------------------------------------------------- rate cards
@@ -273,8 +276,8 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_EDIT)
   @Post('sites/:siteId/rate-cards')
   @ApiOperation({ summary: 'Create a rate card for a site (media partner)' })
-  async createRateCard(@Req() req: AuthReq, @Param('siteId') siteId: string, @Body() dto: CreateRateCardDto) {
-    return this.service.createRateCard(orgContext(req)!, siteId, dto);
+  async createRateCard(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('siteId') siteId: string, @Body() dto: CreateRateCardDto) {
+    return this.service.createRateCard(user, orgContext(req)!, siteId, dto);
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
@@ -290,7 +293,7 @@ export class InventoryController {
   @RequireCapabilities(Capability.INVENTORY_EDIT)
   @Patch('rate-cards/:rateCardId')
   @ApiOperation({ summary: 'Update a rate card' })
-  async updateRateCard(@Req() req: AuthReq, @Param('rateCardId') rateCardId: string, @Body() dto: UpdateRateCardDto) {
-    return this.service.updateRateCard(orgContext(req)!, rateCardId, dto);
+  async updateRateCard(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('rateCardId') rateCardId: string, @Body() dto: UpdateRateCardDto) {
+    return this.service.updateRateCard(user, orgContext(req)!, rateCardId, dto);
   }
 }

@@ -24,7 +24,11 @@
     "src/lib/sites-access.ts",
     "src/lib/sites-access.spec.ts",
     "src/lib/portfolio-value.ts",
-    "src/lib/portfolio-value.spec.ts"
+    "src/lib/portfolio-value.spec.ts",
+    "src/lib/sites-plausibility.ts",
+    "src/lib/sites-trust.spec.ts",
+    "src/lib/gallery.ts",
+    "src/lib/map-position.ts"
   ],
   "exclude": []
 }
