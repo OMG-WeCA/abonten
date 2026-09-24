@@ -20,6 +20,7 @@ import { WorkspaceFrame } from '../../../components/account/WorkspaceFrame';
 import { useAuth } from '../../../components/auth/AuthProvider';
 import { Lightbox, lightboxAlt, type LightboxAsset } from '../../../components/sites/Lightbox';
 import { SiteMapView } from '../../../components/sites/SiteMap';
+import { PartnerAvailability } from '../../../components/sites/PartnerAvailability';
 import {
   AuthAssetThumb,
   Field,
@@ -43,6 +44,7 @@ import {
   updateFace,
   updateSite,
   uploadAsset,
+  withdrawFutureRateCard,
   type Market,
   type RateCard,
   type SeasonalRule,
@@ -106,11 +108,20 @@ function DetailInner() {
   const detailsEditable = site !== null && canEdit;
   const canDelete = capabilities.includes('INVENTORY_DELETE');
   const hasFrontPhoto = site?.assets.some((asset) => asset.kind === 'front') ?? false;
-  const hasFace = (site?.faces.length ?? 0) > 0;
-  const hasLiveRate = site?.rateCards.some((card) => !card.effectiveTo) ?? false;
-  // SPEC §7.1 step 2 requires coordinates, format, dimensions and a reference
-  // image to submit; faces and rate cards are expected next steps, not blockers.
-  const canSubmitAll = hasFrontPhoto;
+  const today = new Date().toISOString().slice(0, 10);
+  const bookableFaces = site?.faces.filter((face) => face.bookable) ?? [];
+  const hasFace = bookableFaces.length > 0;
+  const digitalReady = site?.format !== 'digital_led' || bookableFaces.every((face) =>
+    Boolean(face.pixelWidth && face.pixelHeight && face.spotLengthSeconds && face.loopLengthSeconds && face.spotsPerLoop)
+  );
+  const hasLiveRate = hasFace && bookableFaces.every((face) => site?.rateCards.some((card) =>
+    (!card.faceId || card.faceId === face.id) &&
+    card.effectiveFrom.slice(0, 10) <= today &&
+    (!card.effectiveTo || card.effectiveTo.slice(0, 10) >= today) &&
+    Object.values(card.rates).some((value) => typeof value === 'number' && value > 0)
+  ));
+  const permitCurrent = !site?.permitExpiresAt || site.permitExpiresAt.slice(0, 10) >= today;
+  const canSubmitAll = hasFrontPhoto && hasFace && hasLiveRate && digitalReady && permitCurrent;
   const rejected = site?.status === 'draft' && Boolean(site?.rejectionReason);
 
   const run = async (key: string, action: () => Promise<void>) => {
@@ -205,11 +216,23 @@ function DetailInner() {
               {copy.detail.underReview}
             </p>
           )}
-          {site.status === 'listed' && (
+          {site.status === 'listed' && canSubmitAll && (
             <p className="mt-4 flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm font-medium text-success">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
               {copy.detail.listedNote}
             </p>
+          )}
+          {site.status === 'listed' && !canSubmitAll && (
+            <div role="alert" className="mt-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+              <p>{copy.detail.bookingSetupNeeded}</p>
+              <ul className="mt-2 list-inside list-disc space-y-1">
+                {!hasFrontPhoto && <li>{copy.detail.frontRequired}</li>}
+                {!hasFace && <li>{copy.detail.faceRequired}</li>}
+                {hasFace && !hasLiveRate && <li>{copy.detail.rateRequired}</li>}
+                {hasFace && !digitalReady && <li>{copy.detail.digitalRequired}</li>}
+                {!permitCurrent && <li>{copy.detail.permitExpired}</li>}
+              </ul>
+            </div>
           )}
 
           {site.status === 'draft' && canEdit && (
@@ -254,9 +277,10 @@ function DetailInner() {
                   {copy.detail.frontRequired}
                 </p>
               )}
-              {hasFrontPhoto && (!hasFace || !hasLiveRate) && (
-                <p className="text-xs text-muted">{copy.detail.advisorySuggestion}</p>
-              )}
+              {hasFrontPhoto && !hasFace && <p className="text-xs text-warning">{copy.detail.faceRequired}</p>}
+              {hasFrontPhoto && hasFace && !hasLiveRate && <p className="text-xs text-warning">{copy.detail.rateRequired}</p>}
+              {hasFrontPhoto && hasFace && !digitalReady && <p className="text-xs text-warning">{copy.detail.digitalRequired}</p>}
+              {!permitCurrent && <p className="text-xs text-warning">{copy.detail.permitExpired}</p>}
             </div>
           )}
 
@@ -310,6 +334,12 @@ function DetailInner() {
               busy={busy}
               reload={reload}
               run={run}
+            />
+            <PartnerAvailability
+              orgId={orgId}
+              faces={site.faces}
+              editable={canEdit}
+              locale={locale}
             />
             <MetadataSection site={site} locale={locale} copy={copy} />
             <MapSection
@@ -1114,6 +1144,9 @@ function FacesSection({
     height: '',
     units: 'm',
     printableArea: '',
+    bleedMm: '',
+    substrate: '',
+    fileRequirements: '',
     bookable: true,
     pixelWidth: '',
     pixelHeight: '',
@@ -1147,6 +1180,10 @@ function FacesSection({
 
   const validateFace = (): boolean => {
     if (!form.faceLabel.trim() || faceWidth === null || faceHeight === null || area <= 0) return false;
+    if (form.bleedMm.trim() && (parseDecimal(form.bleedMm) === null || parseDecimal(form.bleedMm)! < 0)) {
+      setFormError(copy.detail.bleedInvalid);
+      return false;
+    }
     if (isDigital) {
       const numeric = [form.pixelWidth, form.pixelHeight, form.spotLengthSeconds, form.loopLengthSeconds, form.spotsPerLoop];
       const bad = numeric.some((raw) => raw.trim() !== '' && (parseDecimal(raw) === null || parseDecimal(raw)! <= 0));
@@ -1171,6 +1208,9 @@ function FacesSection({
         units: form.units,
         bookable: form.bookable,
         ...(form.printableArea.trim() ? { printableArea: form.printableArea.trim() } : {}),
+        ...(form.bleedMm.trim() ? { bleedMm: parseDecimal(form.bleedMm)! } : {}),
+        ...(form.substrate.trim() ? { substrate: form.substrate.trim() } : {}),
+        ...(form.fileRequirements.trim() ? { fileRequirements: form.fileRequirements.trim() } : {}),
         ...digitalValues(),
       });
       setForm({ ...emptyForm, units: form.units });
@@ -1191,6 +1231,9 @@ function FacesSection({
         units: form.units,
         bookable: form.bookable,
         printableArea: form.printableArea.trim() || null,
+        bleedMm: form.bleedMm.trim() ? parseDecimal(form.bleedMm)! : null,
+        substrate: form.substrate.trim() || null,
+        fileRequirements: form.fileRequirements.trim() || null,
         ...digitalValues(),
       });
       setEditingId(null);
@@ -1206,6 +1249,9 @@ function FacesSection({
       height: String(face.height),
       units: face.units,
       printableArea: face.printableArea ?? '',
+      bleedMm: face.bleedMm != null ? String(face.bleedMm) : '',
+      substrate: face.substrate ?? '',
+      fileRequirements: face.fileRequirements ?? '',
       bookable: face.bookable,
       pixelWidth: face.pixelWidth != null ? String(face.pixelWidth) : '',
       pixelHeight: face.pixelHeight != null ? String(face.pixelHeight) : '',
@@ -1272,6 +1318,15 @@ function FacesSection({
                         ? ` · ${copy.detail.spotLength} ${face.spotLengthSeconds}s / ${copy.detail.loopLength} ${face.loopLengthSeconds ?? '—'}s`
                         : ''}
                     </p>
+                    {(face.bleedMm != null || face.substrate || face.fileRequirements) && (
+                      <p className="mt-1 text-xs text-muted">
+                        {[
+                          face.bleedMm != null ? `${copy.detail.bleed} ${face.bleedMm} mm` : '',
+                          face.substrate ? `${copy.detail.substrate}: ${face.substrate}` : '',
+                          face.fileRequirements ? `${copy.detail.fileRequirements}: ${face.fileRequirements}` : '',
+                        ].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     {editable && (
@@ -1344,6 +1399,9 @@ function FaceForm({
     height: string;
     units: string;
     printableArea: string;
+    bleedMm: string;
+    substrate: string;
+    fileRequirements: string;
     bookable: boolean;
     pixelWidth: string;
     pixelHeight: string;
@@ -1417,6 +1475,20 @@ function FaceForm({
             maxLength={60}
             className={inputClass}
           />
+        </Field>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label={copy.detail.bleed} htmlFor="faceBleed" hint={copy.detail.bleedHint}>
+          <input id="faceBleed" type="text" inputMode="decimal" value={form.bleedMm}
+            onChange={(event) => setForm({ ...form, bleedMm: event.target.value })} className={inputClass} />
+        </Field>
+        <Field label={copy.detail.substrate} htmlFor="faceSubstrate">
+          <input id="faceSubstrate" value={form.substrate}
+            onChange={(event) => setForm({ ...form, substrate: event.target.value })} className={inputClass} />
+        </Field>
+        <Field label={copy.detail.fileRequirements} htmlFor="faceFiles">
+          <input id="faceFiles" value={form.fileRequirements}
+            onChange={(event) => setForm({ ...form, fileRequirements: event.target.value })} className={inputClass} />
         </Field>
       </div>
       <label className="inline-flex min-h-8 items-center gap-2 text-sm font-semibold">
@@ -1548,7 +1620,9 @@ function RatesSection({
 }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({
-    currency: 'NGN',
+    currency: site.country === 'Ghana' ? 'GHS' : site.country === 'Cameroon' ? 'XAF' : 'NGN',
+    faceId: '',
+    minBookingDays: '1',
     perDay: '',
     perWeek: '',
     perMonth: '',
@@ -1589,8 +1663,15 @@ function RatesSection({
       setFormError(copy.detail.rateHint);
       return;
     }
+    const minBookingDays = Number(form.minBookingDays);
+    if (!Number.isInteger(minBookingDays) || minBookingDays < 1) {
+      setFormError(copy.detail.minBookingInvalid);
+      return;
+    }
     void run('rate', async () => {
       await addRateCard(orgId, site.id, {
+        ...(form.faceId ? { faceId: form.faceId } : {}),
+        minBookingDays,
         currency: form.currency,
         rates: parsed,
         effectiveFrom: form.effectiveFrom,
@@ -1633,7 +1714,19 @@ function RatesSection({
                   <Banknote className="h-4 w-4 text-primary" />
                   {card.currency}
                 </p>
-                {editable && !card.effectiveTo && (
+                {editable && card.effectiveFrom.slice(0, 10) > new Date().toISOString().slice(0, 10) ? (
+                  <button type="button" disabled={busy === `rate-withdraw-${card.id}`}
+                    onClick={() => {
+                      if (!window.confirm(withLabel(copy.detail.rateWithdrawConfirm, card.currency))) return;
+                      void run(`rate-withdraw-${card.id}`, async () => {
+                        await withdrawFutureRateCard(orgId, card.id);
+                        await reload();
+                      });
+                    }}
+                    className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-muted transition hover:text-foreground disabled:opacity-60">
+                    <Ban className="h-3 w-3" />{copy.detail.rateWithdraw}
+                  </button>
+                ) : editable && !card.effectiveTo && (
                   <button
                     type="button"
                     disabled={busy === `rate-end-${card.id}`}
@@ -1651,6 +1744,12 @@ function RatesSection({
                   </button>
                 )}
               </div>
+              <p className="mt-1 text-xs font-semibold text-muted">
+                {card.faceId
+                  ? `${copy.detail.rateScope}: ${site.faces.find((face) => face.id === card.faceId)?.faceLabel ?? '—'}`
+                  : copy.detail.rateAllFaces}
+                {card.minBookingDays ? ` · ${copy.detail.minBookingDays}: ${card.minBookingDays}` : ''}
+              </p>
               <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
                 {card.rates.perDay != null && (
                   <span>
@@ -1687,6 +1786,13 @@ function RatesSection({
       {adding && editable && (
         <form onSubmit={onAdd} className="mt-4 space-y-3 rounded-lg border border-border bg-surface-2 p-3">
           <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={copy.detail.rateScope} htmlFor="rateFace">
+              <select id="rateFace" value={form.faceId}
+                onChange={(event) => setForm({ ...form, faceId: event.target.value })} className={inputClass}>
+                <option value="">{copy.detail.rateAllFaces}</option>
+                {site.faces.map((face) => <option key={face.id} value={face.id}>{face.faceLabel}</option>)}
+              </select>
+            </Field>
             <Field label={copy.detail.currency} htmlFor="rateCurrency">
               <select
                 id="rateCurrency"
@@ -1700,6 +1806,11 @@ function RatesSection({
                   </option>
                 ))}
               </select>
+            </Field>
+            <Field label={copy.detail.minBookingDays} htmlFor="rateMinDays">
+              <input id="rateMinDays" type="number" min="1" step="1"
+                value={form.minBookingDays}
+                onChange={(event) => setForm({ ...form, minBookingDays: event.target.value })} className={inputClass} />
             </Field>
             <Field label={copy.detail.effectiveFrom} htmlFor="rateFrom">
               <input

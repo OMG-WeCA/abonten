@@ -33,13 +33,13 @@ export function Field({
       <label htmlFor={htmlFor} className="block text-sm font-semibold text-foreground">
         {label}
       </label>
-      {hint && !error && <p className="mt-1 text-xs leading-5 text-muted">{hint}</p>}
+      <div className="mt-1.5">{children}</div>
       {error ? (
         <p className="mt-1 text-xs font-medium text-error" role="alert">
           {error}
         </p>
       ) : null}
-      <div className="mt-1.5">{children}</div>
+      {hint && !error && <p className="mt-1 text-xs leading-5 text-muted">{hint}</p>}
     </div>
   );
 }

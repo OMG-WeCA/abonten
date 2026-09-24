@@ -78,6 +78,9 @@ export interface SiteFace {
   area: number;
   units: string;
   printableArea?: string | null;
+  bleedMm?: number | null;
+  substrate?: string | null;
+  fileRequirements?: string | null;
   bookable: boolean;
   /** Digital-face attributes (SPEC §5.1): collected for digital_led faces. */
   pixelWidth?: number | null;
@@ -116,6 +119,7 @@ export interface RateCard {
   id: string;
   siteId: string;
   faceId?: string | null;
+  minBookingDays?: number | null;
   currency: string;
   rates: { perDay?: number; perWeek?: number; perMonth?: number };
   seasonalRules?: Record<string, unknown> | null;
@@ -300,6 +304,9 @@ export function addFace(
     units: string;
     bookable: boolean;
     printableArea?: string;
+    bleedMm?: number;
+    substrate?: string;
+    fileRequirements?: string;
   } & DigitalFaceAttrs,
 ): Promise<SiteFace> {
   return request(`/sites/${siteId}/faces`, { method: 'POST', body: JSON.stringify(face) }, orgId);
@@ -315,6 +322,9 @@ export function updateFace(
     area: number;
     units: string;
     printableArea: string | null;
+    bleedMm: number | null;
+    substrate: string | null;
+    fileRequirements: string | null;
     bookable: boolean;
   }> & DigitalFaceAttrs,
 ): Promise<SiteFace> {
@@ -323,6 +333,31 @@ export function updateFace(
 
 export function removeFace(orgId: string | undefined, faceId: string): Promise<void> {
   return request(`/faces/${faceId}`, { method: 'DELETE' }, orgId);
+}
+
+export interface FaceBlackout {
+  id: string;
+  faceId: string;
+  organizationId: string;
+  startDate: string;
+  endDate: string;
+  reason: string;
+}
+
+export function listFaceBlackouts(orgId: string | undefined, faceId: string): Promise<FaceBlackout[]> {
+  return request(`/faces/${encodeURIComponent(faceId)}/blackouts`, { method: 'GET' }, orgId);
+}
+
+export function addFaceBlackout(
+  orgId: string | undefined,
+  faceId: string,
+  blackout: { startDate: string; endDate: string; reason: string },
+): Promise<FaceBlackout> {
+  return request(`/faces/${encodeURIComponent(faceId)}/blackouts`, { method: 'POST', body: JSON.stringify(blackout) }, orgId);
+}
+
+export function removeFaceBlackout(orgId: string | undefined, blackoutId: string): Promise<void> {
+  return request(`/blackouts/${encodeURIComponent(blackoutId)}`, { method: 'DELETE' }, orgId);
 }
 
 // ------------------------------------------------------------------ assets
@@ -355,6 +390,8 @@ export function addRateCard(
   orgId: string | undefined,
   siteId: string,
   card: {
+    faceId?: string;
+    minBookingDays?: number;
     currency: string;
     rates: { perDay?: number; perWeek?: number; perMonth?: number };
     effectiveFrom: string;
@@ -370,6 +407,10 @@ export function endRateCard(
   effectiveTo: string,
 ): Promise<RateCard> {
   return request(`/rate-cards/${rateCardId}`, { method: 'PATCH', body: JSON.stringify({ effectiveTo }) }, orgId);
+}
+
+export function withdrawFutureRateCard(orgId: string | undefined, rateCardId: string): Promise<void> {
+  return request(`/rate-cards/${rateCardId}/future`, { method: 'DELETE' }, orgId);
 }
 
 export function listSiteRateCards(orgId: string, siteId: string): Promise<RateCard[]> {

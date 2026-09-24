@@ -22,10 +22,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Copy, Check } from 'lucide-react';
 import { getSitesCopy, type SiteLocale } from '../../lib/sites-locale';
+import { MAPBOX_PUBLIC_TOKEN, MAPBOX_TILES_URL } from './mapbox-tiles';
 
-/** The build-time token is a deliberate, dedicated public token — inlined by
- * Next at build and frozen; never logged and never a secret-scope token. */
-export const MAPBOX_PUBLIC_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '';
+export { MAPBOX_PUBLIC_TOKEN } from './mapbox-tiles';
 
 const RADIUS_M = 500;
 
@@ -191,7 +190,7 @@ export function SiteMapView({
         resizeObserver.observe(containerRef.current);
 
         const tiles = L.tileLayer(
-          `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/{z}/{x}/{y}?access_token=${MAPBOX_PUBLIC_TOKEN}`,
+          MAPBOX_TILES_URL,
           {
             tileSize: 512,
             zoomOffset: -1,

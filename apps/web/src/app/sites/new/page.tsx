@@ -23,6 +23,7 @@ import { canManageSites } from '../../../lib/sites-access';
 import { parseDecimal } from '../../../lib/number-format';
 import { plausibilityErrors, structureValuesEntered } from '../../../lib/sites-plausibility';
 import { ApiError } from '../../../lib/api';
+import { RegistrationMap } from '../../../components/sites/RegistrationMap';
 
 interface PendingPhoto {
   id: string;
@@ -416,8 +417,8 @@ export default function RegisterSitePage() {
       <h1 className="mt-3 text-3xl font-extrabold tracking-[-0.045em]">{copy.register.title}</h1>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{copy.register.intro}</p>
 
-      <form onSubmit={onSubmit} noValidate className="mt-8 max-w-3xl space-y-5 pb-16">
-        <section className="rounded-xl border border-border bg-surface px-5 py-5">
+      <form onSubmit={onSubmit} noValidate className="mt-8 max-w-6xl space-y-5 pb-16">
+        <section className="max-w-3xl rounded-xl border border-border bg-surface px-5 py-5">
           {sectionHeading(<TypeIcon className="h-4 w-4" />, copy.register.sectionIdentity)}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Field label={copy.register.name} htmlFor="siteName" error={errors.name} className="sm:col-span-2">
@@ -486,7 +487,8 @@ export default function RegisterSitePage() {
 
         <section className="rounded-xl border border-border bg-surface px-5 py-5">
           {sectionHeading(<MapPin className="h-4 w-4" />, copy.register.sectionLocation)}
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+            <div className="grid content-start gap-4 sm:grid-cols-2">
             <Field
               label={copy.register.latitude}
               htmlFor="siteLat"
@@ -576,10 +578,21 @@ export default function RegisterSitePage() {
                 ))}
               </select>
             </Field>
+            </div>
+            <RegistrationMap
+              latitude={form.latitude}
+              longitude={form.longitude}
+              country={form.country}
+              locale={profile?.locale === 'fr' ? 'fr' : 'en'}
+              onPick={(latitude, longitude) => {
+                set('latitude')(latitude);
+                set('longitude')(longitude);
+              }}
+            />
           </div>
         </section>
 
-        <section className="rounded-xl border border-border bg-surface px-5 py-5">
+        <section className="max-w-3xl rounded-xl border border-border bg-surface px-5 py-5">
           {sectionHeading(<Ruler className="h-4 w-4" />, copy.register.sectionPhysical)}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Field label={copy.register.width} htmlFor="siteWidth" error={errors.width}>
@@ -733,7 +746,7 @@ export default function RegisterSitePage() {
           )}
         </section>
 
-        <section className="rounded-xl border border-border bg-surface px-5 py-5">
+        <section className="max-w-3xl rounded-xl border border-border bg-surface px-5 py-5">
           {sectionHeading(<SunMedium className="h-4 w-4" />, copy.register.sectionIllumination)}
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Field label={copy.register.illuminationType} htmlFor="siteIllum">
@@ -797,7 +810,7 @@ export default function RegisterSitePage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-border bg-surface px-5 py-5">
+        <section className="max-w-3xl rounded-xl border border-border bg-surface px-5 py-5">
           {sectionHeading(<Camera className="h-4 w-4" />, copy.register.sectionPhotos)}
           <p className="mt-3 text-sm leading-6 text-muted">{copy.register.photoHint}</p>
           {photoError && (
