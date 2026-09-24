@@ -29,6 +29,7 @@ import { RequireAnyCapabilities, RequireCapabilities } from '../capabilities/req
 import { InventoryService } from './inventory.service';
 import {
   CreateFaceDto,
+  CreateBlackoutDto,
   CreateMetadataDto,
   CreateRateCardDto,
   CreateSiteDto,
@@ -51,6 +52,30 @@ function orgContext(req: AuthReq): string | undefined {
 @Controller('inventory')
 export class InventoryController {
   constructor(private readonly service: InventoryService) {}
+
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard)
+  @RequireCapabilities(Capability.INVENTORY_VIEW)
+  @Get('faces/:faceId/blackouts')
+  @ApiOperation({ summary: 'List Partner-owned unavailable dates for a face' })
+  async listBlackouts(@Req() req: AuthReq, @Param('faceId', ParseUUIDPipe) faceId: string) {
+    return this.service.listBlackouts(orgContext(req)!, faceId);
+  }
+
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard)
+  @RequireCapabilities(Capability.INVENTORY_EDIT)
+  @Post('faces/:faceId/blackouts')
+  @ApiOperation({ summary: 'Block dates on a Partner-owned face' })
+  async addBlackout(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('faceId', ParseUUIDPipe) faceId: string, @Body() dto: CreateBlackoutDto) {
+    return this.service.addBlackout(user, orgContext(req)!, faceId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard)
+  @RequireCapabilities(Capability.INVENTORY_EDIT)
+  @Delete('blackouts/:id')
+  @ApiOperation({ summary: 'Remove a Partner-owned unavailable period' })
+  async removeBlackout(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.removeBlackout(user, orgContext(req)!, id);
+  }
 
   // --------------------------------------------------------------- sites
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
@@ -295,5 +320,13 @@ export class InventoryController {
   @ApiOperation({ summary: 'Update a rate card' })
   async updateRateCard(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('rateCardId') rateCardId: string, @Body() dto: UpdateRateCardDto) {
     return this.service.updateRateCard(user, orgContext(req)!, rateCardId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard)
+  @RequireCapabilities(Capability.INVENTORY_EDIT)
+  @Delete('rate-cards/:rateCardId/future')
+  @ApiOperation({ summary: 'Withdraw a future rate card before it takes effect' })
+  async withdrawFutureRateCard(@CurrentUser() user: AuthenticatedUser, @Req() req: AuthReq, @Param('rateCardId') rateCardId: string) {
+    return this.service.withdrawFutureRateCard(user, orgContext(req)!, rateCardId);
   }
 }

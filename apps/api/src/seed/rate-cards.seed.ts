@@ -29,6 +29,7 @@ export async function seedRateCards(ds: DataSource): Promise<void> {
         siteId: r.siteId,
         currency: siteCurrency(r.country),
         rates: { perDay: r.perDay, perWeek: r.perWeek, perMonth: r.perMonth },
+        minBookingDays: r.siteId === IDS.site.apapa ? 7 : null,
         seasonalRules: null,
         effectiveFrom: EFFECTIVE_FROM,
       }),

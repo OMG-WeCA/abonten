@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../common/database.service';
 import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
 import { SiteFaceEntity } from '../common/entities/site-face.entity';
@@ -34,12 +34,64 @@ export class MarketplaceService {
 
   /** Search listed sites available for booking, with filters + spatial radius. */
   async search(q: MarketplaceQueryDto) {
+    if (q.startDate && q.endDate && q.startDate >= q.endDate) {
+      throw new BadRequestException('End date must be after start date.');
+    }
+    if (Boolean(q.startDate) !== Boolean(q.endDate)) {
+      throw new BadRequestException('Choose both a start and end date.');
+    }
     const page = Math.max(1, q.page ?? 1);
     const limit = Math.min(100, Math.max(1, q.limit ?? 20));
     const repo = await this.db.repo(BillboardSiteEntity);
 
-    const where: string[] = ["s.status = 'listed'"];
     const params: unknown[] = [];
+    const hasWindow = Boolean(q.startDate && q.endDate);
+    if (hasWindow) params.push(q.startDate, q.endDate);
+    const periodStart = hasWindow ? '$1::date' : 'CURRENT_DATE';
+    const periodEnd = hasWindow ? "($2::date - INTERVAL '1 day')" : 'CURRENT_DATE';
+    const bookableFace =
+      "f.bookable AND (s.format <> 'digital_led' OR " +
+      '(f.pixel_width > 0 AND f.pixel_height > 0 AND f.spot_length_seconds > 0 ' +
+      'AND f.loop_length_seconds > 0 AND f.spots_per_loop > 0))';
+    const faceAvailable = hasWindow
+      ? "AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.face_id = f.id::text AND b.status IN ('held','confirmed','live') " +
+        'AND b.start_date < $2::date AND b.end_date > $1::date) ' +
+        'AND NOT EXISTS (SELECT 1 FROM face_blackouts x WHERE x.face_id = f.id::text ' +
+        'AND x.start_date < $2::date AND x.end_date > $1::date)'
+      : '';
+    const validPrice = (alias: string) =>
+      `((${alias}.rates->>'perDay')::numeric > 0 OR (${alias}.rates->>'perWeek')::numeric > 0 ` +
+      `OR (${alias}.rates->>'perMonth')::numeric > 0)`;
+    const rateScope = (start: string, end: string) =>
+      `r.site_id = s.id::text AND (r.face_id = f.id::text OR (r.face_id IS NULL AND NOT EXISTS (` +
+      `SELECT 1 FROM rate_cards specific WHERE specific.site_id = s.id::text AND specific.face_id = f.id::text ` +
+      `AND specific.effective_from::date <= ${end} ` +
+      `AND (specific.effective_to IS NULL OR specific.effective_to::date >= ${start}) ` +
+      `AND ${validPrice('specific')})))`;
+    const currentRateForFace = `${rateScope('CURRENT_DATE', 'CURRENT_DATE')} AND r.effective_from::date <= CURRENT_DATE ` +
+      `AND (r.effective_to IS NULL OR r.effective_to::date >= CURRENT_DATE) AND ${validPrice('r')}`;
+    const rateForFace =
+      `${rateScope(periodStart, periodEnd)} ` +
+      `AND r.effective_from::date <= ${periodStart} ` +
+      `AND (r.effective_to IS NULL OR r.effective_to::date >= ${periodEnd}) ` +
+      (hasWindow ? 'AND (r.min_booking_days IS NULL OR r.min_booking_days <= ($2::date - $1::date)) ' : '') +
+      `AND ${validPrice('r')}`;
+    // One eligibility rule drives both visibility and displayed/budget price.
+    // A partial face override suppresses the default for the whole query window;
+    // agency-side quoting will resolve windows that need multiple rate segments.
+    const priceSql =
+      "(SELECT min((r.rates->>'perDay')::numeric) FROM site_faces f JOIN rate_cards r " +
+      'ON r.site_id = s.id::text ' +
+      `WHERE f.site_id = s.id::text AND ${bookableFace} ${faceAvailable} AND ${rateForFace})`;
+    const where: string[] = [
+      "s.status = 'listed'",
+      `(s.permit_expires_at IS NULL OR (s.permit_expires_at::date >= CURRENT_DATE AND s.permit_expires_at::date >= ${periodEnd}))`,
+      "EXISTS (SELECT 1 FROM site_assets a WHERE a.site_id = s.id::text AND a.kind = 'front')",
+      'NOT EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = s.id::text AND f.bookable ' +
+        `AND ((${bookableFace}) IS NOT TRUE OR NOT EXISTS (SELECT 1 FROM rate_cards r WHERE ${currentRateForFace})))`,
+      'EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = s.id::text AND ' +
+        bookableFace + ' ' + faceAvailable + ' AND EXISTS (SELECT 1 FROM rate_cards r WHERE ' + rateForFace + '))',
+    ];
     const push = (clause: string, ...values: unknown[]) => {
       const start = params.length + 1;
       for (const v of values) params.push(v);
@@ -56,10 +108,10 @@ export class MarketplaceService {
     if (q.minSize !== undefined) push('COALESCE(s.area, s.width * s.height) >= ?', q.minSize);
     if (q.maxSize !== undefined) push('COALESCE(s.area, s.width * s.height) <= ?', q.maxSize);
     if (q.minPrice !== undefined) {
-      push('(SELECT min((rates->>\'perDay\')::numeric) FROM rate_cards WHERE site_id = s.id::text) >= ?', q.minPrice);
+      push(`${priceSql} >= ?`, q.minPrice);
     }
     if (q.maxPrice !== undefined) {
-      push('(SELECT min((rates->>\'perDay\')::numeric) FROM rate_cards WHERE site_id = s.id::text) <= ?', q.maxPrice);
+      push(`${priceSql} <= ?`, q.maxPrice);
     }
     if (q.lat !== undefined && q.lng !== undefined && q.radius !== undefined) {
       if (await this.hasPostgis()) {
@@ -81,17 +133,6 @@ export class MarketplaceService {
         );
       }
     }
-    if (q.startDate && q.endDate) {
-      // A site is available in the window if it has at least one bookable face with
-      // no active (non-cancelled, non-completed) booking overlapping [startDate, endDate].
-      // Booking overlap: b.start_date < endDate AND b.end_date > startDate.
-      push(
-        'EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = s.id::text AND f.bookable AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.face_id = f.id::text AND b.status NOT IN (\'cancelled\',\'completed\') AND b.start_date < ? AND b.end_date > ?))',
-        q.endDate,
-        q.startDate,
-      );
-    }
-
     const whereSql = where.join(' AND ');
     const offset = (page - 1) * limit;
     // Demo-class rows (seeded showcase fiction) never aggregate into the
@@ -101,8 +142,8 @@ export class MarketplaceService {
       `SELECT s.id, s.code, s.name, s.format, s.city, s.country, s.illumination_type AS "illuminationType",
         s.width, s.height, s.area, s.latitude, s.longitude,
         (SELECT count(*) FROM site_faces WHERE site_id = s.id::text) AS "faceCount",
-        (SELECT min((rates->>'perDay')::numeric) FROM rate_cards WHERE site_id = s.id::text) AS "startingPrice",
-        (SELECT storage_ref FROM site_assets WHERE site_id = s.id::text ORDER BY created_at LIMIT 1) AS "thumbnail",
+        ${priceSql} AS "startingPrice",
+        (SELECT storage_ref FROM site_assets WHERE site_id = s.id::text AND kind = 'front' ORDER BY created_at DESC LIMIT 1) AS "thumbnail",
         (SELECT jsonb_object_agg(dimension, payload) FROM site_metadata WHERE site_id = s.id::text AND ${PRODUCTION_METADATA_WHERE}) AS "keyMetadata"
        FROM billboard_sites s WHERE ${whereSql} ORDER BY s.created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       params,
@@ -132,6 +173,21 @@ export class MarketplaceService {
       ),
       this.db.repo(RateCardEntity).then((r) => r.find({ where: { siteId } })),
     ]);
+    const today = new Date().toISOString().slice(0, 10);
+    const bookable = faces.filter((face) => face.bookable);
+    const ready = (!site.permitExpiresAt || new Date(site.permitExpiresAt).toISOString().slice(0, 10) >= today) &&
+      assets.some((asset) => asset.kind === 'front') && bookable.length > 0 &&
+      bookable.every((face) =>
+        (site.format !== 'digital_led' || Boolean(
+          face.pixelWidth && face.pixelHeight && face.spotLengthSeconds && face.loopLengthSeconds && face.spotsPerLoop
+        )) && rateCards.some((rate) =>
+          (!rate.faceId || rate.faceId === face.id) &&
+          new Date(rate.effectiveFrom).toISOString().slice(0, 10) <= today &&
+          (!rate.effectiveTo || new Date(rate.effectiveTo).toISOString().slice(0, 10) >= today) &&
+          Object.values(rate.rates).some((price) => typeof price === 'number' && price > 0),
+        ),
+      );
+    if (!ready) throw new NotFoundException('Site is not ready for the marketplace');
     return { ...site, faces, assets, metadata, rateCards };
   }
 }

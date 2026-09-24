@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsDateString,
   IsIn,
+  IsInt,
   IsInstance,
   IsNumber,
   IsOptional,
@@ -100,6 +101,9 @@ export class CreateFaceDto {
   @ApiProperty() @IsNumber() @Type(() => Number) area!: number;
   @ApiProperty({ default: 'm' }) @IsString() units!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() printableArea?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Type(() => Number) bleedMm?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) substrate?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) fileRequirements?: string;
   @ApiPropertyOptional({ default: true }) @IsOptional() @IsBoolean() bookable?: boolean;
   // Digital-face attributes (SPEC §5.1 trust contract 2) — collected for
   // digital_led faces; nullable everywhere so static faces are unaffected.
@@ -136,6 +140,8 @@ export class RateCardRatesDto {
 }
 
 export class CreateRateCardDto {
+  @ApiPropertyOptional() @IsOptional() @IsUUID() faceId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Type(() => Number) minBookingDays?: number;
   @ApiProperty() @IsString() currency!: string;
   @ApiProperty({ type: RateCardRatesDto })
   @Type(() => RateCardRatesDto)
@@ -147,6 +153,13 @@ export class CreateRateCardDto {
 }
 
 export class UpdateRateCardDto extends PartialType(CreateRateCardDto) {}
+
+export class CreateBlackoutDto {
+  @ApiProperty() @IsDateString() startDate!: string;
+  /** Exclusive end date: the first day the face is available again. */
+  @ApiProperty() @IsDateString() endDate!: string;
+  @ApiProperty() @IsString() @MinLength(2) @MaxLength(240) reason!: string;
+}
 
 export class RejectSiteDto {
   @ApiProperty() @IsString() reason!: string;

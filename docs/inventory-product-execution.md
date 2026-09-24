@@ -7,6 +7,8 @@
 - **Author:** Abonten agent team (worker thread), for OMG WeCA platform ownership.
 - **Companion documents:** [`SPEC.md`](../SPEC.md) (authoritative product spec — this document proposes changes to it, it does not change it), [`AGENTS.md`](../AGENTS.md) (conventions).
 
+**2026-09-24 status note:** This document's field matrix records the 2026-09-16 starting point. The Partner inventory work now includes audited inventory changes, provenance checks, digital face specs, a live registration map, face creative requirements, face-level rates and minimum duration, Partner-managed blackout dates, and a stricter listing gate. Booking requests, holds, confirmation, and reservation calendars remain for the agency-side implementation. `SPEC.md` carries the current product contract; use the live code and tests for implementation status.
+
 ---
 
 ## How to read this document

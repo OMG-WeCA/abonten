@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -18,6 +19,7 @@ import { SiteAssetEntity } from '../common/entities/site-asset.entity';
 import { SiteMetadataEntity } from '../common/entities/site-metadata.entity';
 import { METADATA_COLUMNS, PRODUCTION_METADATA_WHERE } from '../common/metadata-filter';
 import { RateCardEntity } from '../common/entities/rate-card.entity';
+import { FaceBlackoutEntity } from '../common/entities/face-blackout.entity';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import {
   INVENTORY_AUDIT_ENTITY,
@@ -31,6 +33,7 @@ import {
 } from './inventory-validation';
 import type {
   CreateFaceDto,
+  CreateBlackoutDto,
   CreateMetadataDto,
   CreateRateCardDto,
   CreateSiteDto,
@@ -100,6 +103,27 @@ function slug(s: string): string {
 
 function randomSuffix(): string {
   return Math.random().toString(16).slice(2, 8);
+}
+
+function assertRateDetails(
+  currency: string,
+  rates: { perDay?: number; perWeek?: number; perMonth?: number },
+  effectiveFrom: Date,
+  effectiveTo?: Date | null,
+  minBookingDays?: number | null,
+): void {
+  const prices = rates && [rates.perDay, rates.perWeek, rates.perMonth].filter((price) => price !== undefined);
+  if (!prices?.length || prices.some((price) => !Number.isFinite(price) || price! <= 0)) {
+    throw new BadRequestException('Add at least one positive daily, weekly, or monthly rate.');
+  }
+  if (!/^[A-Z]{3}$/.test(currency)) throw new BadRequestException('Use a three-letter currency code.');
+  if (!Number.isFinite(effectiveFrom.getTime()) ||
+      (effectiveTo && (!Number.isFinite(effectiveTo.getTime()) || effectiveTo < effectiveFrom))) {
+    throw new BadRequestException('Rate end date must be on or after its start date.');
+  }
+  if (minBookingDays != null && (!Number.isInteger(minBookingDays) || minBookingDays < 1)) {
+    throw new BadRequestException('Minimum booking length must be at least one day.');
+  }
 }
 
 interface InsertEntry {
@@ -565,6 +589,9 @@ export class InventoryService {
           area: dto.area,
           units: dto.units,
           printableArea: dto.printableArea,
+          bleedMm: dto.bleedMm,
+          substrate: dto.substrate,
+          fileRequirements: dto.fileRequirements,
           bookable: dto.bookable ?? true,
           pixelWidth: dto.pixelWidth,
           pixelHeight: dto.pixelHeight,
@@ -604,6 +631,9 @@ export class InventoryService {
         ...(dto.area !== undefined && { area: dto.area }),
         ...(dto.units !== undefined && { units: dto.units }),
         ...(dto.printableArea !== undefined && { printableArea: dto.printableArea }),
+        ...(dto.bleedMm !== undefined && { bleedMm: dto.bleedMm }),
+        ...(dto.substrate !== undefined && { substrate: dto.substrate }),
+        ...(dto.fileRequirements !== undefined && { fileRequirements: dto.fileRequirements }),
         ...(dto.bookable !== undefined && { bookable: dto.bookable }),
         ...(dto.pixelWidth !== undefined && { pixelWidth: dto.pixelWidth }),
         ...(dto.pixelHeight !== undefined && { pixelHeight: dto.pixelHeight }),
@@ -630,6 +660,12 @@ export class InventoryService {
       const face = await repo.findOne({ where: { id: faceId } });
       if (!face) throw new NotFoundException('Face not found');
       await this.assertOwnership(orgId, (face as { siteId: string }).siteId);
+      const locked = await manager.query('SELECT id FROM site_faces WHERE id = $1 FOR UPDATE', [faceId]);
+      if (!locked[0]) throw new NotFoundException('Face not found');
+      const blackout = await manager.getRepository(FaceBlackoutEntity).findOne({ where: { faceId } });
+      if (blackout) {
+        throw new ConflictException('Remove this face’s unavailable periods before removing the face.');
+      }
       await repo.delete({ id: faceId });
       await writeInventoryAudit(manager, actorOf(user, orgId), {
         action: 'inventory.face.removed',
@@ -858,12 +894,20 @@ export class InventoryService {
   async createRateCard(user: AuthenticatedUser, orgId: string, siteId: string, dto: CreateRateCardDto) {
     await this.assertMediaPartnerOrg(orgId);
     await this.assertOwnership(orgId, siteId);
+    assertRateDetails(dto.currency, dto.rates, new Date(dto.effectiveFrom),
+      dto.effectiveTo ? new Date(dto.effectiveTo) : null, dto.minBookingDays);
     return this.db.transaction(async (manager) => {
+      if (dto.faceId) {
+        const faces = await manager.query(`SELECT 1 FROM site_faces WHERE id = $1 AND site_id = $2`, [dto.faceId, siteId]);
+        if (!faces[0]) throw new BadRequestException('The selected face does not belong to this site.');
+      }
       const repo = manager.getRepository(RateCardEntity);
       const card = await repo.save(
         repo.create({
           organizationId: orgId,
           siteId,
+          faceId: dto.faceId,
+          minBookingDays: dto.minBookingDays,
           currency: dto.currency,
           rates: dto.rates,
           seasonalRules: dto.seasonalRules ?? null,
@@ -895,14 +939,22 @@ export class InventoryService {
       if ((rc as { organizationId: string }).organizationId !== orgId) {
         throw new ForbiddenException('Not your rate card');
       }
+      if (dto.faceId) {
+        const faces = await manager.query(`SELECT 1 FROM site_faces WHERE id = $1 AND site_id = $2`, [dto.faceId, rc.siteId]);
+        if (!faces[0]) throw new BadRequestException('The selected face does not belong to this site.');
+      }
       const before = rateCardAuditSnapshot(rc);
       Object.assign(rc, {
+        ...(dto.faceId !== undefined && { faceId: dto.faceId }),
+        ...(dto.minBookingDays !== undefined && { minBookingDays: dto.minBookingDays }),
         ...(dto.currency !== undefined && { currency: dto.currency }),
         ...(dto.rates !== undefined && { rates: dto.rates }),
         ...(dto.seasonalRules !== undefined && { seasonalRules: dto.seasonalRules }),
         ...(dto.effectiveFrom !== undefined && { effectiveFrom: new Date(dto.effectiveFrom) }),
         ...(dto.effectiveTo !== undefined && { effectiveTo: dto.effectiveTo ? new Date(dto.effectiveTo) : null }),
       });
+      assertRateDetails(rc.currency, rc.rates, new Date(rc.effectiveFrom),
+        rc.effectiveTo ? new Date(rc.effectiveTo) : null, rc.minBookingDays);
       const saved = await repo.save(rc);
       await writeInventoryAudit(manager, actorOf(user, orgId), {
         action: 'inventory.rate_card.updated',
@@ -912,6 +964,102 @@ export class InventoryService {
         after: rateCardAuditSnapshot(saved),
       });
       return saved;
+    });
+  }
+
+  async withdrawFutureRateCard(user: AuthenticatedUser, orgId: string, rateCardId: string) {
+    return this.db.transaction(async (manager) => {
+      const repo = manager.getRepository(RateCardEntity);
+      const card = await repo.findOne({ where: { id: rateCardId } });
+      if (!card) throw new NotFoundException('Rate card not found');
+      if (card.organizationId !== orgId) throw new ForbiddenException('Not your rate card');
+      if (new Date(card.effectiveFrom).toISOString().slice(0, 10) <= new Date().toISOString().slice(0, 10)) {
+        throw new ConflictException('Only future rate cards can be withdrawn. End a current rate instead.');
+      }
+      await repo.delete({ id: rateCardId });
+      await writeInventoryAudit(manager, actorOf(user, orgId), {
+        action: 'inventory.rate_card.withdrawn',
+        entityType: INVENTORY_AUDIT_ENTITY.rateCard,
+        entityId: rateCardId,
+        before: rateCardAuditSnapshot(card),
+        after: null,
+      });
+      return { id: rateCardId, withdrawn: true };
+    });
+  }
+
+  // ------------------------------------------------------ partner availability
+  async listBlackouts(orgId: string, faceId: string) {
+    const faces = await this.db.repo(SiteFaceEntity);
+    const face = await faces.findOne({ where: { id: faceId } });
+    if (!face) throw new NotFoundException('Face not found');
+    await this.assertOwnership(orgId, face.siteId);
+    const repo = await this.db.repo(FaceBlackoutEntity);
+    return repo.find({ where: { faceId }, order: { startDate: 'ASC' } });
+  }
+
+  async addBlackout(user: AuthenticatedUser, orgId: string, faceId: string, dto: CreateBlackoutDto) {
+    await this.assertMediaPartnerOrg(orgId);
+    const start = Date.parse(dto.startDate + 'T00:00:00Z');
+    const end = Date.parse(dto.endDate + 'T00:00:00Z');
+    const days = (end - start) / 86_400_000;
+    if (!Number.isFinite(start) || !Number.isFinite(end) ||
+        !Number.isInteger(days) || days < 1 || days > 366 ||
+        new Date(start).toISOString().slice(0, 10) !== dto.startDate ||
+        new Date(end).toISOString().slice(0, 10) !== dto.endDate) {
+      throw new BadRequestException('Choose a valid period of 1 to 366 days. The end date is the first available day.');
+    }
+    if (!dto.reason.trim()) throw new BadRequestException('Give a reason for the unavailable period.');
+    return this.db.transaction(async (manager) => {
+      // Lock the face so future booking confirmation uses the same concurrency boundary.
+      const faces = await manager.query(
+        `SELECT f.site_id AS "siteId", s.organization_id AS "organizationId"
+         FROM site_faces f JOIN billboard_sites s ON s.id::text = f.site_id
+         WHERE f.id = $1 FOR UPDATE OF f`, [faceId],
+      ) as Array<{ siteId: string; organizationId: string }>;
+      if (!faces[0]) throw new NotFoundException('Face not found');
+      if (faces[0].organizationId !== orgId) throw new ForbiddenException('Not your face');
+      const conflicts = await manager.query(
+        `SELECT
+          EXISTS(SELECT 1 FROM face_blackouts WHERE face_id = $1 AND start_date < $3::date AND end_date > $2::date) AS blackout,
+          EXISTS(SELECT 1 FROM bookings WHERE face_id = $1 AND status IN ('held', 'confirmed', 'live')
+            AND start_date < $3::date AND end_date > $2::date) AS booking`,
+        [faceId, dto.startDate, dto.endDate],
+      ) as Array<{ blackout: boolean; booking: boolean }>;
+      if (conflicts[0]?.blackout) throw new ConflictException('An unavailable period already overlaps these dates.');
+      if (conflicts[0]?.booking) throw new ConflictException('A reservation already overlaps these dates.');
+      const repo = manager.getRepository(FaceBlackoutEntity);
+      const blackout = await repo.save(repo.create({
+        faceId, organizationId: orgId, startDate: dto.startDate, endDate: dto.endDate, reason: dto.reason.trim(),
+      }));
+      await writeInventoryAudit(manager, actorOf(user, orgId), {
+        action: 'inventory.blackout.created',
+        entityType: 'face_blackout',
+        entityId: blackout.id,
+        before: null,
+        after: { faceId, startDate: dto.startDate, endDate: dto.endDate, reason: blackout.reason },
+      });
+      return blackout;
+    });
+  }
+
+  async removeBlackout(user: AuthenticatedUser, orgId: string, blackoutId: string) {
+    return this.db.transaction(async (manager) => {
+      const repo = manager.getRepository(FaceBlackoutEntity);
+      const blackout = await repo.findOne({ where: { id: blackoutId } });
+      if (!blackout) throw new NotFoundException('Unavailable period not found');
+      if (blackout.organizationId !== orgId) throw new ForbiddenException('Not your unavailable period');
+      const faces = await manager.query(`SELECT id FROM site_faces WHERE id = $1 FOR UPDATE`, [blackout.faceId]);
+      if (!faces[0]) throw new NotFoundException('Face not found');
+      await repo.delete({ id: blackoutId });
+      await writeInventoryAudit(manager, actorOf(user, orgId), {
+        action: 'inventory.blackout.removed',
+        entityType: 'face_blackout',
+        entityId: blackoutId,
+        before: { faceId: blackout.faceId, startDate: blackout.startDate, endDate: blackout.endDate, reason: blackout.reason },
+        after: null,
+      });
+      return { id: blackoutId, removed: true };
     });
   }
 
@@ -1027,13 +1175,12 @@ export class InventoryService {
   }
 
   // ----------------------------------------------------------------- helpers
-  /** SPEC §7.1 listing-completeness problems, checked server-side at submit
-  * and again at approval: valid coordinates, a format, positive dimensions,
-  * and a front-on reference photo. Empty array = ready. */
+  /** SPEC §7.1 listing-completeness problems, checked at submit and approval. */
   private async listingProblems(siteId: string): Promise<string[]> {
     const repo = await this.db.repo(BillboardSiteEntity);
     const rows = await repo.query(
-      `SELECT latitude, longitude, format, width, height FROM billboard_sites WHERE id = $1`,
+      `SELECT latitude, longitude, format, width, height, permit_expires_at::date::text AS "permitExpiresAt"
+       FROM billboard_sites WHERE id = $1`,
       [siteId],
     );
     if (!rows[0]) throw new NotFoundException('Site not found');
@@ -1051,6 +1198,25 @@ export class InventoryService {
       [siteId],
     );
     if (!front[0]) problems.push('a front-on reference photo is required');
+    if (s.permitExpiresAt && s.permitExpiresAt < new Date().toISOString().slice(0, 10)) {
+      problems.push('the recorded permit has expired');
+    }
+    const faces = (await this.listFaces(siteId)).filter((face) => face.bookable);
+    if (faces.length === 0) problems.push('add at least one bookable face');
+    if (s.format === 'digital_led' && faces.some((face) =>
+      !face.pixelWidth || !face.pixelHeight || !face.spotLengthSeconds || !face.loopLengthSeconds || !face.spotsPerLoop
+    )) problems.push('complete the pixel and loop/spot details for each bookable digital face');
+    if (faces.length > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      const rates = await this.listRateCards(siteId);
+      const priced = (faceId: string) => rates.some((rate) =>
+        (!rate.faceId || rate.faceId === faceId) &&
+        new Date(rate.effectiveFrom).toISOString().slice(0, 10) <= today &&
+        (!rate.effectiveTo || new Date(rate.effectiveTo).toISOString().slice(0, 10) >= today) &&
+        Object.values(rate.rates).some((price) => typeof price === 'number' && Number.isFinite(price) && price > 0),
+      );
+      if (faces.some((face) => !priced(face.id))) problems.push('add a current rate for each bookable face');
+    }
     return problems;
   }
 
@@ -1126,6 +1292,9 @@ function faceAuditSnapshot(face: unknown): Record<string, unknown> {
     area: f.area,
     units: f.units,
     printableArea: f.printableArea ?? null,
+    bleedMm: f.bleedMm ?? null,
+    substrate: f.substrate ?? null,
+    fileRequirements: f.fileRequirements ?? null,
     bookable: f.bookable,
     pixelWidth: f.pixelWidth ?? null,
     pixelHeight: f.pixelHeight ?? null,
@@ -1157,6 +1326,8 @@ function rateCardAuditSnapshot(card: unknown): Record<string, unknown> {
   return {
     organizationId: c.organizationId,
     siteId: c.siteId ?? null,
+    faceId: c.faceId ?? null,
+    minBookingDays: c.minBookingDays ?? null,
     currency: c.currency,
     rates: c.rates,
     seasonalRules: c.seasonalRules ?? null,

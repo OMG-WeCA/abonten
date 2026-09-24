@@ -8,6 +8,7 @@ import { seedOrganizations } from './organizations.seed';
 import { seedRateCards } from './rate-cards.seed';
 import { seedSiteAssets } from './site-assets.seed';
 import { seedSiteFaces } from './site-faces.seed';
+import { seedFaceBlackouts } from './face-blackouts.seed';
 import { seedSiteMetadata } from './site-metadata.seed';
 import { seedUsers } from './users.seed';
 import { describeDatabaseEndpoint, sanitizeDatabaseError } from './database-log-sanitizer';
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
     await seedCapabilityOverrides(AppDataSource);
     await seedBillboardSites(AppDataSource);
     await seedSiteFaces(AppDataSource);
+    await seedFaceBlackouts(AppDataSource);
     await seedSiteMetadata(AppDataSource);
     await seedRateCards(AppDataSource);
     await seedSiteAssets(AppDataSource);

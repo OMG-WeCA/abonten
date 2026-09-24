@@ -38,7 +38,10 @@ export type InventoryAuditAction =
   | 'inventory.metadata.added'
   | 'inventory.metadata.updated'
   | 'inventory.rate_card.created'
-  | 'inventory.rate_card.updated';
+  | 'inventory.rate_card.updated'
+  | 'inventory.rate_card.withdrawn'
+  | 'inventory.blackout.created'
+  | 'inventory.blackout.removed';
 
 export interface InventoryAuditActor {
   userId?: string;

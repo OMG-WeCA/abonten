@@ -282,10 +282,24 @@ station panels), 3D and spectacular displays, and tri-vision panels.
    inside the declared country's bounding box when the country is one of Nigeria, Ghana, or
    Cameroon.
 7. **Deliberate deferrals (approved):** geo-fenced polygon *capture* stays V1 (the column, DTO and
-   storage are live; the map-drawing UI is not); availability calendars/holds/blackouts stay V1
-   per §5.6/§6.2; viewing angle, traffic exposure, bleed/substrate/file requirements, minimum
-   booking duration, and regulatory class stay V1 with provenance (they are model inputs for the
+   storage are live; the map-drawing UI is not); booking calendars/holds stay V1
+   per §5.6/§6.2; viewing angle, traffic exposure, and regulatory class stay V1 with provenance (they are model inputs for the
    measurement phase, not capture blockers for the inventory product).
+
+**Partner inventory readiness amendment (2026-09-24).** Partner-managed blackout dates,
+face-level prices, and map-assisted registration are part of the inventory release. Booking
+requests, confirmation, and reservation calendars belong to the later agency-side implementation.
+Face-level prices override the site default while effective; a future rate can be withdrawn
+before it takes effect, while an active rate is ended and retained in the record.
+Until agency-side quoting can combine rate segments, a search window spanning a face-specific
+price change must not be shown at the site-default price.
+A new listing must have at least one bookable face, a current rate
+covering each bookable face (a site-wide rate may be used as its default), and the reference photo above.
+For digital faces, the pixel and loop/spot fields must be complete before that face can be
+offered for booking. A recorded permit expiry that has passed makes a site unbookable; permits
+that do not apply should remain unrecorded rather than inventing a reference. An existing
+listed site with missing booking details needs correction before it is presented as ready for
+the later agency booking flow.
 
 **Lifecycle / states.**
 
@@ -712,7 +726,9 @@ Platform ──< AuditLog, ReferenceData, ReportRun (cross-tenant, admin-scoped)
 1. **Capture:** Media partner creates a site (single form or bulk import) with required fields and
    at least one reference photo → state `draft`.
 2. **Submit:** Partner submits for listing → state `pending_review`. Validation requires
-   coordinates, format, dimensions, and a reference image.
+   coordinates, format, dimensions, a front-on reference image, a bookable face, and a current
+   rate for every bookable face (site-wide or face-specific). Digital faces offered for booking also need their
+   screen and loop/spot specifications.
 3. **Review:** Platform admin reviews completeness/accuracy. Trusted partners may be auto-listed;
    new partners are manually reviewed → `approved` or `rejected` (back to `draft` with notes).
 4. **List:** Approved sites become `listed` and appear in the marketplace with their enrichment and

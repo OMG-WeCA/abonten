@@ -206,6 +206,8 @@ function buildFixture(opts: FixtureOptions = {}) {
     },
   ];
   const assets: Row[] = (opts.assets ?? []).map((a, i) => ({ id: `asset-${i + 1}`, ...a }));
+  const faces: Row[] = [];
+  const rateCards: Row[] = [];
   const metadata: Row[] = [];
   const audit: Row[] = [];
   const memberships = opts.memberships ?? [
@@ -226,7 +228,8 @@ function buildFixture(opts: FixtureOptions = {}) {
       return siteRepo;
     }
     if (target === SiteAssetEntity) return new MemRepo(assets, 'asset');
-    if (target === SiteFaceEntity || target === RateCardEntity) return new MemRepo([], 'plain');
+    if (target === SiteFaceEntity) return new MemRepo(faces, 'plain');
+    if (target === RateCardEntity) return new MemRepo(rateCards, 'plain');
     if (target === SiteMetadataEntity) return new MemRepo(metadata, 'plain');
     if (target === AuditLogEntity) return new MemRepo(audit, 'plain');
     if (target === MembershipEntity) {
@@ -254,6 +257,8 @@ function buildFixture(opts: FixtureOptions = {}) {
     const snap = {
       sites: JSON.parse(JSON.stringify(sites)) as Row[],
       assets: JSON.parse(JSON.stringify(assets)) as Row[],
+      faces: JSON.parse(JSON.stringify(faces)) as Row[],
+      rateCards: JSON.parse(JSON.stringify(rateCards)) as Row[],
       metadata: JSON.parse(JSON.stringify(metadata)) as Row[],
       audit: JSON.parse(JSON.stringify(audit)) as Row[],
     };
@@ -271,6 +276,8 @@ function buildFixture(opts: FixtureOptions = {}) {
     } catch (err) {
       sites.splice(0, sites.length, ...snap.sites);
       assets.splice(0, assets.length, ...snap.assets);
+      faces.splice(0, faces.length, ...snap.faces);
+      rateCards.splice(0, rateCards.length, ...snap.rateCards);
       metadata.splice(0, metadata.length, ...snap.metadata);
       audit.splice(0, audit.length, ...snap.audit);
       throw err;
@@ -279,7 +286,7 @@ function buildFixture(opts: FixtureOptions = {}) {
   const db = { repo: async (t: unknown) => repoFor(t), transaction } as unknown as DatabaseService;
   const storage = new FakeStorage();
   const service = new InventoryService(db, new CapabilityResolverService(), storage as unknown as StorageService);
-  return { service, sites, assets, metadata, audit, storage };
+  return { service, sites, faces, rateCards, assets, metadata, audit, storage };
 }
 
 const USER: AuthenticatedUser = { userId: 'partner-user', email: 'kwame@example.test', sessionVersion: 0 };
@@ -408,14 +415,30 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
     });
 
     it('completes draft -> pending_review -> listed when the site is complete', async () => {
-      const { service, sites } = buildFixture({
+      const { service, sites, faces, rateCards } = buildFixture({
         assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
       });
+      faces.push({ id: 'face-1', siteId: 'site-1', bookable: true });
+      rateCards.push({ siteId: 'site-1', faceId: null, effectiveFrom: new Date('2020-01-01'), rates: { perDay: 100 }, currency: 'GHS' });
       await service.submitSite(USER, 'org-partner', 'site-1');
       assert.equal(sites[0].status, 'pending_review');
       const approved = await service.approveSite(USER, 'org-partner', 'site-1');
       assert.equal(approved.status, 'listed');
       assert.equal(sites[0].status, 'listed');
+    });
+
+    it('requires a current price for every bookable face', async () => {
+      const { service, faces, rateCards } = buildFixture({
+        assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
+      });
+      faces.push(
+        { id: 'face-1', siteId: 'site-1', bookable: true },
+        { id: 'face-2', siteId: 'site-1', bookable: true },
+      );
+      rateCards.push({ siteId: 'site-1', faceId: 'face-1', effectiveFrom: new Date('2020-01-01'), rates: { perDay: 100 } });
+      await assert.rejects(() => service.submitSite(USER, 'org-partner', 'site-1'), /current rate for each bookable face/);
+      rateCards.push({ siteId: 'site-1', faceId: 'face-2', effectiveFrom: new Date('2020-01-01'), rates: { perWeek: 600 } });
+      await service.submitSite(USER, 'org-partner', 'site-1');
     });
   });
 

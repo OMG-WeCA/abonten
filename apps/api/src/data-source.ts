@@ -9,6 +9,7 @@ import { RefreshTokenFamilies1720000000004 } from './migrations/1720000000004-Re
 import { OnboardingIdempotency1720000000005 } from './migrations/1720000000005-OnboardingIdempotency';
 import { BillboardSiteClientRequestId1720000000006 } from './migrations/1720000000006-BillboardSiteClientRequestId';
 import { PartOneInventoryTrust1720000000007 } from './migrations/1720000000007-PartOneInventoryTrust';
+import { PartnerAvailability1720000000008 } from './migrations/1720000000008-PartnerAvailability';
 
 // DataSource used by the migration CLI / `pnpm migration:run|revert|generate`.
 // The runtime app uses DatabaseModule's lazy, migration-only DataSource with
@@ -28,6 +29,7 @@ export const AppDataSource = new DataSource({
     OnboardingIdempotency1720000000005,
     BillboardSiteClientRequestId1720000000006,
     PartOneInventoryTrust1720000000007,
+    PartnerAvailability1720000000008,
   ],
   migrationsRun: false,
   logging: ['error', 'migration'],

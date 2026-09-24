@@ -11,6 +11,9 @@ export class SiteFaceEntity {
   @Column({ type: 'double precision' }) area!: number;
   @Column() units!: string;
   @Column({ name: 'printable_area', nullable: true }) printableArea?: string;
+  @Column({ name: 'bleed_mm', type: 'double precision', nullable: true }) bleedMm?: number | null;
+  @Column({ type: 'varchar', nullable: true }) substrate?: string | null;
+  @Column({ name: 'file_requirements', type: 'text', nullable: true }) fileRequirements?: string | null;
   @Column({ default: true }) bookable!: boolean;
 
   // Digital-face attributes (SPEC §5.1 trust contract 2): populated for faces of

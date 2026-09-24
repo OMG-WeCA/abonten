@@ -1,11 +1,12 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../common/database.service';
 import { AuditLogEntity } from '../common/entities/audit-log.entity';
 import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
 import { OrganizationEntity } from '../common/entities/organization.entity';
 import { RateCardEntity } from '../common/entities/rate-card.entity';
+import { FaceBlackoutEntity } from '../common/entities/face-blackout.entity';
 import { SiteAssetEntity } from '../common/entities/site-asset.entity';
 import { SiteFaceEntity } from '../common/entities/site-face.entity';
 import { SiteMetadataEntity } from '../common/entities/site-metadata.entity';
@@ -140,6 +141,7 @@ interface Harness {
   assets: Row[];
   metadata: Row[];
   rateCards: Row[];
+  blackouts: Row[];
   audit: Row[];
   storage: { stored: string[]; removed: string[] };
 }
@@ -179,6 +181,7 @@ function buildHarness(
   const assets: Row[] = [];
   const metadata: Row[] = [];
   const rateCards: Row[] = [];
+  const blackouts: Row[] = [];
   const audit: Row[] = [];
   const organizations: Row[] = options.organizations ?? [{ id: 'org-partner', type: 'media_partner' }];
   const storage = { stored: [] as string[], removed: [] as string[] };
@@ -196,6 +199,8 @@ function buildHarness(
         return new MemRepo(metadata);
       case RateCardEntity:
         return new MemRepo(rateCards);
+      case FaceBlackoutEntity:
+        return new MemRepo(blackouts);
       case AuditLogEntity:
         return options.auditFails?.()
           ? {
@@ -227,6 +232,9 @@ function buildHarness(
   // Raw-SQL executor mirroring the shapes the service issues inside
   // transactions (sites) plus the production metadata read.
   const executeQuery = async (sql: string, params: unknown[]): Promise<Row[]> => {
+    if (/SELECT id FROM site_faces WHERE id = \$1 FOR UPDATE/.test(sql)) {
+      return faces.filter((face) => face.id === params[0]).map(clone);
+    }
     if (sql.includes('site_metadata')) return new MemRepo(metadata).query(sql, params);
     if (/site_assets/.test(sql)) return new MemRepo(assets).query(sql, params);
     return new MemRepo(sites, assets).query(sql, params);
@@ -239,6 +247,7 @@ function buildHarness(
       assets: structuredClone(assets),
       metadata: structuredClone(metadata),
       rateCards: structuredClone(rateCards),
+      blackouts: structuredClone(blackouts),
       audit: structuredClone(audit),
     };
     const manager = {
@@ -253,6 +262,7 @@ function buildHarness(
       assets.splice(0, assets.length, ...snap.assets);
       metadata.splice(0, metadata.length, ...snap.metadata);
       rateCards.splice(0, rateCards.length, ...snap.rateCards);
+      blackouts.splice(0, blackouts.length, ...snap.blackouts);
       audit.splice(0, audit.length, ...snap.audit);
       throw err;
     }
@@ -275,7 +285,7 @@ function buildHarness(
       },
     } as never,
   );
-  return { service, sites, faces, assets, metadata, rateCards, audit, storage };
+  return { service, sites, faces, assets, metadata, rateCards, blackouts, audit, storage };
 }
 
 const USER: AuthenticatedUser = { userId: 'kwame-1', email: 'kwame@example.test', sessionVersion: 0 };
@@ -344,6 +354,8 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
     const h = buildHarness({ site: { status: 'draft' } });
     // The server-side submit gate requires a front-on reference photo (SPEC §7.1).
     h.assets.push({ id: 'asset-1', siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' });
+    h.faces.push({ id: 'face-1', siteId: 'site-1', bookable: true });
+    h.rateCards.push({ id: 'rate-1', siteId: 'site-1', faceId: null, effectiveFrom: new Date('2020-01-01'), rates: { perDay: 100 }, currency: 'NGN' });
     await h.service.submitSite(USER, ORG, 'site-1');
     await h.service.approveSite(USER, ORG, 'site-1');
     await h.service.suspendSite(USER, ORG, 'site-1');
@@ -392,6 +404,21 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
     assert.equal(h.audit[2].after, null);
   });
 
+  it('keeps a face with unavailable periods until the partner clears them', async () => {
+    const h = buildHarness();
+    const face = await h.service.addFace(USER, ORG, 'site-1', {
+      faceLabel: 'A', width: 12, height: 3, area: 36, units: 'm', bookable: true,
+    });
+    const faceId = String((face as unknown as Row).id);
+    h.blackouts.push({ id: 'blackout-1', faceId, organizationId: ORG });
+    await assert.rejects(() => h.service.removeFace(USER, ORG, faceId), ConflictException);
+    assert.equal(h.faces.length, 1);
+    assert.deepEqual(auditActions(h), ['inventory.face.added']);
+    h.blackouts.length = 0;
+    await h.service.removeFace(USER, ORG, faceId);
+    assert.equal(h.faces.length, 0);
+  });
+
   it('asset upload + delete write one audit row each; storage removal is post-commit', async () => {
     const h = buildHarness();
     const asset = await h.service.addAsset(USER, ORG, 'site-1', 'front', png(), new Date('2026-08-01'));
@@ -423,6 +450,36 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
       'inventory.rate_card.updated',
     ]);
     assert.equal((h.audit[0].after as Row).dataClass, 'production');
+  });
+
+  it('rejects empty prices and backwards rate dates before persisting a card', async () => {
+    const h = buildHarness();
+    await assert.rejects(() => h.service.createRateCard(USER, ORG, 'site-1', {
+      currency: 'NGN', rates: {}, effectiveFrom: '2026-09-01',
+    }), BadRequestException);
+    await assert.rejects(() => h.service.createRateCard(USER, ORG, 'site-1', {
+      currency: 'NGN', rates: { perDay: 100 }, effectiveFrom: '2026-09-01', effectiveTo: '2026-08-31',
+    }), BadRequestException);
+    assert.equal(h.rateCards.length, 0);
+    assert.equal(h.audit.length, 0);
+  });
+
+  it('withdraws a future rate with an audit record and keeps current rates', async () => {
+    const h = buildHarness();
+    const future = await h.service.createRateCard(USER, ORG, 'site-1', {
+      currency: 'NGN', rates: { perDay: 100 }, effectiveFrom: '2099-01-01',
+    });
+    const current = await h.service.createRateCard(USER, ORG, 'site-1', {
+      currency: 'NGN', rates: { perDay: 90 }, effectiveFrom: '2020-01-01',
+    });
+    await assert.rejects(() => h.service.withdrawFutureRateCard(USER, 'another-org', String((future as unknown as Row).id)), ForbiddenException);
+    await assert.rejects(() => h.service.withdrawFutureRateCard(USER, ORG, String((current as unknown as Row).id)), ConflictException);
+    await h.service.withdrawFutureRateCard(USER, ORG, String((future as unknown as Row).id));
+    assert.deepEqual(h.rateCards.map((rate) => rate.id), [(current as unknown as Row).id]);
+    assert.deepEqual(auditActions(h), [
+      'inventory.rate_card.created', 'inventory.rate_card.created', 'inventory.rate_card.withdrawn',
+    ]);
+    assert.equal(h.audit[2].after, null);
   });
 
   it('a failing audit insert rolls the whole mutation back (no site, no audit)', async () => {

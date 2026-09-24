@@ -11,7 +11,7 @@ const FACES = [
   { id: F + '000000000004', siteId: IDS.site.victoria, faceLabel: 'A', width: 10, height: 5, area: 50, units: 'm', bookable: false },
   { id: F + '000000000005', siteId: IDS.site.victoria, faceLabel: 'B', width: 10, height: 5, area: 50, units: 'm', bookable: false },
   { id: F + '000000000006', siteId: IDS.site.ikeja, faceLabel: 'A', width: 6, height: 3, area: 18, units: 'm', bookable: true },
-  { id: F + '000000000007', siteId: IDS.site.apapa, faceLabel: 'A', width: 8, height: 3, area: 24, units: 'm', bookable: false },
+  { id: F + '000000000007', siteId: IDS.site.apapa, faceLabel: 'A', width: 8, height: 3, area: 24, units: 'm', bookable: false, bleedMm: 5, substrate: 'Vinyl', fileRequirements: 'Sample: print-ready PDF, CMYK, 150 dpi at full size' },
   { id: F + '000000000008', siteId: IDS.site.graphic, faceLabel: 'A', width: 8, height: 3, area: 24, units: 'm', bookable: true },
   { id: F + '000000000009', siteId: IDS.site.spintex, faceLabel: 'A', width: 10, height: 4, area: 40, units: 'm', bookable: true },
   { id: F + '00000000000a', siteId: IDS.site.liberation, faceLabel: 'A', width: 6, height: 3, area: 18, units: 'm', bookable: true },

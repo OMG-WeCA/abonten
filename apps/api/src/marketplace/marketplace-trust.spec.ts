@@ -1,6 +1,12 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
+import { NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../common/database.service';
+import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
+import { SiteFaceEntity } from '../common/entities/site-face.entity';
+import { SiteAssetEntity } from '../common/entities/site-asset.entity';
+import { SiteMetadataEntity } from '../common/entities/site-metadata.entity';
+import { RateCardEntity } from '../common/entities/rate-card.entity';
 import { MarketplaceService } from './marketplace.service';
 
 /**
@@ -21,6 +27,7 @@ class MarketplaceMemRepo {
     private readonly faces: Row[] = [],
     private readonly assets: Row[] = [],
     private readonly rateCards: Row[] = [],
+    private readonly source: 'sites' | 'faces' | 'assets' | 'metadata' | 'rates' = 'sites',
   ) {}
 
   async find({ where }: { where?: Record<string, unknown> } = {}): Promise<Row[]> {
@@ -29,7 +36,13 @@ class MarketplaceMemRepo {
   }
 
   private table(): Row[] {
-    return [...this.sites, ...this.faces, ...this.assets, ...this.metadata, ...this.rateCards];
+    return {
+      sites: this.sites,
+      faces: this.faces,
+      assets: this.assets,
+      metadata: this.metadata,
+      rates: this.rateCards,
+    }[this.source];
   }
 
   /** Honors data_class predicates found in the SQL; includes demo rows otherwise. */
@@ -84,7 +97,7 @@ class MarketplaceMemRepo {
   }
 }
 
-function buildHarness(): { service: MarketplaceService; sites: Row[]; metadata: Row[] } {
+function buildHarness(): { service: MarketplaceService; sites: Row[]; metadata: Row[]; assets: Row[] } {
   const sites: Row[] = [
     {
       id: 'site-listed',
@@ -120,11 +133,21 @@ function buildHarness(): { service: MarketplaceService; sites: Row[]; metadata: 
       dataClass: null, // pre-migration rows count as production
     },
   ];
-  const harness = new MarketplaceMemRepo(sites, metadata);
-  const repoFor = async (_target: unknown) => harness;
+  const faces: Row[] = [{ id: 'face-1', siteId: 'site-listed', bookable: true }];
+  const assets: Row[] = [{ id: 'asset-1', siteId: 'site-listed', kind: 'front' }];
+  const rateCards: Row[] = [{ id: 'rate-1', siteId: 'site-listed', faceId: null,
+    effectiveFrom: new Date('2020-01-01'), rates: { perDay: 100 }, currency: 'NGN' }];
+  const repoFor = async (target: unknown) => {
+    const source: 'sites' | 'faces' | 'assets' | 'metadata' | 'rates' = target === SiteFaceEntity ? 'faces' :
+      target === SiteAssetEntity ? 'assets' :
+      target === SiteMetadataEntity ? 'metadata' :
+      target === RateCardEntity ? 'rates' :
+      target === BillboardSiteEntity ? 'sites' : 'sites';
+    return new MarketplaceMemRepo(sites, metadata, faces, assets, rateCards, source);
+  };
   const db = { repo: repoFor } as unknown as DatabaseService;
   const service = new MarketplaceService(db);
-  return { service, sites, metadata };
+  return { service, sites, metadata, assets };
 }
 
 const query = { page: 1, limit: 10 } as never;
@@ -150,5 +173,11 @@ describe('marketplace demo-data suppression (§1.4.1)', () => {
       (site.metadata as Array<Record<string, unknown>>).some((m) => m.dataClass === 'demo'),
       false,
     );
+  });
+
+  it('does not serve a listed legacy site without a front photo as ready inventory', async () => {
+    const { service, assets } = buildHarness();
+    assets.length = 0;
+    await assert.rejects(() => service.getMarketplaceSite('site-listed'), NotFoundException);
   });
 });

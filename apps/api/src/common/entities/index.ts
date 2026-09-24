@@ -13,6 +13,7 @@ export { TagEntity } from './tag.entity';
 export { CampaignEntity } from './campaign.entity';
 export { CampaignItemEntity } from './campaign-item.entity';
 export { BookingEntity } from './booking.entity';
+export { FaceBlackoutEntity } from './face-blackout.entity';
 export { QuoteEntity } from './quote.entity';
 export { CreativeEntity } from './creative.entity';
 export { ProofOfPerformanceEntity } from './proof-of-performance.entity';
@@ -41,6 +42,7 @@ import { TagEntity } from './tag.entity';
 import { CampaignEntity } from './campaign.entity';
 import { CampaignItemEntity } from './campaign-item.entity';
 import { BookingEntity } from './booking.entity';
+import { FaceBlackoutEntity } from './face-blackout.entity';
 import { QuoteEntity } from './quote.entity';
 import { CreativeEntity } from './creative.entity';
 import { ProofOfPerformanceEntity } from './proof-of-performance.entity';
@@ -71,6 +73,7 @@ export const ENTITIES = [
   CampaignEntity,
   CampaignItemEntity,
   BookingEntity,
+  FaceBlackoutEntity,
   QuoteEntity,
   CreativeEntity,
   ProofOfPerformanceEntity,
