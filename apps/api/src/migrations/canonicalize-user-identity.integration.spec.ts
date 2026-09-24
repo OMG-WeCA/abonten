@@ -204,10 +204,13 @@ describe('CanonicalizeUserIdentity migration', () => {
         const restoredUsers = (await queryRunner.query(
           `SELECT id, email FROM users ORDER BY email`,
         )) as unknown as Array<{ id: string; email: string }>;
-        assert.deepEqual(restoredUsers, [
-          { id: keeperId, email: 'Person@Example.com' },
-          { id: duplicateId, email: 'person@example.com' },
-        ]);
+        assert.deepEqual(
+          new Map(restoredUsers.map((user) => [user.id, user.email])),
+          new Map([
+            [keeperId, 'Person@Example.com'],
+            [duplicateId, 'person@example.com'],
+          ]),
+        );
         const restoredMemberships = (await queryRunner.query(
           `SELECT id, user_id FROM memberships ORDER BY id`,
         )) as unknown as Array<{ id: string; user_id: string }>;
@@ -255,8 +258,8 @@ describe('CanonicalizeUserIdentity migration', () => {
           `SELECT email FROM users ORDER BY email`,
         )) as unknown as Array<{ email: string }>;
         assert.deepEqual(
-          users.map((user) => user.email),
-          ['Conflict@Example.com', 'conflict@example.com'],
+          users.map((user) => user.email).sort(),
+          ['Conflict@Example.com', 'conflict@example.com'].sort(),
         );
         const archives = (await queryRunner.query(
           `SELECT to_regclass('user_identity_reconciliations') AS archive`,

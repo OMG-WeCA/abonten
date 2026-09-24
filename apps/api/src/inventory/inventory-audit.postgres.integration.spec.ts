@@ -23,7 +23,10 @@ import { PartOneInventoryTrust1720000000007 } from '../migrations/1720000000007-
 
 const databaseUrl = process.env.POSTGRES_INTEGRATION_URL;
 
-async function withSchema(test: (dataSource: DataSource) => Promise<void>): Promise<void> {
+async function withSchema(
+  test: (dataSource: DataSource) => Promise<void>,
+  applyInventoryMigration = true,
+): Promise<void> {
   if (!databaseUrl) throw new Error('POSTGRES_INTEGRATION_URL is required');
   const schema = `inv_trust_${randomUUID().replaceAll('-', '')}`;
   // search_path rides the connection options so every pooled connection sees
@@ -171,7 +174,9 @@ async function withSchema(test: (dataSource: DataSource) => Promise<void>): Prom
     `);
     // Part 1 additive columns (data_class/verification, digital face attrs)
     // are part of the fixture schema for every test.
-    await new PartOneInventoryTrust1720000000007().up(dataSource.createQueryRunner());
+    if (applyInventoryMigration) {
+      await new PartOneInventoryTrust1720000000007().up(dataSource.createQueryRunner());
+    }
     await test(dataSource);
   } finally {
     await dataSource.query('SET search_path TO public').catch(() => undefined);
@@ -180,7 +185,11 @@ async function withSchema(test: (dataSource: DataSource) => Promise<void>): Prom
   }
 }
 
-const USER: AuthenticatedUser = { userId: 'kwame-1', email: 'kwame@example.test', sessionVersion: 0 };
+const USER: AuthenticatedUser = {
+  userId: 'kwame-1',
+  email: 'kwame@example.test',
+  sessionVersion: 0,
+};
 const ORG = 'org-partner';
 
 const createDto = (patch: Partial<CreateSiteDto> = {}): CreateSiteDto =>
@@ -198,25 +207,24 @@ const createDto = (patch: Partial<CreateSiteDto> = {}): CreateSiteDto =>
 
 function buildService(dataSource: DataSource): InventoryService {
   const db = new DatabaseService(dataSource);
-  return new InventoryService(
-    db,
-    new CapabilityResolverService(),
-    {
-      async store(ref: string) {
-        return ref;
-      },
-      async read() {
-        return Buffer.alloc(4);
-      },
-      async remove() {},
-    } as never,
-  );
+  return new InventoryService(db, new CapabilityResolverService(), {
+    async store(ref: string) {
+      return ref;
+    },
+    async read() {
+      return Buffer.alloc(4);
+    },
+    async remove() {},
+  } as never);
 }
 
 describe('inventory audit — postgres transactional integrity', { skip: !databaseUrl }, () => {
   it('commits the site and exactly one audit row together', async () => {
     await withSchema(async (dataSource) => {
-      await dataSource.query(`INSERT INTO organizations (id, name, type) VALUES ($1, 'Partner', 'media_partner')`, [ORG]);
+      await dataSource.query(
+        `INSERT INTO organizations (id, name, type) VALUES ($1, 'Partner', 'media_partner')`,
+        [ORG],
+      );
       await dataSource.query(
         `INSERT INTO memberships (id, user_id, organization_id, role, status) VALUES ('m1', $1, $2, 'inventory_manager', 'active')`,
         [USER.userId, ORG],
@@ -235,7 +243,10 @@ describe('inventory audit — postgres transactional integrity', { skip: !databa
 
   it('rolls back site + provenance when the audit insert fails', async () => {
     await withSchema(async (dataSource) => {
-      await dataSource.query(`INSERT INTO organizations (id, name, type) VALUES ($1, 'Partner', 'media_partner')`, [ORG]);
+      await dataSource.query(
+        `INSERT INTO organizations (id, name, type) VALUES ($1, 'Partner', 'media_partner')`,
+        [ORG],
+      );
       await dataSource.query(
         `INSERT INTO memberships (id, user_id, organization_id, role, status) VALUES ('m1', $1, $2, 'inventory_manager', 'active')`,
         [USER.userId, ORG],
@@ -255,7 +266,11 @@ describe('inventory audit — postgres transactional integrity', { skip: !databa
             }),
             { userId: USER.userId, orgId: ORG },
           ),
-        (err: unknown) => String((err as Error).message).toLowerCase().includes('audit_no_site_created') || String((err as Error).message).includes('check constraint'),
+        (err: unknown) =>
+          String((err as Error).message)
+            .toLowerCase()
+            .includes('audit_no_site_created') ||
+          String((err as Error).message).includes('check constraint'),
       );
       const sites = await dataSource.query(`SELECT count(*)::int AS c FROM billboard_sites`);
       assert.equal(sites[0].c, 0);
@@ -268,7 +283,10 @@ describe('inventory audit — postgres transactional integrity', { skip: !databa
 
   it('replayed idempotent creates leave exactly one audit row', async () => {
     await withSchema(async (dataSource) => {
-      await dataSource.query(`INSERT INTO organizations (id, name, type) VALUES ($1, 'Partner', 'media_partner')`, [ORG]);
+      await dataSource.query(
+        `INSERT INTO organizations (id, name, type) VALUES ($1, 'Partner', 'media_partner')`,
+        [ORG],
+      );
       await dataSource.query(
         `INSERT INTO memberships (id, user_id, organization_id, role, status) VALUES ('m1', $1, $2, 'inventory_manager', 'active')`,
         [USER.userId, ORG],
@@ -276,7 +294,11 @@ describe('inventory audit — postgres transactional integrity', { skip: !databa
       const service = buildService(dataSource);
       const dto = createDto({ clientRequestId: 'req-pg-1' });
       const first = await service.createSite(ORG, dto, { userId: USER.userId, orgId: ORG });
-      const replay = await service.createSite(ORG, { ...dto, name: 'Second Try' }, { userId: USER.userId, orgId: ORG });
+      const replay = await service.createSite(
+        ORG,
+        { ...dto, name: 'Second Try' },
+        { userId: USER.userId, orgId: ORG },
+      );
       assert.equal(replay.id, first.id);
       const sites = await dataSource.query(`SELECT count(*)::int AS c FROM billboard_sites`);
       assert.equal(sites[0].c, 1);
@@ -285,24 +307,37 @@ describe('inventory audit — postgres transactional integrity', { skip: !databa
     });
   });
 
-  it('runs the Part 1 migration and stamps the demo/production data classes', async () => {
+  it('classifies only known seed metadata as demo during migration', async () => {
     await withSchema(async (dataSource) => {
-      // Simulate a pre-migration database: seeded metadata rows exist without
-      // the new columns, then the migration stamps them demo.
-      await dataSource.query(`
+      // Simulate a database with both seeded fiction and a real partner record.
+      // A deploy must not hide the partner's data as demo content.
+      const partnerMetadataId = randomUUID();
+      await dataSource.query(
+        `
         INSERT INTO site_metadata (id, site_id, dimension, payload, source, method)
-        VALUES (gen_random_uuid(), 'site-1', 'traffic', '{"aadt":85000}'::json, 'LAMATA', 'count');
-      `);
+        VALUES
+          ('77777777-0000-4000-8000-000000000001', 'site-1', 'traffic', '{"aadt":85000}'::json, 'LAMATA', 'count'),
+          ($1, 'site-1', 'structure', '{"orientationDeg":90}'::json, 'partner survey', 'measured');
+      `,
+        [partnerMetadataId],
+      );
       const runner = dataSource.createQueryRunner();
       const migration = new PartOneInventoryTrust1720000000007();
       await migration.up(runner);
-      // Existing rows are demo; new default is production.
-      const rows = await dataSource.query(`SELECT data_class, verification FROM site_metadata`);
-      assert.equal(rows.length, 1);
-      assert.equal(rows[0].data_class, 'demo');
-      assert.equal(rows[0].verification, 'unverified');
+      const rows = await dataSource.query(`SELECT id, data_class, verification FROM site_metadata`);
+      assert.equal(rows.length, 2);
+      const byId = new Map<string, { id: string; data_class: string; verification: string }>(
+        rows.map((row: { id: string; data_class: string; verification: string }) => [row.id, row]),
+      );
+      assert.equal(byId.get(partnerMetadataId)?.data_class, 'production');
+      assert.equal(byId.get(partnerMetadataId)?.verification, 'unverified');
+      assert.equal(byId.get('77777777-0000-4000-8000-000000000001')?.data_class, 'demo');
+      assert.equal(byId.get('77777777-0000-4000-8000-000000000001')?.verification, 'unverified');
       const service = buildService(dataSource);
-      await dataSource.query(`INSERT INTO organizations (id, name, type) VALUES ($1, 'Partner', 'media_partner')`, [ORG]);
+      await dataSource.query(
+        `INSERT INTO organizations (id, name, type) VALUES ($1, 'Partner', 'media_partner')`,
+        [ORG],
+      );
       await dataSource.query(
         `INSERT INTO memberships (id, user_id, organization_id, role, status) VALUES ('m1', $1, $2, 'inventory_manager', 'active')`,
         [USER.userId, ORG],
@@ -313,7 +348,8 @@ describe('inventory audit — postgres transactional integrity', { skip: !databa
          VALUES ('site-1', 'structure', '{"orientationDeg":90}'::json, 'compass', 'reading', 'demo')`,
       );
       const visible = await service.listMetadata('site-1');
-      assert.deepEqual(visible, []);
-    });
+      assert.equal(visible.length, 1);
+      assert.equal(visible[0].id, partnerMetadataId);
+    }, false);
   });
 });

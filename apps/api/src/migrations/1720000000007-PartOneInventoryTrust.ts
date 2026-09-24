@@ -4,11 +4,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Part 1 inventory trust (docs/inventory-product-execution.md §1.4.1, §1.3):
  * additive, data-preserving columns only.
  *
- * - site_metadata.data_class     — enforceable demo/production semantics. Every
- *   row that already exists at migration time is seeded demo content (the
- *   metadata write API predates this column and retained data is seed data),
- *   so it is stamped 'demo' here; new partner-entered rows default to
- *   'production' and the seed file stamps its own rows 'demo' on upsert.
+ * - site_metadata.data_class     — enforceable demo/production semantics.
+ *   Only the ten deterministic seed records are stamped 'demo'. Existing
+ *   partner records keep the 'production' default rather than being hidden.
+ *   The seed file also stamps its own rows 'demo' on upsert.
  * - site_metadata.verification   — evidence level for later-phase filtering
  *   (SPEC §5.1 trust contract item 4). Existing rows default 'unverified'.
  * - site_faces digital attributes— first-class DOOH fields (SPEC §5.1 item 2).
@@ -21,9 +20,19 @@ export class PartOneInventoryTrust1720000000007 implements MigrationInterface {
     await queryRunner.query(
       `ALTER TABLE "site_metadata" ADD COLUMN IF NOT EXISTS "verification" varchar NOT NULL DEFAULT 'unverified'`,
     );
-    // Retained rows at migration time are seed rows (SPEC §7.7): classify them
-    // honestly as demo rather than deleting them.
-    await queryRunner.query(`UPDATE "site_metadata" SET "data_class" = 'demo'`);
+    // Seed IDs are stable across installations. Do not infer that every
+    // pre-migration row is seed content: partners may have added real records.
+    await queryRunner.query(
+      `UPDATE "site_metadata"
+       SET "data_class" = 'demo'
+       WHERE "id" = ANY($1::uuid[])`,
+      [
+        Array.from(
+          { length: 10 },
+          (_, index) => `77777777-0000-4000-8000-${(index + 1).toString(16).padStart(12, '0')}`,
+        ),
+      ],
+    );
     await queryRunner.query(
       `ALTER TABLE "site_faces" ADD COLUMN IF NOT EXISTS "pixel_width" integer`,
     );

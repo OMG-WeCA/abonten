@@ -1,10 +1,20 @@
 import * as Joi from 'joi';
 
+const productionRequired = (developmentDefault?: string) =>
+  Joi.when('NODE_ENV', {
+    is: 'production',
+    then: Joi.string().trim().required(),
+    otherwise:
+      developmentDefault === undefined
+        ? Joi.string().allow('').default('')
+        : Joi.string().default(developmentDefault),
+  });
+
 export default Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
   API_PORT: Joi.number().default(3000),
-  API_BASE_URL: Joi.string().default('http://localhost:3000'),
-  WEB_BASE_URL: Joi.string().default('http://localhost:3001'),
+  API_BASE_URL: productionRequired('http://localhost:3000'),
+  WEB_BASE_URL: productionRequired('http://localhost:3001'),
   NEXT_PUBLIC_BASE_PATH: Joi.string()
     .allow('')
     .pattern(/^\/[^/?#]+(?:\/[^/?#]+)*$/)
@@ -20,15 +30,20 @@ export default Joi.object({
     is: 'production',
     then: Joi.string()
       .min(32)
-      .invalid('change-me-session-dev', 'change-me-in-dev', 'change-me')
+      .invalid('change-me-session-dev', 'change-me-in-dev', 'change-me', Joi.ref('JWT_SECRET'))
       .required(),
     otherwise: Joi.string().min(8).default('change-me-session-dev'),
   }),
   EMAIL_CODE_SECRET: Joi.when('NODE_ENV', {
     is: 'production',
-    then: Joi.string().min(32).invalid(Joi.ref('JWT_SECRET')).required().messages({
-      'any.invalid': 'EMAIL_CODE_SECRET must be distinct from JWT_SECRET in production',
-    }),
+    then: Joi.string()
+      .min(32)
+      .invalid(Joi.ref('JWT_SECRET'), Joi.ref('SESSION_SECRET'))
+      .required()
+      .messages({
+        'any.invalid':
+          'EMAIL_CODE_SECRET must be distinct from JWT_SECRET and SESSION_SECRET in production',
+      }),
     otherwise: Joi.string().min(16).optional(),
   }),
   EMAIL_CODE_TTL_SECONDS: Joi.number().integer().min(60).max(900).default(600),
@@ -40,19 +55,23 @@ export default Joi.object({
   AZURE_AD_TENANT_ID: Joi.string().allow('').default(''),
   AZURE_AD_CLIENT_ID: Joi.string().allow('').default(''),
   AZURE_AD_CLIENT_SECRET: Joi.string().allow('').default(''),
-  AZURE_AD_REDIRECT_URL: Joi.string().default('http://localhost:3000/api/auth/microsoft/callback'),
-  SMTP_HOST: Joi.string().default('localhost'),
+  AZURE_AD_REDIRECT_URL: Joi.string()
+    .allow('')
+    .default('http://localhost:3000/api/auth/microsoft/callback'),
+  SMTP_HOST: productionRequired('localhost'),
   SMTP_PORT: Joi.number().default(1025),
   SMTP_USER: Joi.string().allow('').default(''),
   SMTP_PASS: Joi.string().allow('').default(''),
-  MAIL_FROM: Joi.string().default('no-reply@abonten.local'),
+  MAIL_FROM: productionRequired('no-reply@abonten.local'),
   SMTP_CONNECTION_TIMEOUT_MS: Joi.number().integer().min(100).max(60_000).default(10_000),
   SMTP_GREETING_TIMEOUT_MS: Joi.number().integer().min(100).max(60_000).default(10_000),
   SMTP_SOCKET_TIMEOUT_MS: Joi.number().integer().min(100).max(120_000).default(15_000),
   SMTP_DELIVERY_TIMEOUT_MS: Joi.number().integer().min(100).max(120_000).default(20_000),
-  DATABASE_URL: Joi.string().default('postgresql://abonten:abonten@localhost:5432/abonten'),
-  REDIS_URL: Joi.string().default('redis://localhost:6379'),
-  S3_ENDPOINT: Joi.string().default('http://localhost:9000'),
-  S3_BUCKET: Joi.string().default('abonten'),
+  DATABASE_URL: productionRequired('postgresql://abonten:abonten@localhost:5432/abonten'),
+  REDIS_URL: productionRequired('redis://localhost:6379'),
+  S3_ENDPOINT: productionRequired('http://localhost:9000'),
+  S3_BUCKET: productionRequired('abonten'),
   S3_REGION: Joi.string().default('us-east-1'),
+  S3_ACCESS_KEY: productionRequired(),
+  S3_SECRET_KEY: productionRequired(),
 });

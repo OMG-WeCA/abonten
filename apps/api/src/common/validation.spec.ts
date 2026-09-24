@@ -8,10 +8,27 @@ import { oidcSessionOptions } from './oidc-session-options';
 const JWT_SECRET = 'jwt-secret-for-production-tests-32-bytes';
 const EMAIL_CODE_SECRET = 'email-code-secret-for-production-tests';
 const SESSION_SECRET = 'oidc-session-secret-for-production-tests';
+const PRODUCTION_SERVICES = {
+  API_BASE_URL: 'https://api.example.test',
+  WEB_BASE_URL: 'https://app.example.test',
+  SMTP_HOST: 'smtp.example.test',
+  MAIL_FROM: 'noreply@example.test',
+  DATABASE_URL: 'postgresql://app@db.example.test/abonten',
+  REDIS_URL: 'redis://cache.example.test:6379',
+  S3_ENDPOINT: 'https://objects.example.test',
+  S3_BUCKET: 'abonten',
+  S3_ACCESS_KEY: 'test-access-key',
+  S3_SECRET_KEY: 'test-secret-key',
+};
 
 describe('production authentication configuration', () => {
   it('rejects missing, placeholder, and short JWT secrets in production', () => {
-    const base = { NODE_ENV: 'production', EMAIL_CODE_SECRET, SESSION_SECRET };
+    const base = {
+      NODE_ENV: 'production',
+      EMAIL_CODE_SECRET,
+      SESSION_SECRET,
+      ...PRODUCTION_SERVICES,
+    };
 
     assert.ok(validationSchema.validate(base).error);
     assert.ok(validationSchema.validate({ ...base, JWT_SECRET: 'change-me-in-dev' }).error);
@@ -22,6 +39,7 @@ describe('production authentication configuration', () => {
   it('rejects equal strong JWT and email-code secrets in production', () => {
     const result = validationSchema.validate({
       NODE_ENV: 'production',
+      ...PRODUCTION_SERVICES,
       JWT_SECRET,
       EMAIL_CODE_SECRET: JWT_SECRET,
       SESSION_SECRET,
@@ -32,6 +50,7 @@ describe('production authentication configuration', () => {
   it('accepts distinct strong JWT and email-code secrets in production', () => {
     const result = validationSchema.validate({
       NODE_ENV: 'production',
+      ...PRODUCTION_SERVICES,
       JWT_SECRET,
       EMAIL_CODE_SECRET,
       SESSION_SECRET,
@@ -40,13 +59,18 @@ describe('production authentication configuration', () => {
   });
 
   it('requires a strong non-placeholder OIDC session secret in production', () => {
-    const base = { NODE_ENV: 'production', JWT_SECRET, EMAIL_CODE_SECRET };
+    const base = { NODE_ENV: 'production', JWT_SECRET, EMAIL_CODE_SECRET, ...PRODUCTION_SERVICES };
     assert.ok(validationSchema.validate(base).error);
     assert.ok(
       validationSchema.validate({ ...base, SESSION_SECRET: 'change-me-session-dev' }).error,
     );
     assert.ok(validationSchema.validate({ ...base, SESSION_SECRET: 'x'.repeat(31) }).error);
     assert.equal(validationSchema.validate({ ...base, SESSION_SECRET }).error, undefined);
+    assert.ok(validationSchema.validate({ ...base, SESSION_SECRET: JWT_SECRET }).error);
+    assert.ok(
+      validationSchema.validate({ ...base, SESSION_SECRET, EMAIL_CODE_SECRET: SESSION_SECRET })
+        .error,
+    );
 
     assert.throws(
       () => oidcSessionOptions('change-me-session-dev', 'production'),
@@ -65,6 +89,26 @@ describe('production authentication configuration', () => {
     assert.equal(cookie.httpOnly, true);
     assert.equal(cookie.secure, true);
     assert.equal(cookie.sameSite, 'lax');
+  });
+
+  it('requires explicit service endpoints and object-storage credentials in production', () => {
+    const base = {
+      NODE_ENV: 'production',
+      JWT_SECRET,
+      EMAIL_CODE_SECRET,
+      SESSION_SECRET,
+      ...PRODUCTION_SERVICES,
+    };
+    assert.equal(validationSchema.validate(base).error, undefined);
+    assert.equal(
+      validationSchema.validate({ ...base, AZURE_AD_REDIRECT_URL: '' }).error,
+      undefined,
+    );
+    for (const key of Object.keys(PRODUCTION_SERVICES)) {
+      const missing = { ...base } as Record<string, string | undefined>;
+      delete missing[key];
+      assert.ok(validationSchema.validate(missing).error, `${key} must be explicit`);
+    }
   });
 
   it('shares the optional web base path with the Microsoft return route configuration', () => {
