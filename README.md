@@ -44,6 +44,15 @@ pnpm type-check   # tsc --noEmit across all packages
 pnpm lint
 ```
 
+## Production packaging
+
+The API and static web app have separate container targets and a production Compose
+template. The template uses external PostgreSQL/PostGIS, Redis, S3-compatible storage,
+SMTP, and a TLS reverse proxy. It binds app ports to loopback only. See
+[`docs/deployment-ccp-prod.md`](./docs/deployment-ccp-prod.md) for the release gate,
+configuration, migration order, smoke checks, and rollback. The development Compose
+file above is for local dependencies only.
+
 ## Email sign-in
 
 The passwordless email flow uses `POST /api/auth/email-code/request` followed by

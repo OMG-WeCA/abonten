@@ -1,0 +1,66 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: abonten_test
+          POSTGRES_PASSWORD: integration_test_only
+          POSTGRES_DB: abonten_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U abonten_test -d abonten_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm type-check
+      - run: pnpm test
+      - run: pnpm build
+      - name: PostgreSQL integration
+        run: pnpm --filter @abonten/api test:integration:postgres
+        env:
+          POSTGRES_INTEGRATION_URL: postgresql://abonten_test:integration_test_only@localhost:5432/abonten_test
+      - name: Redis integration
+        run: pnpm --filter @abonten/api test:integration:redis
+        env:
+          REDIS_INTEGRATION_URL: redis://localhost:6379
+      - name: Package API image
+        run: docker build --target api -t abonten-api:ci .
+      - name: Package web image
+        run: >-
+          docker build --target web -t abonten-web:ci
+          --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.example.test
+          --build-arg NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=pk.ci-build-only
+          .
