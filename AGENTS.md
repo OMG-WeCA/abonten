@@ -20,14 +20,8 @@ See `SPEC.md` §1–§4 for the full vision, market context, and personas.
 
 ## 2. Repository status
 
-This repository is in the **spec / project-initialization phase**. There is intentionally:
-
-- **No application code** yet.
-- **No dependency manifests** (no `package.json`, `pyproject.toml`, `requirements.txt`, etc.).
-- **No build or run commands.**
-
-Do not scaffold application code, install dependencies, or create manifests unless a task
-explicitly asks you to begin an implementation phase. When implementation begins, follow
+This repository contains a TypeScript NestJS/Next.js monorepo with versioned PostGIS
+migrations. Build/run commands are in README.md and package manifests. Follow
 `SPEC.md` §9 (Technical Architecture Direction) and §10 (Phased Delivery Roadmap), and work
 in the smallest phase-appropriate slice.
 
@@ -46,8 +40,9 @@ keep them consistent.
   `core`/`contracts`). Start as a modular monolith; extract services only when load demands.
 - **Data:** PostgreSQL with PostGIS for spatial data. Migrations are versioned code and must be
   reversible. Never store media in the database — use object storage.
-- **Multi-tenant safety:** every query is scoped by organization/tenant. Enforce RBAC
-  server-side on every request. Marketplace listings are the only intentionally shared data.
+- **Multi-tenant safety:** private queries are scoped by organization/tenant. Enforce RBAC
+  server-side on every request. Marketplace listings and the explicitly public enrichment
+  reference layers in SPEC §5.2 are intentionally shared; private derived context is not.
 - **Audit:** material actions write to the append-only audit log. POP records are immutable once
   synced; corrections are appended, never overwritten (`SPEC.md` §5.4, §6.5).
 - **Offline-first:** field POP capture and map tiles must degrade gracefully under low/no

@@ -336,6 +336,33 @@ duplicate detection.
 **Purpose.** Turn a bare site record into a *plannable* asset by enriching it with the data
 planners and KPI models need: traffic, visibility, audience, and context.
 
+**Geographic context foundation (V1 amendment, 2026-09-30).** Nigeria and Ghana
+use one country-configurable enrichment pipeline. Public reference layers (OSM roads
+and POIs, geoBoundaries gbOpen administrative polygons, WorldPop population grids) are
+deliberately shared across tenants; this is an additional, explicit exception to the
+marketplace-only sharing rule. Private inventory and context derived for a site remain
+subject to the site's existing owner/platform/marketplace authorization. Operators import
+immutable, versioned, checksummed source artifacts with licence, attribution, reference
+year, publication/fetch dates, CRS, coverage, units and quality. Imports activate atomically
+and retries are idempotent; demo references never participate in production context.
+
+The site surface calls this **geographic context**, never audience, reach, impressions or
+traffic exposure. It reports road proximity, mapped POIs within 250/500/1000 metre geodesic
+catchments, administrative containment, and modelled residential population. Population
+is persons per pixel, area-weighted at catchment edges, with NoData/coverage reported;
+partial estimates are not extrapolated to missing areas. Missing data stays null rather
+than zero. OSM completeness is unknown, so an empty mapped POI result does not establish
+the absence of real POIs. Each metric retains the exact source import, year, quality and
+method. Inventory coordinates are never sent to public population or enrichment APIs;
+raster processing runs locally. GHSL/built-up indicators are optional future layers.
+
+Real traffic observations may be imported separately with an observed interval, duration,
+count/unit, direction and vehicle-class definitions. A short count is never relabelled AADT
+or multiplied into an audience estimate. No traffic values are created from road class,
+population or demo records. Production traffic remains unavailable until actual licensed
+observations are imported. Additional countries are registry entries and source manifests,
+not new schemas or country-specific service branches.
+
 **Enrichment dimensions.**
 
 - **Traffic counts:** Average Annual Daily Traffic (AADT) for vehicle exposure; peak/off-peak

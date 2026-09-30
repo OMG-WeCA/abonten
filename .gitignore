@@ -75,6 +75,10 @@ pip-wheel-metadata/
 *.db-journal
 data/
 uploads/
+var/enrichment/
+*.osm.pbf
+*.tif
+*.tiff
 media/
 
 # ── Generated artifacts (stored as durable project artifacts outside the repo) ──

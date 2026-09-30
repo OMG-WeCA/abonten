@@ -3,6 +3,8 @@
 // at this stage — no DB-level foreign keys in the initial migration, per SPEC §6
 // "logical outline, not a physical schema").
 export { OrganizationEntity } from './organization.entity';
+export { EnrichmentImportEntity } from './enrichment-import.entity';
+export { EnrichmentFeatureEntity } from './enrichment-feature.entity';
 export { BillboardSiteEntity } from './billboard-site.entity';
 export { SiteFaceEntity } from './site-face.entity';
 export { SiteAssetEntity } from './site-asset.entity';
@@ -32,6 +34,8 @@ export { RefreshTokenEntity } from '../../auth/entities/refresh-token.entity';
 export { OrganizationCreationRequestEntity } from '../../orgs/entities/organization-creation-request.entity';
 
 import { OrganizationEntity } from './organization.entity';
+import { EnrichmentImportEntity } from './enrichment-import.entity';
+import { EnrichmentFeatureEntity } from './enrichment-feature.entity';
 import { BillboardSiteEntity } from './billboard-site.entity';
 import { SiteFaceEntity } from './site-face.entity';
 import { SiteAssetEntity } from './site-asset.entity';
@@ -63,6 +67,8 @@ import { OrganizationCreationRequestEntity } from '../../orgs/entities/organizat
 /** All entities, for DataSource / DatabaseModule registration. */
 export const ENTITIES = [
   OrganizationEntity,
+  EnrichmentImportEntity,
+  EnrichmentFeatureEntity,
   BillboardSiteEntity,
   SiteFaceEntity,
   SiteAssetEntity,

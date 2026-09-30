@@ -11,6 +11,7 @@ import { seedSiteFaces } from './site-faces.seed';
 import { seedFaceBlackouts } from './face-blackouts.seed';
 import { seedSiteMetadata } from './site-metadata.seed';
 import { seedUsers } from './users.seed';
+import { seedEnrichment } from './enrichment.seed';
 import { describeDatabaseEndpoint, sanitizeDatabaseError } from './database-log-sanitizer';
 
 // `pnpm seed` = apply migrations + upsert all seed data. Using the migration
@@ -48,6 +49,7 @@ async function main(): Promise<void> {
     await seedSiteMetadata(AppDataSource);
     await seedRateCards(AppDataSource);
     await seedSiteAssets(AppDataSource);
+    await seedEnrichment(AppDataSource);
     console.log('Seed complete.');
   } catch (err) {
     console.error(`Seed failed for ${endpoint}:`, sanitizeDatabaseError(err, url));

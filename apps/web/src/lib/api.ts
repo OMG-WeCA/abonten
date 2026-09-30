@@ -215,14 +215,17 @@ async function fetchWithTimeout(
   init: RequestInit & { timeoutMs?: number },
 ): Promise<Response> {
   const { timeoutMs = 15_000, ...rest } = init;
+  init.signal?.throwIfAborted();
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   // Combine the caller's signal with the deadline so cancel and timeout both surface.
-  if (init.signal) init.signal.addEventListener('abort', () => controller.abort(), { once: true });
+  const abort = () => controller.abort(init.signal?.reason);
+  init.signal?.addEventListener('abort', abort, { once: true });
   try {
     return await fetch(input, { ...rest, signal: controller.signal });
   } finally {
     window.clearTimeout(timeout);
+    init.signal?.removeEventListener('abort', abort);
   }
 }
 

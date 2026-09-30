@@ -83,3 +83,20 @@ POSTGRES_INTEGRATION_URL=postgresql://abonten:abonten@localhost:5432/abonten \
 ## Tooling
 
 pnpm workspaces + Turborepo; strict TypeScript everywhere; latest stable versions.
+## Geographic context (Nigeria and Ghana)
+
+The site detail page includes production-only road, administrative-area, mapped POI,
+modelled resident population, and observed-traffic context. Unknown data stays unknown;
+these metrics are not audience, reach, impressions, or footfall.
+
+See [the operator import guide](docs/enrichment-imports.md) for official source URLs,
+source licences, validated manifests, CLI commands, and adding another country.
+Run `pnpm --filter @abonten/api enrichment:import sources` to inspect the registry.
+Imports require PostGIS and GDAL; the API container includes GDAL and its durable
+`ENRICHMENT_DATA_DIR` must be shared with the operator import process.
+The normal seed creates explicitly labelled synthetic reference examples only;
+they never appear in production context. No live datasets are committed to the repo.
+
+Run `POSTGRES_INTEGRATION_URL=... pnpm --filter @abonten/api test:integration:enrichment`
+against a disposable PostGIS database to exercise metre distances, raster NoData and
+partial coverage, import replay/rollback, and demo isolation. Unit/API checks run in `pnpm test`.

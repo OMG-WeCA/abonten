@@ -8,3 +8,4 @@ export * from './campaign';
 export * from './booking';
 export * from './proof-of-performance';
 export * from './issue';
+export type * from './enrichment';

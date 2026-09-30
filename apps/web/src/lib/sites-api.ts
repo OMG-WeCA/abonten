@@ -230,8 +230,8 @@ export function listSites(
   return request(`/sites?${qs}`, { method: 'GET' }, orgId);
 }
 
-export function getSite(orgId: string | undefined, siteId: string): Promise<SiteDetail> {
-  return request(`/sites/${siteId}`, { method: 'GET' }, orgId);
+export function getSite(orgId: string | undefined, siteId: string, signal?: AbortSignal): Promise<SiteDetail> {
+  return request(`/sites/${siteId}`, { method: 'GET', signal }, orgId);
 }
 
 export function createSite(

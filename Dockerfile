@@ -13,8 +13,12 @@ RUN --mount=type=cache,id=abonten-pnpm-store,target=/pnpm/store pnpm --filter @a
 FROM node:24-bookworm-slim AS api
 ENV NODE_ENV=production
 WORKDIR /app
+# Geographic context processes public GeoTIFFs locally; GDAL also provides the
+# operator's ogr2ogr OSM/GeoJSON preprocessing. No tenant coordinates leave the API.
+RUN apt-get update && apt-get install -y --no-install-recommends gdal-bin && rm -rf /var/lib/apt/lists/*
 COPY --from=api-build --chown=node:node /release /app
-RUN mkdir -p /app/uploads && chown node:node /app/uploads
+RUN mkdir -p /app/uploads /app/var/enrichment && chown -R node:node /app/uploads /app/var/enrichment
+ENV ENRICHMENT_DATA_DIR=/app/var/enrichment
 USER node
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

@@ -44,6 +44,8 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Install local geospatial tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gdal-bin
       - run: pnpm lint
       - run: pnpm type-check
       - run: pnpm test
@@ -56,6 +58,10 @@ jobs:
         run: pnpm --filter @abonten/api test:integration:redis
         env:
           REDIS_INTEGRATION_URL: redis://localhost:6379
+      - name: Geographic context integration
+        run: pnpm --filter @abonten/api test:integration:enrichment
+        env:
+          POSTGRES_INTEGRATION_URL: postgresql://abonten_test:integration_test_only@localhost:5432/abonten_test
       - name: Package API image
         run: docker build --target api -t abonten-api:ci .
       - name: Package web image

@@ -21,6 +21,7 @@ import { useAuth } from '../../../components/auth/AuthProvider';
 import { Lightbox, lightboxAlt, type LightboxAsset } from '../../../components/sites/Lightbox';
 import { SiteMapView } from '../../../components/sites/SiteMap';
 import { PartnerAvailability } from '../../../components/sites/PartnerAvailability';
+import { GeographicContextPanel } from '../../../components/sites/GeographicContextPanel';
 import {
   AuthAssetThumb,
   Field,
@@ -77,8 +78,12 @@ function DetailInner() {
   // Records the busy key whose in-flight request the user just cancelled, so
   // run() can tell a deliberate cancel apart from a slow-connection timeout.
   const cancelledKeyRef = useRef<string | null>(null);
+  const loadControllerRef = useRef<AbortController | null>(null);
 
   const reload = useCallback(async () => {
+    loadControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadControllerRef.current = controller;
     if (!orgId) {
       setLoadError(copy.detail.notFound);
       return;
@@ -88,9 +93,12 @@ function DetailInner() {
       return;
     }
     try {
-      setSite(await getSite(orgId, siteId));
+      const loaded = await getSite(orgId, siteId, controller.signal);
+      if (controller.signal.aborted) return;
+      setSite(loaded);
       setLoadError('');
     } catch (error) {
+      if (controller.signal.aborted) return;
       setLoadError(
         error instanceof ApiError && error.status === 403
           ? copy.detail.notFound
@@ -103,6 +111,7 @@ function DetailInner() {
     setSite(null);
     setLoadError('');
     void reload();
+    return () => loadControllerRef.current?.abort();
   }, [reload]);
 
   const detailsEditable = site !== null && canEdit;
@@ -341,6 +350,7 @@ function DetailInner() {
               editable={canEdit}
               locale={locale}
             />
+            <GeographicContextPanel orgId={orgId} siteId={site.id} revision={site.updatedAt} locale={locale} />
             <MetadataSection site={site} locale={locale} copy={copy} />
             <MapSection
               site={site}
@@ -2103,7 +2113,14 @@ function MapSection({
 export default function SiteDetailPage() {
   return (
     <Suspense fallback={null}>
-      <DetailInner />
+      <ScopedDetail />
     </Suspense>
   );
+}
+
+function ScopedDetail() {
+  const params = useSearchParams();
+  const { activeOrganization } = useAuth();
+  // Discard the old site's forms and private context synchronously on navigation.
+  return <DetailInner key={`${activeOrganization?.organizationId}:${params.get('id')}`} />;
 }
