@@ -149,6 +149,156 @@ describe('geographic context: actual PostGIS and local GDAL', { skip: !databaseU
       );
     }));
 
+  it('keeps the closer unnamed Lekki/CMS segments and independently selects the named roads', async () =>
+    withSchema(async (db) => {
+      const roads = await source(db, 'NG', 'roads');
+      for (const fixture of [
+        {
+          longitude: 3.4564,
+          latitude: 6.4371,
+          closest: 'way/738094263',
+          metres: 7.47238313,
+          roadClass: 'service',
+          named: 'way/1066545891',
+          namedMetres: 9.94006466,
+          name: 'Admiralty Way',
+          ref: null,
+        },
+        {
+          longitude: 3.389704728953533,
+          latitude: 6.450678638102603,
+          closest: 'way/133761013',
+          metres: 11.76222008,
+          roadClass: 'motorway_link',
+          named: 'way/215113163',
+          namedMetres: 12.11031315,
+          name: 'Old Marina Street',
+          ref: 'F262',
+        },
+      ]) {
+        const id = randomUUID();
+        await db.query("INSERT INTO billboard_sites VALUES($1,$2,$3,'Nigeria')", [
+          id,
+          fixture.latitude,
+          fixture.longitude,
+        ]);
+        for (const [externalId, metres, properties] of [
+          [
+            fixture.closest,
+            fixture.metres,
+            { name: null, roadClass: fixture.roadClass, ref: null },
+          ],
+          [
+            fixture.named,
+            fixture.namedMetres,
+            { name: fixture.name, roadClass: 'primary', ref: fixture.ref },
+          ],
+        ] as const) {
+          await db.query(
+            `INSERT INTO enrichment_features VALUES($1,$2,
+            (SELECT ST_MakeLine(ST_Project(p,5,pi()/2)::geometry,ST_Project(p,5,-pi()/2)::geometry)
+             FROM (SELECT ST_Project(ST_SetSRID(ST_MakePoint($3,$4),4326)::geography,$5::double precision,0::double precision) p) a),$6::jsonb)`,
+            [
+              roads,
+              externalId,
+              fixture.longitude,
+              fixture.latitude,
+              metres,
+              JSON.stringify(properties),
+            ],
+          );
+        }
+        const context = await service(db).getSiteContext(user, 'own', id);
+        assert.equal(context.nearestRoad.value?.sourceId, fixture.closest);
+        assert.equal(context.nearestRoad.value?.name, null);
+        assert.ok(Math.abs(context.nearestRoad.value!.distanceMetres - fixture.metres) < 0.01);
+        assert.equal(context.nearestNamedRoad?.value?.sourceId, fixture.named);
+        assert.equal(context.nearestNamedRoad?.value?.name, fixture.name);
+        assert.equal(context.nearestNamedRoad?.value?.ref, fixture.ref);
+        assert.ok(
+          Math.abs(context.nearestNamedRoad!.value!.distanceMetres - fixture.namedMetres) < 0.01,
+        );
+        assert.equal(context.nearestNamedRoad?.provenance?.importId, roads);
+        assert.equal(context.nearestNamedRoad?.searchRadiusMetres, 1000);
+        assert.equal(context.nearestNamedRoad?.searchCoverage, 'complete');
+        assert.equal(context.nearestNamedRoad?.status, 'available');
+        assert.match(context.nearestRoad.method, /Nearest mapped road/);
+        assert.match(context.nearestNamedRoad!.method, /Nearest source-named mapped road/);
+      }
+    }));
+
+  it('retains named-nearest compatibility and never treats refs, blank names or roads beyond 1km as names', async () =>
+    withSchema(async (db) => {
+      const id = randomUUID();
+      await db.query("INSERT INTO billboard_sites VALUES($1,5.6,-.2,'Ghana')", [id]);
+      const roads = await source(db, 'GH', 'roads');
+      await featureAtDistance(db, roads, 'named-nearest', 3.24, {
+        name: 'Ahmadu Bello Way',
+        roadClass: 'trunk',
+        ref: 'F263',
+      });
+      const named = await service(db).getSiteContext(user, 'own', id);
+      assert.deepEqual(named.nearestNamedRoad?.value, named.nearestRoad.value);
+      await db.query('DELETE FROM enrichment_features WHERE import_id=$1', [roads]);
+      await featureAtDistance(db, roads, 'ref-only', 5, {
+        name: null,
+        ref: 'F262',
+        roadClass: 'primary',
+      });
+      await featureAtDistance(db, roads, 'blank-name', 7, { name: '   ', roadClass: 'service' });
+      await featureAtDistance(db, roads, 'too-far', 1001, {
+        name: 'Outside search',
+        roadClass: 'primary',
+      });
+      const none = await service(db).getSiteContext(user, 'own', id);
+      assert.equal(none.nearestRoad.value?.sourceId, 'ref-only');
+      assert.equal(none.nearestRoad.value?.ref, 'F262');
+      assert.equal(none.nearestNamedRoad?.value, null);
+      assert.equal(none.nearestNamedRoad?.status, 'unavailable');
+      assert.equal(none.nearestNamedRoad?.searchCoverage, 'complete');
+      assert.match(none.nearestNamedRoad!.warnings.join(' '), /does not establish the absence/);
+      await db.query('UPDATE enrichment_imports SET active=false WHERE id=$1', [roads]);
+      const missing = await service(db).getSiteContext(user, 'own', id);
+      assert.equal(missing.nearestNamedRoad?.value, null);
+      assert.equal(missing.nearestNamedRoad?.provenance, null);
+      assert.equal(missing.nearestNamedRoad?.searchCoverage, 'unavailable');
+    }));
+
+  it('marks incomplete named-road searches and distinguishes outside coverage from no names found', async () =>
+    withSchema(async (db) => {
+      const id = randomUUID();
+      await db.query("INSERT INTO billboard_sites VALUES($1,5.6,-.2,'Ghana')", [id]);
+      const roads = await source(db, 'GH', 'roads');
+      await featureAtDistance(db, roads, 'edge-road', 100, {
+        name: 'Mapped edge road',
+        roadClass: 'primary',
+      });
+      await db.query(
+        'UPDATE enrichment_imports SET coverage=ST_Multi(ST_MakeEnvelope(-.21,5.599,-.19,5.601,4326)) WHERE id=$1',
+        [roads],
+      );
+      const partial = await service(db).getSiteContext(user, 'own', id);
+      assert.equal(partial.nearestNamedRoad?.status, 'partial');
+      assert.equal(partial.nearestNamedRoad?.searchCoverage, 'partial');
+      assert.match(
+        partial.nearestNamedRoad!.warnings.join(' '),
+        /closer named road may be missing/,
+      );
+      await db.query('DELETE FROM enrichment_features WHERE import_id=$1', [roads]);
+      const partialEmpty = await service(db).getSiteContext(user, 'own', id);
+      assert.equal(partialEmpty.nearestNamedRoad?.value, null);
+      assert.equal(partialEmpty.nearestNamedRoad?.searchCoverage, 'partial');
+      await db.query(
+        'UPDATE enrichment_imports SET coverage=ST_Multi(ST_MakeEnvelope(10,9,11,10,4326)) WHERE id=$1',
+        [roads],
+      );
+      const outside = await service(db).getSiteContext(user, 'own', id);
+      assert.equal(outside.nearestNamedRoad?.value, null);
+      assert.equal(outside.nearestNamedRoad?.searchCoverage, 'outside');
+      assert.equal(outside.nearestNamedRoad?.provenance?.importId, roads);
+      assert.match(outside.nearestNamedRoad!.warnings.join(' '), /outside this import coverage/);
+    }));
+
   it('sums native population cells with fractional edges and distinguishes NoData, raster edge and valid zero', async () =>
     withSchema(async (db) => {
       const directory = await mkdtemp(join(tmpdir(), 'abonten-raster-test-'));

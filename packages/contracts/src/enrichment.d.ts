@@ -35,7 +35,14 @@ export interface RoadContext {
   sourceId: string;
   name: string | null;
   roadClass: string;
+  /** Source route reference, never substituted for a missing name. */
+  ref?: string | null;
   distanceMetres: number;
+}
+export interface NamedRoadMetric extends ContextMetric<RoadContext> {
+  /** Optional for compatibility with earlier additive responses. */
+  searchRadiusMetres?: 1000;
+  searchCoverage?: 'complete' | 'partial' | 'outside' | 'unavailable';
 }
 export interface PoiContext {
   sourceId: string;
@@ -73,7 +80,10 @@ export interface SiteGeographicContext {
   generatedAt: string;
   dataClass: 'production';
   disclaimer: string;
+  /** Absolute closest mapped segment; includes unnamed service/link roads. */
   nearestRoad: ContextMetric<RoadContext>;
+  /** Additive: closest segment with a source name within 1000m. Older APIs omit it. */
+  nearestNamedRoad?: NamedRoadMetric;
   administrative: ContextMetric<AdministrativeContext[]>[];
   catchments: {
     radiusMetres: 250 | 500 | 1000;

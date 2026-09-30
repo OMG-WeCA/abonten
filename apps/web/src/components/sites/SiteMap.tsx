@@ -22,7 +22,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Copy, Check } from 'lucide-react';
 import { getSitesCopy, type SiteLocale } from '../../lib/sites-locale';
-import { MAPBOX_PUBLIC_TOKEN, MAPBOX_TILES_URL } from './mapbox-tiles';
+import { LOCAL_REVIEW_OSM_MAP, SITE_MAP_ENABLED, SITE_MAP_TILES_URL, SITE_MAP_TILE_OPTIONS } from './mapbox-tiles';
 
 export { MAPBOX_PUBLIC_TOKEN } from './mapbox-tiles';
 
@@ -175,7 +175,7 @@ export function SiteMapView({
   }, []);
 
   useEffect(() => {
-    if (!MAPBOX_PUBLIC_TOKEN) return; // fallback view below
+    if (!SITE_MAP_ENABLED) return; // fallback view below
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
     void (async () => {
@@ -190,13 +190,8 @@ export function SiteMapView({
         resizeObserver.observe(containerRef.current);
 
         const tiles = L.tileLayer(
-          MAPBOX_TILES_URL,
-          {
-            tileSize: 512,
-            zoomOffset: -1,
-            maxZoom: 20,
-            attribution: '© Mapbox © OpenStreetMap contributors',
-          },
+          SITE_MAP_TILES_URL,
+          SITE_MAP_TILE_OPTIONS,
         ).addTo(map);
         let loadedTile = false;
         let tileErrors = 0;
@@ -312,7 +307,7 @@ export function SiteMapView({
           </button>
         </div>
 
-        {MAPBOX_PUBLIC_TOKEN ? (
+        {SITE_MAP_ENABLED ? (
           <div className="relative min-h-0 flex-1">
             <div ref={containerRef} data-testid="site-map-canvas" className="h-full w-full" />
             {showRadius && (
@@ -353,7 +348,7 @@ export function SiteMapView({
         <p className="bg-[#0A0E27]/90 px-4 py-2 text-center text-[11px] leading-4 text-white/60">
           {copy.detail.mapOrientationNote}
           {' · '}
-          {copy.detail.mapAttribution}
+          {LOCAL_REVIEW_OSM_MAP ? '© OpenStreetMap contributors' : copy.detail.mapAttribution}
         </p>
       </div>
     </div>

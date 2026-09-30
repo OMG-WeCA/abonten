@@ -30,7 +30,9 @@
     "src/lib/sites-plausibility.ts",
     "src/lib/sites-trust.spec.ts",
     "src/lib/gallery.ts",
-    "src/lib/map-position.ts"
+    "src/lib/map-position.ts",
+    "src/lib/site-metadata-display.ts",
+    "src/lib/site-metadata-display.spec.ts"
   ],
   "exclude": []
 }

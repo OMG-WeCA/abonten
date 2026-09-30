@@ -54,7 +54,8 @@ import {
   type SiteFace,
 } from '../../../lib/sites-api';
 import { SUPPORTED_CURRENCIES } from '../../../lib/currencies';
-import { formatMoney, parseAmount, parseDecimal } from '../../../lib/number-format';
+import { metadataFacts, metadataLink } from '../../../lib/site-metadata-display';
+import { formatArea, formatMoney, parseAmount, parseDecimal } from '../../../lib/number-format';
 import { getSitesCopy, type SiteLocale } from '../../../lib/sites-locale';
 import { isOlderThanTwelveMonths, plausibilityErrors } from '../../../lib/sites-plausibility';
 
@@ -325,6 +326,7 @@ function DetailInner() {
               run={run}
             />
             <FacesSection
+              locale={locale}
               site={site}
               orgId={orgId}
               editable={canEdit && canCreateFace}
@@ -350,7 +352,7 @@ function DetailInner() {
               editable={canEdit}
               locale={locale}
             />
-            <GeographicContextPanel orgId={orgId} siteId={site.id} revision={site.updatedAt} locale={locale} />
+            <GeographicContextPanel orgId={orgId} siteId={site.id} revision={site.updatedAt} locale={locale} onViewMap={() => setMapOpen(true)} />
             <MetadataSection site={site} locale={locale} copy={copy} />
             <MapSection
               site={site}
@@ -437,7 +439,7 @@ function DetailsSection({
   const rows: Array<[string, string]> = [
     [copy.detail.formatLabel, prettyFormat(site.format, locale)],
     [copy.detail.dimsLabel, `${site.width ?? '—'} × ${site.height ?? '—'} ${site.units ?? ''}`.trim()],
-    [copy.detail.areaLabel, site.area != null ? `${site.area} ${site.units ?? ''}`.trim() : '—'],
+    [copy.detail.areaLabel, formatArea(site.area, site.units, locale)],
     [copy.detail.coordsLabel, `${site.latitude}, ${site.longitude}`],
     [copy.detail.addressLabel, [site.address, site.city, site.region].filter(Boolean).join(', ') || '—'],
     [
@@ -1127,6 +1129,7 @@ function AssetItem({ asset, copy }: { asset: SiteAsset; copy: ReturnType<typeof 
 
 // -------------------------------------------------------------------- faces
 function FacesSection({
+  locale,
   site,
   orgId,
   editable,
@@ -1136,6 +1139,7 @@ function FacesSection({
   reload,
   run,
 }: {
+  locale: SiteLocale | undefined;
   site: SiteDetail;
   orgId: string | undefined;
   editable: boolean;
@@ -1318,7 +1322,7 @@ function FacesSection({
                     <p className="text-sm font-bold">
                       {face.faceLabel}
                       <span className="ml-2 font-medium text-muted">
-                        {face.width} × {face.height} {face.units} · {face.area} {face.units}²
+                        {face.width} × {face.height} {face.units} · {formatArea(face.area, face.units, locale)}
                       </span>
                     </p>
                     <p className="text-xs text-muted">
@@ -1975,7 +1979,8 @@ function MetadataSection({
   copy: ReturnType<typeof getSitesCopy>;
 }) {
   return (
-    <SectionCard title={copy.detail.metadataHeading}>
+    <details className="rounded-xl border border-border bg-surface p-5">
+      <summary className="min-h-11 cursor-pointer text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{copy.detail.metadataHeading}</summary>
       <p className="text-xs leading-5 text-muted">{copy.detail.metadataIntro}</p>
       {site.metadata.length === 0 ? (
         <p className="mt-3 text-sm text-muted">{copy.detail.metadataEmpty}</p>
@@ -1994,13 +1999,28 @@ function MetadataSection({
                   </span>
                 )}
               </div>
-              <p className="mt-1 break-words text-xs text-muted">
-                {JSON.stringify(record.payload)}
-              </p>
+              <dl className="mt-3 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
+                {metadataFacts(record.payload, locale).map((fact, index) => (
+                  <div key={index} className="contents">
+                    <dt className="text-muted">{fact.label}</dt>
+                    <dd className="min-w-0 whitespace-pre-wrap break-words font-medium">
+                      {fact.href ? (
+                        <a href={fact.href} target="_blank" rel="noopener noreferrer" className="text-info underline underline-offset-2">
+                          {fact.value}
+                        </a>
+                      ) : fact.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
               <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted">
                 {record.source && (
                   <span>
-                    {copy.detail.metadataBy}: {record.source}
+                    {copy.detail.metadataBy}: {metadataLink(record.source) ? (
+                      <a href={metadataLink(record.source)} target="_blank" rel="noopener noreferrer" className="break-words text-info underline underline-offset-2">
+                        {record.source}
+                      </a>
+                    ) : record.source}
                   </span>
                 )}
                 {record.method && (
@@ -2028,7 +2048,7 @@ function MetadataSection({
           ))}
         </ul>
       )}
-    </SectionCard>
+    </details>
   );
 }
 

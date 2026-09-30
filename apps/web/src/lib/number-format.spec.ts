@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { formatMoney, parseAmount, parseDecimal } from './number-format';
+import { formatArea, formatMoney, parseAmount, parseDecimal } from './number-format';
 
 test('parseDecimal accepts point and comma decimals in both locales', () => {
   assert.equal(parseDecimal('5.5597'), 5.5597);
@@ -46,4 +46,17 @@ test('formatMoney is locale-aware', () => {
   assert.match(formatMoney(2500000, 'NGN', 'en'), /2,500,000/);
   assert.match(formatMoney(2500000, 'NGN', 'fr'), /2\s?500\s?000/);
   assert.ok(formatMoney(15, 'GHS', 'en').includes('GHS'));
+});
+
+test('formatArea rounds floating-point noise and displays square units in both locales', () => {
+  assert.equal(formatArea(5.76 * 8.64, 'm', 'en'), '49.77 m²');
+  assert.equal(formatArea(5.76 * 8.64, 'm', 'fr'), '49,77 m²');
+  assert.equal(formatArea(150, 'ft', 'en'), '150 ft²');
+  assert.equal(formatArea(150, undefined, 'en'), '150');
+});
+
+test('formatArea preserves unknown, zero and small non-zero measurements', () => {
+  for (const area of [null, undefined, NaN, Infinity]) assert.equal(formatArea(area, 'm', 'en'), '—');
+  assert.equal(formatArea(0, 'm', 'en'), '0 m²');
+  assert.equal(formatArea(0.0006, 'm', 'en'), '0.0006 m²');
 });

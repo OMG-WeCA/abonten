@@ -32,7 +32,7 @@ export class GeographicContextController {
   @ApiOkResponse({
     schema: geographicContextSchema,
     description:
-      'SiteGeographicContext contract in @abonten/contracts: nearestRoad, administrative, catchments (mapped POIs and modelled residents), traffic; every metric contains nullable value, status, method, warnings, provenance.',
+      'SiteGeographicContext contract in @abonten/contracts: nearestRoad (closest mapped segment), nearestNamedRoad (closest source-named road within 1000m), administrative, catchments (mapped POIs and modelled residents), traffic; every metric contains nullable value, status, method, warnings, provenance.',
   })
   async getContext(
     @CurrentUser() user: AuthenticatedUser,

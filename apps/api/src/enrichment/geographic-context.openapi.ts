@@ -31,6 +31,24 @@ function metric(value: SchemaObject): SchemaObject {
     warnings: strings,
   });
 }
+const road: SchemaObject = {
+  ...object({ sourceId: string, name: nullableString, roadClass: string, distanceMetres: number }),
+  properties: {
+    sourceId: string,
+    name: nullableString,
+    roadClass: string,
+    distanceMetres: number,
+    ref: nullableString,
+  },
+};
+const namedRoad: SchemaObject = {
+  ...metric(road),
+  properties: {
+    ...metric(road).properties,
+    searchRadiusMetres: { type: 'integer', enum: [1000] },
+    searchCoverage: { type: 'string', enum: ['complete', 'partial', 'outside', 'unavailable'] },
+  },
+};
 const poi = object({
   sourceId: string,
   name: nullableString,
@@ -70,9 +88,15 @@ export const geographicContextSchema: SchemaObject = object({
   generatedAt: { type: 'string', format: 'date-time' },
   dataClass: { type: 'string', enum: ['production'] },
   disclaimer: string,
-  nearestRoad: metric(
-    object({ sourceId: string, name: nullableString, roadClass: string, distanceMetres: number }),
-  ),
+  nearestRoad: {
+    ...metric(road),
+    description: 'Absolute closest mapped segment within 1000m; its source name may be null.',
+  },
+  nearestNamedRoad: {
+    ...namedRoad,
+    description:
+      'Closest source-named segment within 1000m, with independent distance and provenance. Partial when the search circle crosses import coverage.',
+  },
   administrative: {
     type: 'array',
     minItems: 2,
@@ -101,3 +125,8 @@ export const geographicContextSchema: SchemaObject = object({
     }),
   }),
 });
+
+// Older API responses omit this additive metric.
+geographicContextSchema.required = geographicContextSchema.required?.filter(
+  (key) => key !== 'nearestNamedRoad',
+);

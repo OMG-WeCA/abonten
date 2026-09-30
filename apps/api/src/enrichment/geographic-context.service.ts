@@ -5,6 +5,7 @@ import type {
   ContextProvenance,
   EnrichmentLayer,
   PoiSummary,
+  NamedRoadMetric,
   RoadContext,
   SiteGeographicContext,
   TrafficObservation,
@@ -55,6 +56,8 @@ const METHOD_POI =
   'OSM mapped features within a geodesic radius; polygon distance is to its footprint, and each OSM feature is counted once.';
 const METHOD_ROAD =
   'Nearest mapped road within 1000 metres, measured with PostGIS geography on the WGS84 spheroid; not traffic exposure.';
+const METHOD_NAMED_ROAD =
+  'Nearest source-named mapped road within 1000 metres, measured with PostGIS geography on the WGS84 spheroid; distinct from the closest mapped segment, not traffic exposure.';
 const METHOD_ADMIN =
   'Administrative polygons covering the site coordinate, including boundary matches.';
 const METHOD_TRAFFIC =
@@ -132,6 +135,11 @@ export class GeographicContextService {
         dataClass: 'production',
         disclaimer: CONTEXT_DISCLAIMER,
         nearestRoad: unavailable(METHOD_ROAD),
+        nearestNamedRoad: {
+          ...unavailable<RoadContext>(METHOD_NAMED_ROAD),
+          searchRadiusMetres: 1000,
+          searchCoverage: 'unavailable',
+        },
         administrative: [unavailable(METHOD_ADMIN), unavailable(METHOD_ADMIN)],
         catchments: CONTEXT_RADII.map((radiusMetres) => ({
           radiusMetres,
@@ -154,7 +162,10 @@ export class GeographicContextService {
       );
       const byLayer = new Map(imports.map((row) => [row.layer, row]));
       const road = byLayer.get('roads');
-      if (road) result.nearestRoad = await this.nearestRoad(manager, site, road);
+      if (road) {
+        result.nearestRoad = await this.nearestRoad(manager, site, road);
+        result.nearestNamedRoad = await this.nearestNamedRoad(manager, site, road);
+      }
       for (const [index, layer] of ['admin1', 'admin2'].entries()) {
         const row = byLayer.get(layer as EnrichmentLayer);
         if (row) result.administrative[index] = await this.administrative(manager, site, row);
@@ -254,11 +265,80 @@ export class GeographicContextService {
         sourceId: feature.external_id,
         name: stringOrNull(feature.properties.name),
         roadClass: String(feature.properties.roadClass),
+        ref: stringOrNull(feature.properties.ref),
         distanceMetres: Number(feature.distance),
       },
       METHOD_ROAD,
       ['OSM mapping completeness is unknown.'],
     );
+  }
+
+  private async nearestNamedRoad(
+    manager: EntityManager,
+    site: SiteLocation,
+    row: ImportRow,
+  ): Promise<NamedRoadMetric> {
+    const [coverage]: { intersects: boolean; complete: boolean }[] = await manager.query(
+      `SELECT ST_Intersects(coverage,ST_Buffer(${POINT_SQL}::geography,1000)::geometry) AS intersects,
+      ST_Covers(coverage,ST_Buffer(${POINT_SQL}::geography,1000)::geometry) AS complete
+      FROM enrichment_imports WHERE id=$1`,
+      [row.id, site.longitude, site.latitude],
+    );
+    if (!coverage?.intersects)
+      return {
+        ...missingLayer<RoadContext>(
+          row,
+          METHOD_NAMED_ROAD,
+          'The 1000 metre named-road search is outside this import coverage.',
+        ),
+        searchRadiusMetres: 1000,
+        searchCoverage: 'outside',
+      };
+    const rows: FeatureRow[] = await manager.query(
+      `SELECT external_id,properties,
+      ST_Distance(geom::geography,${POINT_SQL}::geography) AS distance
+      FROM enrichment_features WHERE import_id=$1
+      AND NULLIF(BTRIM(properties->>'name'),'') IS NOT NULL
+      AND ST_DWithin(geom::geography,${POINT_SQL}::geography,1000)
+      ORDER BY distance,external_id LIMIT 1`,
+      [row.id, site.longitude, site.latitude],
+    );
+    const warnings = ['OSM mapping completeness is unknown.'];
+    if (!coverage.complete)
+      warnings.push(
+        'The 1000 metre named-road search is only partly covered by this import; a closer named road may be missing.',
+      );
+    const feature = rows[0];
+    if (!feature) {
+      const missing = missingLayer<RoadContext>(
+        row,
+        METHOD_NAMED_ROAD,
+        'No source-named road is mapped within 1000 metres in the covered area; this does not establish the absence of real named roads.',
+      );
+      missing.warnings.push(...warnings);
+      return {
+        ...missing,
+        searchRadiusMetres: 1000,
+        searchCoverage: coverage.complete ? 'complete' : 'partial',
+      };
+    }
+    return {
+      ...metric(
+        row,
+        {
+          sourceId: feature.external_id,
+          name: stringOrNull(feature.properties.name),
+          ref: stringOrNull(feature.properties.ref),
+          roadClass: String(feature.properties.roadClass),
+          distanceMetres: Number(feature.distance),
+        },
+        METHOD_NAMED_ROAD,
+        warnings,
+        !coverage.complete,
+      ),
+      searchRadiusMetres: 1000,
+      searchCoverage: coverage.complete ? 'complete' : 'partial',
+    };
   }
 
   private async administrative(

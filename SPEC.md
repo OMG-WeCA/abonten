@@ -353,7 +353,10 @@ is persons per pixel, area-weighted at catchment edges, with NoData/coverage rep
 partial estimates are not extrapolated to missing areas. Missing data stays null rather
 than zero. OSM completeness is unknown, so an empty mapped POI result does not establish
 the absence of real POIs. Each metric retains the exact source import, year, quality and
-method. Inventory coordinates are never sent to public population or enrichment APIs;
+method. Road context retains the absolute nearest mapped segment and adds the nearest
+source-named road within 1 km with its own distance and provenance. The named-road
+headline never substitutes for the absolute nearest segment; partial import coverage and
+missing source names remain explicit. Inventory coordinates are never sent to public population or enrichment APIs;
 raster processing runs locally. GHSL/built-up indicators are optional future layers.
 
 Real traffic observations may be imported separately with an observed interval, duration,
