@@ -1,0 +1,33 @@
+# OPTIONAL: include only after the operator chooses a dedicated local MinIO.
+# Pick and verify a supported immutable release/digest; do not deploy latest.
+# API proxies authenticated uploads/reads, so this endpoint need not be public.
+services:
+  minio:
+    image: ${MINIO_IMAGE:?Select an approved immutable MinIO image}
+    restart: unless-stopped
+    command: [server, /data, --console-address, ':9001']
+    cpus: '0.5'
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Provision a dedicated storage admin identity}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Provision a dedicated storage admin password}
+    volumes:
+      - abonten_objectdata:/data
+    networks: [backend]
+    healthcheck:
+      test: [CMD, mc, ready, local]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+  api:
+    depends_on:
+      minio:
+        condition: service_healthy
+volumes:
+  abonten_objectdata:

@@ -1,0 +1,90 @@
+# Local preparation only. Combine with compose.production.yml after approval.
+# No development containers, demo data, public backing-service ports or seeds.
+name: abonten-prod
+
+x-service-logging: &service-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  api:
+    cpus: '1.0'
+    mem_limit: 1536m
+    logging: *service-logging
+    networks:
+      backend:
+      traefik:
+        aliases: [abonten-api]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Existing production file mounts the shared enrichment volume and sets
+    # ENRICHMENT_DATA_DIR=/app/var/enrichment for API and one-off import jobs.
+
+  web:
+    cpus: '0.25'
+    mem_limit: 128m
+    logging: *service-logging
+    networks:
+      traefik:
+        aliases: [abonten-web]
+
+  postgres:
+    image: ${POSTGIS_IMAGE:-postgis/postgis:16-3.4}
+    restart: unless-stopped
+    cpus: '1.0'
+    mem_limit: 2048m
+    shm_size: 256m
+    logging: *service-logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_BOOTSTRAP_USER:-abonten_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_BOOTSTRAP_PASSWORD:?Provision a dedicated bootstrap password}
+      POSTGRES_DB: abonten
+    command: [postgres, -c, shared_buffers=256MB, -c, work_mem=8MB, -c, max_connections=50]
+    volumes:
+      - abonten_pgdata:/var/lib/postgresql/data
+      - ./docker/postgis-init.sql:/docker-entrypoint-initdb.d/01-postgis.sql:ro
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d abonten']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    restart: unless-stopped
+    cpus: '0.25'
+    mem_limit: 256m
+    logging: *service-logging
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Provision a dedicated cache password}
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Provision a dedicated cache password}
+    entrypoint: [sh, /opt/abonten/redis-production.sh]
+    volumes:
+      - abonten_redisdata:/data
+      - ./docker/redis-production.sh:/opt/abonten/redis-production.sh:ro
+    tmpfs:
+      - /run/abonten:rw,noexec,nosuid,size=1m
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, 'test "$(redis-cli --raw ping)" = PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  backend:
+    internal: true
+  traefik:
+    external: true
+    name: traefik
+
+volumes:
+  abonten_pgdata:
+  abonten_redisdata:

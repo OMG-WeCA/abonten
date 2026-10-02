@@ -1,0 +1,28 @@
+# Proposed destination after approval:
+# /home/Maestro/apps/traefik/config/dynamic/abonten.yml
+# Existing file provider watches this directory. No middleware strips /api.
+http:
+  routers:
+    abonten-api:
+      rule: 'Host(`abonten.omgwca.com`) && (Path(`/api`) || PathPrefix(`/api/`))'
+      priority: 200
+      entryPoints: [websecure]
+      service: abonten-api
+      tls:
+        certResolver: letsencrypt
+    abonten-web:
+      rule: 'Host(`abonten.omgwca.com`)'
+      priority: 100
+      entryPoints: [websecure]
+      service: abonten-web
+      tls:
+        certResolver: letsencrypt
+  services:
+    abonten-api:
+      loadBalancer:
+        servers:
+          - url: 'http://abonten-api:3000'
+    abonten-web:
+      loadBalancer:
+        servers:
+          - url: 'http://abonten-web:80'

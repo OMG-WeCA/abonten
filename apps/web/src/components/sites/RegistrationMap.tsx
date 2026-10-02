@@ -5,7 +5,7 @@ import type { Map as LeafletMap, Marker as LeafletMarker } from 'leaflet';
 import { MapPin } from 'lucide-react';
 import { parseDecimal } from '../../lib/number-format';
 import { getSitesCopy, type SiteLocale } from '../../lib/sites-locale';
-import { MAPBOX_PUBLIC_TOKEN, MAPBOX_TILES_URL } from './mapbox-tiles';
+import { SITE_MAP_ENABLED, SITE_MAP_TILES_URL, SITE_MAP_TILE_OPTIONS } from './mapbox-tiles';
 
 const DEFAULT_CENTER: [number, number] = [7.9, 2.8];
 const COUNTRY_CENTERS: Record<string, [number, number]> = {
@@ -43,7 +43,7 @@ export function RegistrationMap({
   }, [onPick]);
 
   useEffect(() => {
-    if (!MAPBOX_PUBLIC_TOKEN) return;
+    if (!SITE_MAP_ENABLED) return;
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
     void (async () => {
@@ -53,12 +53,7 @@ export function RegistrationMap({
         if (cancelled || !containerRef.current) return;
         const map = L.map(containerRef.current, { zoomControl: false }).setView(DEFAULT_CENTER, 4);
         mapRef.current = map;
-        const tiles = L.tileLayer(MAPBOX_TILES_URL, {
-          tileSize: 512,
-          zoomOffset: -1,
-          maxZoom: 20,
-          attribution: '© Mapbox © OpenStreetMap contributors',
-        }).addTo(map);
+        const tiles = L.tileLayer(SITE_MAP_TILES_URL, SITE_MAP_TILE_OPTIONS).addTo(map);
         let loadedTile = false;
         let tileErrors = 0;
         tiles.on('tileload', () => { loadedTile = true; });
@@ -121,13 +116,13 @@ export function RegistrationMap({
   return (
     <div className="relative min-h-72 overflow-hidden rounded-xl border border-border bg-surface-2 lg:min-h-[440px]">
       <div ref={containerRef} className="absolute inset-0" role="img" aria-label={copy.register.mapTitle} data-testid="registration-map" />
-      {(!ready || failed || !MAPBOX_PUBLIC_TOKEN) && (
+      {(!ready || failed || !SITE_MAP_ENABLED) && (
         <div className="absolute inset-0 grid place-items-center bg-surface-2 px-6 text-center">
           <div>
             <MapPin className="mx-auto h-7 w-7 text-primary" />
             <p className="mt-2 text-sm font-semibold text-foreground">{copy.register.mapTitle}</p>
             <p className="mt-1 text-xs leading-5 text-muted">
-              {failed || !MAPBOX_PUBLIC_TOKEN ? copy.register.mapUnavailable : copy.register.mapLoading}
+              {failed || !SITE_MAP_ENABLED ? copy.register.mapUnavailable : copy.register.mapLoading}
             </p>
           </div>
         </div>

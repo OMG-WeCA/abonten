@@ -11,7 +11,8 @@
     "declarationMap": false,
     "sourceMap": false,
     "types": [
-      "node"
+      "node",
+      "next"
     ]
   },
   "include": [
@@ -32,7 +33,8 @@
     "src/lib/gallery.ts",
     "src/lib/map-position.ts",
     "src/lib/site-metadata-display.ts",
-    "src/lib/site-metadata-display.spec.ts"
+    "src/lib/site-metadata-display.spec.ts",
+    "src/lib/map-provider.spec.ts"
   ],
   "exclude": []
 }
