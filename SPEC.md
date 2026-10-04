@@ -429,6 +429,26 @@ budgets, and schedules.
 - **Scenarios:** save multiple plan variants, compare them side-by-side, and lock a winner into a
   booking.
 
+**Agency location-intelligence workspace (2026-10-04 amendment).** The agency
+landing surface is a full-screen marketplace map with selectable board pins,
+face-level shortlist, date-window and budget controls, and a floating planner.
+Board detail retains production enrichment provenance and explicit missing-data
+states. Distances are geodesic straight-line kilometres, not travel distances.
+Cost estimates use effective published face/site rates and state their duration,
+currency, minimum term and availability-check time; no FX or monthly daily rate
+is inferred. Selection is a draft shortlist and never reserves inventory.
+
+Briefs support PDF, PPTX, XLSX, DOCX and text/CSV equivalents through bounded,
+inert local text extraction. Documents are untrusted data: active content is not
+executed, file bytes are not persisted, and extracted constraints require planner
+confirmation. Legacy binary Office formats require conversion. Until an approved
+AI provider is configured, the assistant identifies itself as local planning help,
+never simulates model output, and does not transfer briefs to an external provider.
+Gross estimated OTS requires production, in-date traffic observations suitable for
+the flight and explicit visibility/model assumptions. Short observations and
+residential population cannot create daily exposure estimates. Missing inputs
+leave OTS unavailable; no deduplicated reach, frequency or GRPs are fabricated.
+
 **Key user stories.**
 
 - As a planner, I can draw a polygon over Lagos and see all bookable billboards inside it with KPI
