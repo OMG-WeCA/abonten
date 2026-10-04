@@ -9,6 +9,8 @@ export default [
     ignores: [
       '**/dist/**',
       '**/.next/**',
+      '**/.next-*/**',
+      '**/.test-dist/**',
       '**/out/**',
       '**/.expo/**',
       '**/expo-dist/**',

@@ -16,6 +16,8 @@
     ]
   },
   "include": [
+    "src/lib/agency-planning.ts",
+    "src/lib/agency-planning.spec.ts",
     "src/lib/api.ts",
     "src/lib/api.spec.ts",
     "src/lib/geographic-context.spec.ts",

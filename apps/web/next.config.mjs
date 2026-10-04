@@ -5,6 +5,8 @@ const allowedDevOrigins = (process.env.WEB_ALLOWED_DEV_ORIGINS ?? '')
   .filter(Boolean);
 
 const nextConfig = {
+  // Separate output supports a build check alongside a running review server.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
   ...(allowedDevOrigins.length > 0 ? { allowedDevOrigins } : {}),
   output: 'export',

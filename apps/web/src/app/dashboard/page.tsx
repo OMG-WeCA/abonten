@@ -14,6 +14,7 @@ import { PartnerDashboard } from '../../components/dashboard/PartnerDashboard';
 import { WorkspaceFrame } from '../../components/account/WorkspaceFrame';
 import { useAuth } from '../../components/auth/AuthProvider';
 import { getAccountCopy } from '../../lib/account-locale';
+import { AgencyDashboard } from '../../components/agency/AgencyDashboard';
 
 const workspaceIcons = {
   media_partner: Landmark,
@@ -34,7 +35,14 @@ export default function DashboardPage() {
     activeOrganization?.type === 'media_partner' && capabilities.includes('POP_CAPTURE');
   const isPlatformAdmin = capabilities.includes('PLATFORM_ADMIN');
 
-  if (type === 'media_partner') return <WorkspaceFrame current="dashboard"><PartnerDashboard key={activeOrganization?.organizationId} /></WorkspaceFrame>;
+  if (type === 'agency') return <AgencyDashboard />;
+
+  if (type === 'media_partner')
+    return (
+      <WorkspaceFrame current="dashboard">
+        <PartnerDashboard key={activeOrganization?.organizationId} />
+      </WorkspaceFrame>
+    );
 
   return (
     <WorkspaceFrame current="dashboard">

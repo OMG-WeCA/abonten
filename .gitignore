@@ -37,6 +37,7 @@ dist/
 build/
 out/
 .next/
+.next-*/
 .nuxt/
 .cache/
 .turbo/
