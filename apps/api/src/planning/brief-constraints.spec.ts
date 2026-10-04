@@ -134,6 +134,54 @@ test('suffix amounts cannot be prefixes of ranges, arithmetic or numeric lists',
     assert.notEqual(extractConstraints(text).budget, null, text);
 });
 
+test('compact French monetary ranges stay ambiguous without spacing before currency symbols', () => {
+  for (const token of [
+    '20 million à€30 million',
+    '20m à$30m',
+    '20m à₦30m',
+    '20 million à30 million',
+    '1,5 million à\u202f€2 millions',
+    '20m or€30m',
+  ]) {
+    const result = extractConstraints(`Budget: EUR ${token}`);
+    assert.equal(result.budget, null, token);
+    assert.equal(result.currency, null, token);
+  }
+  for (const [text, expected] of [
+    ['Budget est EUR 1,5 million pour Accra', 1500000],
+    ['Allocation de EUR 20\u202f000,50. Accra', 20000.5],
+    ['Budget: EUR 20 million à Accra', 20000000],
+  ] as const)
+    assert.equal(extractConstraints(text).budget, expected, text);
+});
+
+test('ISO date suggestions require complete tokens and preserve valid date punctuation', () => {
+  for (const token of [
+    '2026-10-100',
+    '2026-10-10junk',
+    '2026-10-10_foo',
+    '2026-10-10é',
+    '2026-10-10T12:00:00Z',
+    '2026-02-30',
+  ]) {
+    const start = extractConstraints(`Start: ${token} End: 2026-10-24`);
+    assert.equal(start.startDate, null, token);
+    assert.equal(start.endDate, '2026-10-24', token);
+    assert.ok(!start.evidence.some((item) => item.startsWith('Start:')), token);
+    const end = extractConstraints(`Start: 2026-10-10 End: ${token}`);
+    assert.equal(end.startDate, '2026-10-10', token);
+    assert.equal(end.endDate, null, token);
+  }
+  assert.equal(extractConstraints('Restart: 2026-10-10').startDate, null);
+  assert.equal(extractConstraints('weekend: 2026-10-24').endDate, null);
+  assert.equal(extractConstraints('Start: 2026-10-10. End: 2026-10-24.').startDate, '2026-10-10');
+  assert.equal(
+    extractConstraints('Start date = 2026-10-10; END DATE: 2026-10-24').endDate,
+    '2026-10-24',
+  );
+  assert.equal(extractConstraints('Start: 2026-10-10 Start: 2026-10-11').startDate, null);
+});
+
 test('malformed groups and mixed separators never become a valid leading substring', () => {
   for (const token of [
     '20, 000',

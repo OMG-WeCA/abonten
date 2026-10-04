@@ -62,7 +62,8 @@ function monetaryCandidate(value: string): { amount: number; length: number } | 
   if (/^[.,;:([{]\s*(?:(?:[A-Z]{3}|₦|\$|€)\s*)?[+\-−]?\d/iu.test(tail)) return null;
   if (/^[.,;:]\s*[\p{Sm}+\-−–—*/=<>%±×÷⁄∕^&|~!_]/u.test(tail)) return null;
   if (/^\.{2,}/.test(tail)) return null;
-  if (/^(?:to|or|à|and|et|ou)\s+(?:(?:[A-Z]{3}|₦|\$|€)\s*)?[+\-−]?\d/iu.test(tail)) return null;
+  if (/^(?:to|or|à|and|et|ou)(?![\p{L}_])\s*(?:(?:[A-Z]{3}|₦|\$|€)\s*)?[+\-−]?\d/iu.test(tail))
+    return null;
   // Attached letters, percent/ratio syntax and unsupported magnitude words are
   // not a complete monetary token. Ordinary separated prose may follow it.
   const separated = token[0].length > rawNumber.length;
@@ -119,7 +120,8 @@ export function extractConstraints(text: string): BriefConstraints {
   for (const city of ['Lagos', 'Accra', 'Douala', 'Abuja', 'Kumasi', 'Yaoundé']) {
     if (new RegExp(`\\b${city}\\b`, 'i').test(text)) result.cities.push(city);
   }
-  const dates = /(?:start(?: date)?|end(?: date)?)\s*[:=]\s*(\d{4}-\d{2}-\d{2})/gi;
+  const dates =
+    /(?<![\p{L}\p{N}_])(?:start(?: date)?|end(?: date)?)\s*[:=]\s*(\d{4}-\d{2}-\d{2})(?![\p{L}\p{N}_])/giu;
   const dateCandidates: Record<string, Set<string>> = { startDate: new Set(), endDate: new Set() };
   for (const match of text.matchAll(dates)) {
     const date = new Date(`${match[1]}T00:00:00Z`);
