@@ -104,7 +104,20 @@ export class MarketplaceService {
     if (q.market) push('s.market_id = ?', q.market);
     if (q.format) push('s.format = ?', q.format);
     if (q.illumination) push('s.illumination_type = ?', q.illumination);
-    if (q.search) push('(s.name ILIKE ? OR s.description ILIKE ?)', `%${q.search}%`, `%${q.search}%`);
+    if (q.search) {
+      const term = `%${q.search}%`;
+      push(
+        '(s.name ILIKE ? OR s.description ILIKE ? OR s.city ILIKE ? OR s.address ILIKE ? ' +
+          'OR s.region ILIKE ? OR s.country ILIKE ? OR EXISTS (SELECT 1 FROM markets m WHERE m.id::text = s.market_id AND m.name ILIKE ?))',
+        term,
+        term,
+        term,
+        term,
+        term,
+        term,
+        term,
+      );
+    }
     if (q.minSize !== undefined) push('COALESCE(s.area, s.width * s.height) >= ?', q.minSize);
     if (q.maxSize !== undefined) push('COALESCE(s.area, s.width * s.height) <= ?', q.maxSize);
     if (q.minPrice !== undefined) {

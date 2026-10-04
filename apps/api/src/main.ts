@@ -10,11 +10,14 @@ import { AppModule } from './app.module';
 import { oidcSessionOptions } from './common/oidc-session-options';
 import { OidcRedisSessionStore } from './common/oidc-session-store';
 import { RedisService } from './common/redis.service';
+import { configureApiBodyLimits } from './planning/planning-http';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
+    bodyParser: false,
   });
+  configureApiBodyLimits(app);
   const config = app.get(ConfigService);
   const port = config.get<number>('api.port', 3000);
 
