@@ -41,7 +41,7 @@ interface PlannerProps {
   estimates: FaceCostEstimate[];
   summary: ReturnType<typeof summarizeBudget>;
   distances: ReturnType<typeof selectionDistances>;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, faceId?: string) => void;
   onRemove: (faceId: string) => void;
   onClear: () => void;
   onClose: () => void;
@@ -121,7 +121,11 @@ export function AgencyPlanner(props: PlannerProps) {
     };
   }, [orgId]);
   useEffect(() => {
-    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'instant' });
+    const thread = threadRef.current;
+    if (thread && (messages.length > 0 || chatting)) {
+      thread.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      thread.scrollTo({ top: thread.scrollHeight, behavior: 'instant' });
+    }
   }, [messages, chatting]);
   const cancelUpload = () => {
     uploadRef.current?.abort();
@@ -409,7 +413,11 @@ export function AgencyPlanner(props: PlannerProps) {
           </label>
           <label className="agency-field">
             <span>{t('Currency', 'Devise')}</span>
-            <select value={currency} onChange={(event) => onCurrency(event.target.value)}>
+            <select
+              aria-label={t('Currency', 'Devise')}
+              value={currency}
+              onChange={(event) => onCurrency(event.target.value)}
+            >
               {['NGN', 'GHS', 'XAF', 'XOF', 'USD', 'EUR'].map((code) => (
                 <option key={code}>{code}</option>
               ))}
@@ -566,7 +574,7 @@ export function AgencyPlanner(props: PlannerProps) {
                 <div className="agency-shortlist-row" key={item.faceId}>
                   <button
                     className="agency-shortlist-board"
-                    onClick={() => props.onSelect(item.site.id)}
+                    onClick={() => props.onSelect(item.site.id, item.faceId)}
                   >
                     <b className="agency-number-pin">{index + 1}</b>
                     <span>
@@ -947,7 +955,7 @@ function ReplyFacts({
 }: {
   reply: PlannerReply;
   locale: 'en' | 'fr';
-  onSelect: (id: string) => void;
+  onSelect: (id: string, faceId?: string) => void;
 }) {
   const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
   const facts = reply.facts;
@@ -987,8 +995,8 @@ function ReplyFacts({
               <button
                 type="button"
                 className="agency-text-button"
-                onClick={() => onSelect(site.siteId)}
-                aria-label={`${t('View board', 'Voir le panneau')} ${site.name}`}
+                onClick={() => onSelect(site.siteId, face.faceId)}
+                aria-label={`${t('View board', 'Voir le panneau')} ${site.name}${face.faceLabel ? ` · ${t('Face', 'Face')} ${face.faceLabel}` : ''}`}
               >
                 <strong>{site.name}</strong>
               </button>

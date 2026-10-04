@@ -137,6 +137,7 @@ function AgencyWorkspace() {
   const [detail, setDetail] = useState<SiteDetail | null>(null);
   const [detailState, setDetailState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [faceId, setFaceId] = useState('');
+  const preferredFaceRef = useRef<{ siteId: string; faceId: string } | null>(null);
   const [options, setOptions] = useState<Record<string, OptionSnapshot>>({});
   const [shortlist, setShortlist] = useState<ShortlistFace[]>([]);
   const shortlistSiteIds = [...new Set(shortlist.map((item) => item.site.id))].sort().join(',');
@@ -235,7 +236,15 @@ function AgencyWorkspace() {
               ? current.map((item) => (item.site.id === site.id ? { ...item, site } : item))
               : current,
           );
-          setFaceId(site.faces.find((face) => face.bookable)?.id ?? '');
+          const preferred =
+            preferredFaceRef.current?.siteId === site.id
+              ? preferredFaceRef.current.faceId
+              : undefined;
+          setFaceId(
+            site.faces.find((face) => face.bookable && face.id === preferred)?.id ??
+              site.faces.find((face) => face.bookable)?.id ??
+              '',
+          );
           setDetailState('ready');
           setOptions((current) => {
             const next = { ...current };
@@ -331,7 +340,15 @@ function AgencyWorkspace() {
     () => buildPlannerSelection(shortlist, selectedId),
     [shortlist, selectedId],
   );
-  const select = (id: string) => {
+  const select = (id: string, preferredFaceId?: string) => {
+    preferredFaceRef.current = preferredFaceId ? { siteId: id, faceId: preferredFaceId } : null;
+    if (detail?.id === id) {
+      setFaceId(
+        detail.faces.find((face) => face.bookable && face.id === preferredFaceId)?.id ??
+          detail.faces.find((face) => face.bookable)?.id ??
+          '',
+      );
+    }
     setSelectedId(id);
     setPanel('map');
   };
@@ -536,6 +553,7 @@ function AgencyWorkspace() {
         <button
           className={`agency-toolbar-button ${filterOpen ? 'is-active' : ''}`}
           onClick={() => setFilterOpen(!filterOpen)}
+          aria-label={t('Flight & filters', 'Dates et filtres')}
           aria-expanded={filterOpen}
         >
           <SlidersHorizontal size={16} />
@@ -820,7 +838,10 @@ function AgencyWorkspace() {
             orgId={orgId}
             locale={locale}
             faceId={faceId}
-            onFace={setFaceId}
+            onFace={(id) => {
+              preferredFaceRef.current = { siteId: detail.id, faceId: id };
+              setFaceId(id);
+            }}
             estimate={selectedEstimate}
             selected={shortlist.some((item) => item.faceId === faceId)}
             canPlan={canPlan}

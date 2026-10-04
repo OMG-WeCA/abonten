@@ -105,7 +105,11 @@ export function BoardDetail({
           </p>
           <label className="agency-field">
             <span>{t('Viewing face', 'Face')}</span>
-            <select value={faceId} onChange={(event) => onFace(event.target.value)}>
+            <select
+              aria-label={t('Bookable face', 'Face réservable')}
+              value={faceId}
+              onChange={(event) => onFace(event.target.value)}
+            >
               {site.faces
                 .filter((item) => item.bookable)
                 .map((item: SiteFace) => (
