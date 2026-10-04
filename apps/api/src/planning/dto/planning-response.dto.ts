@@ -70,7 +70,7 @@ export class PlannerReplyResponse {
   @ApiProperty({
     type: Object,
     description:
-      'Authoritative server facts: checkedAt, UTC window, marketplace sites/faces with canonical media estimates and availability, selected budget summary, selected WGS84 Haversine distances in km, ots:null, reach:null and assumptions. See docs/agency-planner-api.md.',
+      'Authoritative server facts: checkedAt, UTC window, brief-aware bounded retrieval coverage and confirmation needs, marketplace sites/faces with canonical media estimates, availability and source-backed production enrichment, selected budget summary, selected WGS84 Haversine distances in km, ots:null, reach:null and assumptions. See docs/agency-planner-api.md.',
   })
   facts!: object;
   @ApiProperty({ type: BriefConstraintsResponse }) constraints!: BriefConstraintsResponse;

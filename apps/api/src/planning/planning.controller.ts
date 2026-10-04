@@ -30,6 +30,7 @@ import { CapabilitiesGuard } from '../capabilities/capabilities.guard';
 import { Capability } from '../capabilities/capability.enum';
 import { RequireCapabilities } from '../capabilities/require-capabilities.decorator';
 import { PlanningService } from './planning.service';
+import { BriefAdmissionInterceptor, type BriefUploadRequest } from './brief-admission.interceptor';
 import { BriefExtractionService } from './brief-extraction.service';
 import { AssistantMessageDto, SiteOptionsQueryDto } from './dto/planning.dto';
 import { BRIEF_MAX_BYTES } from './brief-parser';
@@ -100,6 +101,7 @@ export class PlanningController {
         dto,
         {
           userId: req.user.userId,
+          user: req.user,
           orgId:
             typeof req.headers['x-org-id'] === 'string'
               ? req.headers['x-org-id']
@@ -133,13 +135,14 @@ export class PlanningController {
   @ApiResponse({ status: 429, description: 'Two extraction workers already busy' })
   @ApiResponse({ status: 201, type: ExtractedBriefResponse })
   @UseInterceptors(
+    BriefAdmissionInterceptor,
     FileInterceptor('file', {
       limits: { fileSize: BRIEF_MAX_BYTES, files: 1, fields: 0, parts: 2 },
     }),
   )
-  extract(@UploadedFile() file: Express.Multer.File) {
+  extract(@UploadedFile() file: Express.Multer.File, @Req() req: BriefUploadRequest) {
     if (!file) throw new BadRequestException('Choose a document to upload.');
-    return this.briefs.extract(file);
+    return this.briefs.extract(file, req.briefAdmission, req.briefAbortSignal);
   }
 
   @Get('site-options/:siteId')

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type {
   AdministrativeContext,
   ContextMetric,
@@ -115,11 +115,23 @@ export class GeographicContextService {
     user: AuthenticatedUser,
     orgId: string | undefined,
     siteId: string,
+    signal?: AbortSignal,
   ): Promise<SiteGeographicContext> {
     // No context query, local raster access or coordinate exposure before the existing
     // capability + owner/platform/listed-marketplace gate. Never accepts raw coordinates.
+    checkCancelled(signal);
     await this.inventory.assertCanReadSite(user, orgId, siteId);
-    return this.db.transaction(async (manager) => {
+    checkCancelled(signal);
+    return this.db.transaction(async (transactionManager) => {
+      // Bound each planner context query and stop subsequent work on disconnect.
+      if (signal) await transactionManager.query("SET LOCAL statement_timeout = '4000ms'");
+      const manager = Object.create(transactionManager) as EntityManager;
+      manager.query = async (...args: Parameters<EntityManager['query']>) => {
+        checkCancelled(signal);
+        const result = await transactionManager.query(...args);
+        checkCancelled(signal);
+        return result;
+      };
       const sites: SiteLocation[] = await manager.query(
         'SELECT latitude, longitude, country FROM billboard_sites WHERE id = $1',
         [siteId],
@@ -182,9 +194,10 @@ export class GeographicContextService {
           raster = await readPopulationCells(
             population.raster_path,
             catchmentReadBounds(site.latitude, site.longitude),
-            { maxCells: 10000 },
+            { maxCells: 10000, ...(signal ? { timeoutMs: 4000, signal } : {}) },
           );
         } catch {
+          checkCancelled(signal);
           this.logger.warn(`Local population processing unavailable for import ${population.id}`);
           for (const catchment of result.catchments)
             catchment.population = missingLayer(
@@ -460,4 +473,9 @@ export class GeographicContextService {
       ],
     );
   }
+}
+
+function checkCancelled(signal?: AbortSignal) {
+  if (signal?.aborted)
+    throw new HttpException('The geographic context request was cancelled.', 499);
 }

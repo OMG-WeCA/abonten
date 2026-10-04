@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, HttpException, HttpStatus } from '@nestjs/common';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { join } from 'node:path';
 import { briefFormat, BRIEF_MAX_BYTES, type ParsedBrief } from './brief-parser';
 import { extractConstraints } from './brief-constraints';
@@ -42,29 +42,64 @@ try {
 }
 `;
 
+export interface BriefAdmission {
+  readonly id: symbol;
+}
+interface AdmissionState {
+  consumed: boolean;
+  workerRunning: boolean;
+}
+
 @Injectable()
 export class BriefExtractionService {
   private active = 0;
+  private readonly admissions = new WeakMap<BriefAdmission, AdmissionState>();
 
-  async extract(file: Pick<Express.Multer.File, 'buffer' | 'originalname'>) {
-    if (!file?.buffer?.length)
-      throw new BadRequestException('Choose a non-empty document to upload.');
-    if (file.buffer.length > BRIEF_MAX_BYTES)
-      throw new HttpException('Briefs must be 10 MB or smaller.', HttpStatus.PAYLOAD_TOO_LARGE);
-    let format;
-    try {
-      format = briefFormat(file.originalname);
-    } catch (error) {
-      throw new BadRequestException((error as Error).message);
-    }
+  /** HTTP callers reserve before Multer buffers a body; direct callers use the
+   * same bound. Tokens belong to this service instance and cannot be reused. */
+  reserve(): BriefAdmission {
     if (this.active >= 2)
       throw new HttpException(
         'Document extraction is busy. Try again shortly.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
+    const admission = Object.freeze({ id: Symbol('brief-admission') });
+    this.admissions.set(admission, { consumed: false, workerRunning: false });
     this.active++;
+    return admission;
+  }
+
+  /** Idempotent. A cancelled parser retains its slot until the process closes. */
+  release(admission: BriefAdmission): void {
+    const state = this.admissions.get(admission);
+    if (!state || state.workerRunning) return;
+    this.admissions.delete(admission);
+    this.active--;
+  }
+
+  async extract(
+    file: Pick<Express.Multer.File, 'buffer' | 'originalname'>,
+    admission?: BriefAdmission,
+    signal?: AbortSignal,
+  ) {
+    const token = admission ?? this.reserve();
+    const state = this.admissions.get(token);
+    if (!state || state.consumed)
+      throw new BadRequestException('Document admission has expired. Retry the upload manually.');
+    state.consumed = true;
     try {
-      const result = await this.run(file.buffer, format);
+      if (signal?.aborted) throw this.cancelled();
+      if (!file?.buffer?.length)
+        throw new BadRequestException('Choose a non-empty document to upload.');
+      if (file.buffer.length > BRIEF_MAX_BYTES)
+        throw new HttpException('Briefs must be 10 MB or smaller.', HttpStatus.PAYLOAD_TOO_LARGE);
+      let format;
+      try {
+        format = briefFormat(file.originalname);
+      } catch (error) {
+        throw new BadRequestException((error as Error).message);
+      }
+      const result = await this.run(file.buffer, format, state, signal);
       return {
         ...result,
         fileName: file.originalname
@@ -80,74 +115,104 @@ export class BriefExtractionService {
         retained: false as const,
       };
     } finally {
-      this.active--;
+      // run settles only on child close, including abort and deadline failures.
+      state.workerRunning = false;
+      this.release(token);
     }
   }
 
-  private run(buffer: Buffer, format: string): Promise<ParsedBrief> {
+  private cancelled() {
+    return new HttpException('Document extraction cancelled. Retry the upload manually.', 499);
+  }
+
+  /** Protected solely to exercise process lifecycle with inert test workers. */
+  protected spawnParser(format: string): ChildProcessWithoutNullStreams {
+    return spawn(
+      process.execPath,
+      [
+        '--max-old-space-size=256',
+        '--disable-proto=throw',
+        '--input-type=module',
+        '-e',
+        PARSER_PROGRAM,
+        join(__dirname, 'brief-parser.js'),
+        require.resolve('pdfjs-dist/legacy/build/pdf.mjs'),
+        format,
+      ],
+      { env: {}, stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+  }
+
+  private run(
+    buffer: Buffer,
+    format: string,
+    state: AdmissionState,
+    signal?: AbortSignal,
+  ): Promise<ParsedBrief> {
     return new Promise((resolve, reject) => {
-      const parserPath = join(__dirname, 'brief-parser.js');
-      const pdfPath = require.resolve('pdfjs-dist/legacy/build/pdf.mjs');
-      const child = spawn(
-        process.execPath,
-        [
-          '--max-old-space-size=256',
-          '--disable-proto=throw',
-          '--input-type=module',
-          '-e',
-          PARSER_PROGRAM,
-          parserPath,
-          pdfPath,
-          format,
-        ],
-        {
-          env: {},
-          stdio: ['pipe', 'pipe', 'pipe'],
-        },
-      );
+      const child = this.spawnParser(format);
+      state.workerRunning = true;
       let output = '';
-      let complete = false;
-      const finish = (result?: ParsedBrief, error?: string) => {
-        if (complete) return;
-        complete = true;
-        clearTimeout(deadline);
+      let failure: HttpException | undefined;
+      let closed = false;
+      const stop = (error: HttpException) => {
+        if (closed || failure) return;
+        failure = error;
+        // Do not settle or release capacity here: SIGKILL is a request, and
+        // descriptor/process cleanup is established by the close event.
         child.kill('SIGKILL');
-        if (error || !result)
-          reject(
-            new BadRequestException(error ?? 'Document extraction failed. Try a text export.'),
-          );
-        else resolve(result);
       };
+      const cancel = () => stop(this.cancelled());
       const deadline = setTimeout(
         () =>
-          finish(
-            undefined,
-            'Document extraction timed out. Try a smaller document or text export.',
+          stop(
+            new BadRequestException(
+              'Document extraction timed out. Try a smaller document or text export.',
+            ),
           ),
         15000,
       );
+      signal?.addEventListener('abort', cancel, { once: true });
       // Streaming decoding preserves multibyte UTF-8 across pipe chunk boundaries.
       child.stdout.setEncoding('utf8');
       child.stdout.on('data', (chunk: string) => {
+        if (failure) return;
         output += chunk;
         if (output.length > 512000)
-          finish(undefined, 'Document text exceeded the extraction limit.');
+          stop(new BadRequestException('Document text exceeded the extraction limit.'));
       });
       // Drain diagnostics, which can contain document contents; do not log them.
       child.stderr.on('data', () => {});
       child.stdin.on('error', () => {});
-      child.on('error', () => finish(undefined, 'Document extraction is temporarily unavailable.'));
-      child.on('close', (code) => {
+      child.on('error', () =>
+        stop(new BadRequestException('Document extraction is temporarily unavailable.')),
+      );
+      child.once('close', (code) => {
+        closed = true;
+        clearTimeout(deadline);
+        signal?.removeEventListener('abort', cancel);
+        if (failure) return reject(failure);
         if (code !== 0)
-          return finish(undefined, 'Document could not be safely extracted. Try a text export.');
+          return reject(
+            new BadRequestException('Document could not be safely extracted. Try a text export.'),
+          );
         try {
           const decoded = JSON.parse(output) as { result?: ParsedBrief; error?: string };
-          finish(decoded.result, decoded.error);
+          if (decoded.error || !decoded.result)
+            return reject(
+              new BadRequestException(
+                decoded.error ?? 'Document extraction failed. Try a text export.',
+              ),
+            );
+          resolve(decoded.result);
         } catch {
-          finish(undefined, 'Document could not be safely extracted. Try a text export.');
+          reject(
+            new BadRequestException('Document could not be safely extracted. Try a text export.'),
+          );
         }
       });
-      child.stdin.end(buffer);
+      if (signal?.aborted) cancel();
+      if (!failure) child.stdin.end(buffer);
     });
   }
 }

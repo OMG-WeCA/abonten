@@ -46,7 +46,10 @@ export async function assertNoRasterSidecars(path: string): Promise<void> {
       );
   }
 }
-export async function inspectPopulationRaster(path: string): Promise<PopulationRasterInfo> {
+export async function inspectPopulationRaster(
+  path: string,
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<PopulationRasterInfo> {
   const absolute = resolve(path);
   await assertNoRasterSidecars(absolute);
   const file = await stat(absolute);
@@ -54,7 +57,13 @@ export async function inspectPopulationRaster(path: string): Promise<PopulationR
     throw new Error('Population raster must be a regular local GeoTIFF no larger than 2 GiB');
   const info = record(
     JSON.parse(
-      await runTool('gdalinfo', ['-json', '-if', 'GTiff', absolute], 4 * 1024 * 1024, 30_000),
+      await runTool(
+        'gdalinfo',
+        ['-json', '-if', 'GTiff', absolute],
+        4 * 1024 * 1024,
+        options.timeoutMs ?? 30_000,
+        options.signal,
+      ),
     ),
     'gdalinfo',
   );
@@ -163,13 +172,29 @@ export interface PopulationCells {
 }
 let running = 0;
 const waiting: (() => void)[] = [];
-async function rasterSlot<T>(action: () => Promise<T>): Promise<T> {
+export async function rasterSlot<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (signal?.aborted) throw new Error('Population query cancelled');
   if (running >= 2) {
     if (waiting.length >= 8)
       throw new Error('Population raster query capacity reached; retry later');
-    await new Promise<void>((resolve) => waiting.push(resolve));
+    await new Promise<void>((resolve, reject) => {
+      const enter = () => {
+        signal?.removeEventListener('abort', cancel);
+        resolve();
+      };
+      const cancel = () => {
+        const index = waiting.indexOf(enter);
+        if (index >= 0) waiting.splice(index, 1);
+        signal?.removeEventListener('abort', cancel);
+        reject(new Error('Population query cancelled'));
+      };
+      waiting.push(enter);
+      signal?.addEventListener('abort', cancel, { once: true });
+      if (signal?.aborted) cancel();
+    });
   } else running++;
   try {
+    if (signal?.aborted) throw new Error('Population query cancelled');
     return await action();
   } finally {
     const next = waiting.shift();
@@ -181,7 +206,7 @@ async function rasterSlot<T>(action: () => Promise<T>): Promise<T> {
 export async function readPopulationCells(
   path: string,
   bbox: Bounds,
-  options: { maxCells?: number } = {},
+  options: { maxCells?: number; timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<PopulationCells> {
   const query = validateBounds(bbox);
   const maxCells = options.maxCells ?? 10_000;
@@ -193,7 +218,8 @@ export async function readPopulationCells(
   const safePath = await realpath(path);
   if (dirname(safePath) !== root) throw new Error('Raster path is outside ENRICHMENT_DATA_DIR');
   return rasterSlot(async () => {
-    const info = await inspectPopulationRaster(safePath);
+    if (options.signal?.aborted) throw new Error('Population query cancelled');
+    const info = await inspectPopulationRaster(safePath, options);
     const [w, s, e, n] = query;
     const x0 = Math.max(0, Math.min(info.width, Math.floor((w - info.originX) / info.pixelWidth)));
     const x1 = Math.max(0, Math.min(info.width, Math.ceil((e - info.originX) / info.pixelWidth)));
@@ -230,7 +256,8 @@ export async function readPopulationCells(
         '/vsistdout/',
       ],
       maxCells * 160 + 4096,
-      30_000,
+      options.timeoutMs ?? 30_000,
+      options.signal,
     );
     const lines = output.trim().split(/\r?\n/);
     if (lines.length !== width * height)
@@ -257,5 +284,5 @@ export async function readPopulationCells(
       );
     // Nominal north-south resolution, clearly approximate; cell areas are not derived from this.
     return { cells, pixelSizeMetres: info.pixelHeight * 111_195, warnings };
-  });
+  }, options.signal);
 }

@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { describe, it } from 'node:test';
+import { describe, it, test } from 'node:test';
 import { HttpException, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../common/database.service';
@@ -419,5 +419,54 @@ describe('content-free bounded agency planning telemetry', () => {
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(cancelled.filter((event) => event.outcome === 'cancelled').length, 2);
     noContent(cancelled);
+  });
+});
+
+test('grounding counters are bounded and never record intent, labels or errors', () => {
+  const result = planningTelemetry({
+    event: 'agency_planner.plan',
+    requestId: planningRequestId(),
+    model: 'gpt-6-luna',
+    mode: 'openai',
+    outcome: 'success',
+    status: 201,
+    latencyMs: 5,
+    grounding: {
+      pagesRead: 3,
+      candidatesDiscovered: 24,
+      enrichmentReads: 6,
+      enrichmentFailures: 2,
+      filters: sensitive,
+      source: sensitive,
+      rawError: sensitive,
+    },
+  });
+  assert.deepEqual(result.grounding, {
+    pagesRead: 3,
+    candidatesDiscovered: 24,
+    enrichmentReads: 6,
+    enrichmentFailures: 2,
+  });
+  assert.doesNotMatch(JSON.stringify(result), /SECRET_KEY|PRIVATE_BRIEF|RAW_ERROR/);
+  const invalid = planningTelemetry({
+    event: 'agency_planner.plan',
+    requestId: planningRequestId(),
+    model: null,
+    mode: 'local',
+    outcome: 'local_success',
+    status: 201,
+    latencyMs: 0,
+    grounding: {
+      pagesRead: 4,
+      candidatesDiscovered: -1,
+      enrichmentReads: 7,
+      enrichmentFailures: NaN,
+    },
+  });
+  assert.deepEqual(invalid.grounding, {
+    pagesRead: null,
+    candidatesDiscovered: null,
+    enrichmentReads: null,
+    enrichmentFailures: null,
   });
 });

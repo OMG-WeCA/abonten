@@ -460,6 +460,23 @@ latency, ephemeral request IDs, bounded actual token counts and allowlisted
 provider diagnostics. No messages, briefs, keys, raw errors or user/organization
 identifiers are logged. Log collection, metrics and alerting remain deployment
 requirements; limits are process-local.
+Server discovery uses bounded structured geography, format and text filters from
+confirmed controls and unambiguous campaign requirements; ambiguous alternatives
+require clarification. At most three eight-board marketplace pages are read per
+request, independently of the map's initial viewport/snapshot. Canonical same-currency
+flight estimates prioritize up to twelve discovered candidates alongside the selected
+boards. Coverage, discarded candidates and unresolved requirements are explicit;
+this is bounded advisory discovery, not an exhaustive portfolio optimizer.
+Production enrichment is projected into model context with source, verification,
+units, observation/reference period, freshness and missing states. Demo-class rows
+never enter model input. Mapped roads, POIs and residents are geographic context,
+and interval traffic observations do not establish billboard exposure. Unconsented
+brief-derived filters, constraints and candidate choices stay out of provider requests.
+Model context has a separate compact snapshot budget with explicit omitted
+source/face details; full canonical API facts are retained. Recommendations are
+validated against the exact transferred IDs. Upload admission precedes buffering,
+allows two 10 MB documents per process, bounds body reads to twenty seconds and
+parsing to fifteen seconds, and holds capacity until a cancelled child closes.
 Local document extraction remains available regardless of provider availability.
 Gross estimated OTS requires production, in-date traffic observations suitable for
 the flight and explicit visibility/model assumptions. Short observations and

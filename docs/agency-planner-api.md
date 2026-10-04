@@ -25,15 +25,23 @@ configured, not a health guarantee; this endpoint never contacts OpenAI.
   selections are omitted, included subtotals remain visible but full-plan budget
   fit is unknown and remaining budget is null.
 - `context.filters`: country/city (80 characters), format (`static`, `digital_led`,
-  `3d`), search (160 characters).
+  `3d`, `tri_vision`, `mural`, `transit`, `street_furniture`), search (160 characters).
 - `context.window`: valid UTC `YYYY-MM-DD` dates, start inclusive, end exclusive,
   positive flight of at most 366 days.
 - `context.budget`: finite amount from 0 to 1e12 and currency
   `NGN | GHS | XAF | XOF | USD | EUR`.
 
 No client prices or enrichment are accepted. The server rereads selected faces
-and listed, ready marketplace sites, plus up to eight candidate boards using
-filters. Candidate coverage is explicitly bounded, not exhaustive. Availability
+and listed, ready marketplace sites. Candidate discovery uses confirmed controls
+and conservative literal requirements from typed chat/consented briefs, independently
+of the map snapshot. Multiple explicit target cities/formats use bounded union queries;
+alternatives, exclusions and contradictions require clarification. At most three
+pages of eight boards are read across all unions (24 unique discoveries). Every
+candidate is reread for listing/readiness and canonically priced for the UTC flight.
+Individual same-currency affordability prioritizes up to twelve discovered boards
+alongside up to twelve selected boards; other currencies remain unknown, with no FX.
+Budget never becomes the marketplace's currency-free daily-price SQL filter.
+Coverage and omitted candidates are explicit; this is not an exhaustive optimizer. Availability
 uses existing overlapping bookings/blackouts without exposing tenant details.
 Flight eligibility also checks permit coverage, bookable face association and
 complete digital specs before reporting availability or accepting recommendations.
@@ -51,7 +59,30 @@ The reply includes `mode`, `provider`, `model`, `aiAvailable`, `message`,
   `estimate: FaceCostEstimate`). Estimates use canonical planning-math rules and
   include price currency, flight days, source rate ID, basis, assumptions and
   availability-check timestamp. Missing dates/rates remain unavailable.
-- `requestedBudget`: confirmed input amount/currency or null, and `filters`: confirmed map filters.
+- `requestedBudget`: confirmed or unambiguous literal amount/currency or null,
+  and `filters`: common structured discovery filters. `retrieval` records exact
+  query unions, requirement sources, confirmation needs, pages/discoveries/omissions,
+  `hasMore`, `exhaustive:false`, budget ranking semantics and enrichment-read counts.
+  Literal requirements always require confirmation; structured controls override them.
+  Explicit city/country/corridor labels accept other locations without guessed countries.
+  Nonselected face evaluation is capped at 256 per board, then affordability-prioritized
+  to eight included faces. Selected faces remain included. `facesEvaluated`,
+  `facesOmitted`, `faceCoverageComplete` make the coverage explicit; incomplete
+  evaluated coverage cannot justify an `over` classification.
+- Per-site `budgetMatch`: individual media affordability (`within | over | unknown`),
+  never full-plan budget fit. `enrichment` projects production visibility/structure
+  metadata and authorized geographic road/admin/POI/population/traffic context with
+  units, source identifiers, source vintage/observation period, verification, expiry
+  and explicit unknown/partial/missing states. Demo/synthetic metadata is excluded.
+  Unknown expiry means unknown freshness, not current validity. Viewing orientation
+  is not viewing angle; population/POIs/road proximity are not audience exposure.
+- `geographicContextState`: `loaded | unavailable | temporarily_unavailable |
+  read_budget_exhausted`. At most six context reads occur per request; production
+  metadata is still projected for every included board. Processing failures degrade
+  explicitly, but authorization/listing/cancellation failures stop the request.
+  Planner geographic SQL statements and GDAL child work have four-second bounds;
+  disconnect stops subsequent work and cancels active GDAL. GDAL children receive
+  only approved tool configuration, never the server's OpenAI credentials.
 - `budget`: canonical `summarizeBudget` over selected faces only, with separate
   published-currency subtotals, priced/unpriced/unchecked counts, `fit` (within, over or unknown), remaining budget or null, and assumptions. No inferred FX.
 - `distances`: canonical pairwise `selectionDistances` between selected boards,
@@ -60,7 +91,14 @@ The reply includes `mode`, `provider`, `model`, `aiAvailable`, `message`,
 
 Facts are authoritative. Model commentary is planning advice for review, not a
 quote or executed action. Recommendations are checked against the server
-snapshot and cannot reference an unavailable face or duplicate it. No provider
+snapshot and cannot reference an unavailable face or duplicate it. Model input uses an independently compacted snapshot: POI/traffic lists and method
+text are reduced, then enrichment from later sites and nonselected faces are omitted
+as necessary to target 96 KiB. All selected faces, numeric costs, units, periods,
+source rate IDs and distances remain intact. `modelContext` explicitly reports
+reductions. Full canonical facts remain in the API response; accepted recommendation
+IDs must exist in the exact compact snapshot. The provider's final 384 KiB guard still
+protects against an oversized brief/history or exceptional non-enrichment context.
+No provider
 function/tool calls, bookings, code execution or browser actions are enabled.
 
 Without a server `OPENAI_API_KEY`, replies are explicitly deterministic local
@@ -70,7 +108,7 @@ help. With a key, the fixed HTTPS Responses endpoint uses only `gpt-6-luna`,
 
 Uploads remain local and ephemeral. Confirmed text goes to OpenAI only with
 explicit consent. If a supplied brief lacks consent, all history is also omitted
-because earlier model messages could paraphrase it; local extracted constraints
+because earlier model messages could paraphrase it; local extracted constraints, brief-derived retrieval filters, warnings and candidate choices
 are not sent. The client must clear history and reset consent whenever a brief
 is edited, replaced, removed or consent revoked. Ordinary typed chat and
 confirmed structured planning controls are sent when the configured planner is
@@ -96,10 +134,19 @@ Planner operations emit structured JSON through the existing Nest logger. A fres
 ephemeral request UUID correlates `agency_planner.provider` and
 `agency_planner.plan` events. Fields are limited to exact model/mode, outcome,
 mapped HTTP status, latency, allowlisted provider request IDs/error codes and
-bounded token counts from the actual provider response. Provider schema failures
+bounded token counts from the actual provider response. Final-plan events also allowlist
+bounded page/discovery/context-read/context-failure counters; filters and source text
+are never logged. Provider schema failures
 and final inventory-reference failures have separate outcomes. Admission
 rejection, cancellation, timeout and local help are also recorded. Events contain
 no user/organization identifiers, messages, brief text, keys, raw errors or
 provider bodies. Logging failures do not change a result or retry a request.
 These events support diagnosis; log collection, metrics, alerting and shared
 usage enforcement remain operational deployment work.
+
+Upload admission reserves one of two process-local slots before Multer buffers the
+file body, bounding admitted file buffers to two 10 MB documents. Upload body reads
+have a 20-second deadline; unfinished timed-out connections close. Extraction has
+its separate 15-second child deadline. Client disconnect aborts the parser, and
+capacity is held until its child actually closes. Admission rejection starts no
+buffering or parser child. Authentication/capability guards run before admission.

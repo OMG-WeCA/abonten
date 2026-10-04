@@ -31,6 +31,7 @@ export interface PlanningTelemetryInput {
   latencyMs: number;
   usage?: unknown;
   providerCode?: unknown;
+  grounding?: unknown;
 }
 export interface PlanningTelemetryRecord {
   event: PlanningTelemetryInput['event'];
@@ -46,6 +47,12 @@ export interface PlanningTelemetryRecord {
     outputTokens: number | null;
     totalTokens: number | null;
   } | null;
+  grounding?: {
+    pagesRead: number | null;
+    candidatesDiscovered: number | null;
+    enrichmentReads: number | null;
+    enrichmentFailures: number | null;
+  };
   providerCode: (typeof SAFE_PROVIDER_CODES)[number] | null;
 }
 export type PlanningTelemetrySink = (record: PlanningTelemetryRecord) => void;
@@ -103,6 +110,16 @@ export function planningTelemetry(input: PlanningTelemetryInput): PlanningTeleme
     latencyMs: integer(Math.round(input.latencyMs), 86400000),
     usage: usage && Object.values(usage).some((value) => value !== null) ? usage : null,
     providerCode: safeProviderCode(input.providerCode),
+    ...(object(input.grounding)
+      ? {
+          grounding: {
+            pagesRead: integer(input.grounding.pagesRead, 3),
+            candidatesDiscovered: integer(input.grounding.candidatesDiscovered, 24),
+            enrichmentReads: integer(input.grounding.enrichmentReads, 6),
+            enrichmentFailures: integer(input.grounding.enrichmentFailures, 6),
+          },
+        }
+      : {}),
   };
 }
 export function emitPlanningTelemetry(

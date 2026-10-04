@@ -37,9 +37,11 @@ export class PlannerHistoryDto {
 export class PlannerFiltersDto {
   @ApiPropertyOptional({ maxLength: 80 }) @IsOptional() @IsString() @MaxLength(80) country?: string;
   @ApiPropertyOptional({ maxLength: 80 }) @IsOptional() @IsString() @MaxLength(80) city?: string;
-  @ApiPropertyOptional({ enum: ['static', 'digital_led', '3d'] })
+  @ApiPropertyOptional({
+    enum: ['static', 'digital_led', '3d', 'tri_vision', 'mural', 'transit', 'street_furniture'],
+  })
   @IsOptional()
-  @IsIn(['static', 'digital_led', '3d'])
+  @IsIn(['static', 'digital_led', '3d', 'tri_vision', 'mural', 'transit', 'street_furniture'])
   format?: string;
   @ApiPropertyOptional({ maxLength: 160 })
   @IsOptional()

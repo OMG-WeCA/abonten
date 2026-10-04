@@ -8,8 +8,13 @@ import { GeographicContextController } from '../enrichment/geographic-context.co
 import { GeographicContextService } from '../enrichment/geographic-context.service';
 
 @Module({
-  controllers: [InventoryController, ExchangeRatesController, MarketsController, GeographicContextController],
+  controllers: [
+    InventoryController,
+    ExchangeRatesController,
+    MarketsController,
+    GeographicContextController,
+  ],
   providers: [InventoryService, StorageService, GeographicContextService],
-  exports: [InventoryService],
+  exports: [InventoryService, GeographicContextService],
 })
 export class InventoryModule {}
