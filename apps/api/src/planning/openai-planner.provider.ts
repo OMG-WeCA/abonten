@@ -9,6 +9,13 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  emitPlanningTelemetry,
+  planningRequestId,
+  safeProviderCode,
+  type PlanningOutcome,
+  type PlanningTelemetrySink,
+} from './planning-telemetry';
 
 export const PLANNER_MODEL = 'gpt-6-luna' as const;
 export const PLANNER_RUNTIME = Symbol('PLANNER_RUNTIME');
@@ -16,6 +23,7 @@ export interface PlannerRuntime {
   fetch: typeof fetch;
   now: () => number;
   timeoutMs: number;
+  telemetry?: PlanningTelemetrySink;
 }
 export interface ModelPlan {
   message: string;
@@ -30,6 +38,7 @@ export interface ProviderInput {
   snapshot: unknown;
 }
 export interface PlannerAdmission {
+  requestId?: string;
   release(): void;
 }
 const MODEL_SCHEMA = {
@@ -137,7 +146,11 @@ export class OpenAiPlannerProvider {
   }
 
   /** Admission covers grounding as well as transport. Tokens never cross the API. */
-  admit(scope: { userId: string; orgId: string }, signal?: AbortSignal): PlannerAdmission {
+  admit(
+    scope: { userId: string; orgId: string },
+    signal?: AbortSignal,
+    requestId: string = planningRequestId(),
+  ): PlannerAdmission {
     if (!this.configured)
       throw new ServiceUnavailableException('The AI planner is not configured.');
     if (!scope.userId || !scope.orgId)
@@ -145,6 +158,7 @@ export class OpenAiPlannerProvider {
     if (signal?.aborted) throw new HttpException('The planner request was cancelled.', 499);
     const release = this.acquire(scope.userId, scope.orgId);
     const admission: PlannerAdmission = {
+      requestId,
       release: () => {
         if (this.admissions.delete(admission)) release();
       },
@@ -196,6 +210,13 @@ export class OpenAiPlannerProvider {
     const token = admission ?? this.admit(scope, signal);
     if (this.admissions.get(token) !== `${scope.orgId}:${scope.userId}`)
       throw new ForbiddenException('Invalid planner admission.');
+    const startedAt = this.runtime.now();
+    let outcome: PlanningOutcome = 'provider_error';
+    let resultStatus = 502;
+    let providerRequestId: unknown;
+    let usage: unknown;
+    let providerCode: unknown;
+    let stage: 'transport' | 'schema' = 'transport';
     const abort = new AbortController();
     const cancel = () => abort.abort();
     signal?.addEventListener('abort', cancel, { once: true });
@@ -216,9 +237,9 @@ export class OpenAiPlannerProvider {
         signal: abort.signal,
         redirect: 'error',
       });
+      providerRequestId = response.headers.get('x-request-id');
       if (!response.ok) {
         const errorReader = response.body?.getReader();
-        let providerCode: string | undefined;
         if (errorReader) {
           const chunks: Uint8Array[] = [];
           let size = 0;
@@ -233,18 +254,7 @@ export class OpenAiPlannerProvider {
             try {
               const body: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
               const code = object(body) && object(body.error) ? body.error.code : undefined;
-              if (
-                typeof code === 'string' &&
-                [
-                  'model_not_found',
-                  'insufficient_quota',
-                  'rate_limit_exceeded',
-                  'invalid_api_key',
-                  'unsupported_parameter',
-                  'permission_denied',
-                ].includes(code)
-              )
-                providerCode = code;
+              providerCode = safeProviderCode(code);
             } catch {
               /* Provider messages and bodies are deliberately discarded. */
             }
@@ -291,7 +301,9 @@ export class OpenAiPlannerProvider {
         }
         chunks.push(item.value);
       }
+      stage = 'schema';
       const responseBody: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      usage = object(responseBody) ? responseBody.usage : undefined;
       if (
         !object(responseBody) ||
         responseBody.status !== 'completed' ||
@@ -320,12 +332,32 @@ export class OpenAiPlannerProvider {
         throw new BadGatewayException(
           'The planner returned an unsupported response. Please retry manually.',
         );
-      return validateModelPlan(JSON.parse(messages[0].content[0].text));
+      const result = validateModelPlan(JSON.parse(messages[0].content[0].text));
+      outcome = 'success';
+      resultStatus = 200;
+      return result;
     } catch (error) {
-      if (timedOut)
+      if (timedOut) {
+        outcome = 'timeout';
+        resultStatus = 504;
         throw new HttpException('The AI planner timed out. Please retry manually.', 504);
-      if (signal?.aborted) throw new HttpException('The planner request was cancelled.', 499);
-      if (error instanceof HttpException) throw error;
+      }
+      if (signal?.aborted) {
+        outcome = 'cancelled';
+        resultStatus = 499;
+        throw new HttpException('The planner request was cancelled.', 499);
+      }
+      if (error instanceof HttpException) {
+        resultStatus = error.getStatus();
+        outcome =
+          stage === 'schema'
+            ? 'invalid_response'
+            : resultStatus === 429
+              ? 'rate_limited'
+              : 'provider_error';
+        throw error;
+      }
+      outcome = stage === 'schema' ? 'invalid_response' : 'provider_error';
       throw new BadGatewayException(
         'The AI provider could not complete this request. Please retry manually.',
       );
@@ -333,6 +365,21 @@ export class OpenAiPlannerProvider {
       clearTimeout(timer);
       signal?.removeEventListener('abort', cancel);
       if (!admission) token.release();
+      emitPlanningTelemetry(
+        {
+          event: 'agency_planner.provider',
+          requestId: token.requestId ?? planningRequestId(),
+          model: PLANNER_MODEL,
+          mode: 'openai',
+          outcome,
+          status: resultStatus,
+          latencyMs: this.runtime.now() - startedAt,
+          providerRequestId,
+          usage,
+          providerCode,
+        },
+        this.runtime.telemetry,
+      );
     }
   }
 }

@@ -4,12 +4,21 @@ import {
   ForbiddenException,
   HttpException,
   Injectable,
+  Inject,
   Optional,
 } from '@nestjs/common';
 import { DatabaseService } from '../common/database.service';
 import { SiteFaceEntity } from '../common/entities/site-face.entity';
 import { MarketplaceService } from '../marketplace/marketplace.service';
 import { extractConstraints } from './brief-constraints';
+import {
+  emitPlanningTelemetry,
+  planningRequestId,
+  PLANNING_TELEMETRY_SINK,
+  safeProviderCode,
+  type PlanningOutcome,
+  type PlanningTelemetrySink,
+} from './planning-telemetry';
 import { AssistantMessageDto, SiteOptionsQueryDto } from './dto/planning.dto';
 import {
   OpenAiPlannerProvider,
@@ -34,6 +43,7 @@ export class PlanningService {
     private readonly db: DatabaseService,
     private readonly marketplace: MarketplaceService,
     @Optional() private readonly provider?: OpenAiPlannerProvider,
+    @Optional() @Inject(PLANNING_TELEMETRY_SINK) private readonly telemetry?: PlanningTelemetrySink,
   ) {}
 
   assistantStatus() {
@@ -96,11 +106,73 @@ export class PlanningService {
     scope: { userId: string; orgId: string },
     signal?: AbortSignal,
   ) {
+    const requestId = planningRequestId();
+    const startedAt = performance.now();
+    const configured = Boolean(this.provider?.configured);
+    let phase: string = 'admission';
+    let outcome: PlanningOutcome = configured ? 'success' : 'local_success';
+    let status = 201;
+    let providerCode: unknown;
+    try {
+      return await this.executePlan(dto, scope, signal, requestId, (value) => {
+        phase = value;
+      });
+    } catch (error) {
+      status = error instanceof HttpException ? error.getStatus() : 500;
+      if (error instanceof HttpException) {
+        const response = error.getResponse();
+        providerCode = safeProviderCode(
+          typeof response === 'object' && response !== null && 'providerCode' in response
+            ? response.providerCode
+            : undefined,
+        );
+      }
+      outcome =
+        status === 499
+          ? 'cancelled'
+          : status === 504
+            ? 'timeout'
+            : status === 429
+              ? 'rate_limited'
+              : status === 400 || status === 403 || status === 413
+                ? 'validation_error'
+                : phase === 'reference'
+                  ? 'invalid_reference'
+                  : phase === 'provider'
+                    ? 'provider_error'
+                    : 'grounding_error';
+      throw error;
+    } finally {
+      emitPlanningTelemetry(
+        {
+          event: 'agency_planner.plan',
+          requestId,
+          model: configured ? PLANNER_MODEL : null,
+          mode: configured ? 'openai' : 'local',
+          outcome,
+          status,
+          latencyMs: performance.now() - startedAt,
+          providerCode,
+        },
+        this.telemetry,
+      );
+    }
+  }
+
+  private async executePlan(
+    dto: AssistantMessageDto,
+    scope: { userId: string; orgId: string },
+    signal: AbortSignal | undefined,
+    requestId: string,
+    progress: (phase: 'grounding' | 'provider' | 'reference') => void,
+  ) {
     if (!scope.userId || !scope.orgId)
       throw new ForbiddenException('An authorized organization context is required.');
     checkCancelled(signal);
     // Reject excess requests before any marketplace search or database grounding.
-    const admission = this.provider?.configured ? this.provider.admit(scope, signal) : undefined;
+    const admission = this.provider?.configured
+      ? this.provider.admit(scope, signal, requestId)
+      : undefined;
     const abort = new AbortController();
     let timedOut = false;
     const cancel = () => abort.abort();
@@ -128,7 +200,7 @@ export class PlanningService {
     try {
       // An interrupted database query may still be running. Keep admission until
       // it settles, rather than admitting another expensive request immediately.
-      const running = this.runPlan(dto, scope, abort.signal, admission).finally(() =>
+      const running = this.runPlan(dto, scope, abort.signal, admission, progress).finally(() =>
         admission?.release(),
       );
       return await Promise.race([running, interrupted]);
@@ -144,13 +216,16 @@ export class PlanningService {
     scope: { userId: string; orgId: string },
     signal: AbortSignal,
     admission?: PlannerAdmission,
+    progress?: (phase: 'grounding' | 'provider' | 'reference') => void,
   ) {
     checkCancelled(signal);
+    progress?.('grounding');
     const local = this.assist(dto);
     const facts = await this.ground(dto, signal);
     checkCancelled(signal);
     if (!this.provider?.configured) return { ...local, facts };
     const briefShared = dto.shareBriefWithProvider === true && Boolean(dto.briefText?.trim());
+    progress?.('provider');
     const model = await this.provider.complete(
       {
         locale: dto.locale ?? 'en',
@@ -164,6 +239,7 @@ export class PlanningService {
       signal,
       admission,
     );
+    progress?.('reference');
     const allowed = new Set(
       facts.sites.flatMap((site) =>
         site.faces

@@ -52,6 +52,7 @@ function provider(
     fetch: fn,
     timeoutMs,
     now,
+    telemetry() {},
   });
 }
 function status(expected: number) {

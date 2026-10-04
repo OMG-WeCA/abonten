@@ -91,3 +91,15 @@ error bodies are logged. Errors are sanitized: 413 oversized context, 429
 capacity/rate, 502 provider/invalid/incomplete/unverified output, 503 missing or
 rejected credential, 504 deadline. The UI offers explicit manual retry. Configured
 provider failures never silently fall back to local help.
+
+Planner operations emit structured JSON through the existing Nest logger. A fresh
+ephemeral request UUID correlates `agency_planner.provider` and
+`agency_planner.plan` events. Fields are limited to exact model/mode, outcome,
+mapped HTTP status, latency, allowlisted provider request IDs/error codes and
+bounded token counts from the actual provider response. Provider schema failures
+and final inventory-reference failures have separate outcomes. Admission
+rejection, cancellation, timeout and local help are also recorded. Events contain
+no user/organization identifiers, messages, brief text, keys, raw errors or
+provider bodies. Logging failures do not change a result or retry a request.
+These events support diagnosis; log collection, metrics, alerting and shared
+usage enforcement remain operational deployment work.

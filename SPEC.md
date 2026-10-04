@@ -455,6 +455,11 @@ Without consent, brief text and potentially brief-derived conversation are kept
 out of provider requests. Requests are bounded, cancellable and rate-limited,
 use `store: false`, and never retry automatically. Configured-provider failures
 are visible and require a deliberate retry; they do not masquerade as local help.
+Server-only structured Nest log events record provider and final-plan outcomes,
+latency, ephemeral request IDs, bounded actual token counts and allowlisted
+provider diagnostics. No messages, briefs, keys, raw errors or user/organization
+identifiers are logged. Log collection, metrics and alerting remain deployment
+requirements; limits are process-local.
 Local document extraction remains available regardless of provider availability.
 Gross estimated OTS requires production, in-date traffic observations suitable for
 the flight and explicit visibility/model assumptions. Short observations and
