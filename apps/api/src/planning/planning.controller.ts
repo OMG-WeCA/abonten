@@ -7,6 +7,8 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Req,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -21,6 +23,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type {} from 'multer';
+import type { Request, Response } from 'express';
+import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CapabilitiesGuard } from '../capabilities/capabilities.guard';
 import { Capability } from '../capabilities/capability.enum';
@@ -53,7 +57,9 @@ export class PlanningController {
   ) {}
 
   @Get('assistant/status')
-  @ApiOperation({ summary: 'Local assistant capabilities and document privacy policy' })
+  @ApiOperation({
+    summary: 'Configured planner capabilities and explicit brief-sharing privacy policy',
+  })
   @ApiResponse({ status: 200, type: AssistantStatusResponse })
   status() {
     return this.service.assistantStatus();
@@ -61,11 +67,50 @@ export class PlanningController {
 
   @Post('assistant')
   @ApiOperation({
-    summary: 'Deterministic local planning guidance; no AI provider or external document transfer',
+    summary:
+      'Grounded agency planning via configured OpenAI or honest local help; brief sharing requires consent',
   })
   @ApiResponse({ status: 201, type: PlannerReplyResponse })
-  assist(@Body() dto: AssistantMessageDto) {
-    return this.service.assist(dto);
+  @ApiResponse({
+    status: 429,
+    description: 'User/org request limit or planner capacity reached; manual retry',
+  })
+  @ApiResponse({
+    status: 502,
+    description: 'Invalid/incomplete provider response; manual retry, no silent fallback',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Configured provider unavailable; contact administrator',
+  })
+  @ApiResponse({ status: 504, description: '30-second provider deadline; manual retry' })
+  async assist(
+    @Body() dto: AssistantMessageDto,
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const abort = new AbortController();
+    const cancel = () => {
+      if (!res.writableEnded) abort.abort();
+    };
+    req.once('aborted', cancel);
+    res.once('close', cancel);
+    try {
+      return await this.service.plan(
+        dto,
+        {
+          userId: req.user.userId,
+          orgId:
+            typeof req.headers['x-org-id'] === 'string'
+              ? req.headers['x-org-id']
+              : (req.user.activeOrgId ?? ''),
+        },
+        abort.signal,
+      );
+    } finally {
+      req.off('aborted', cancel);
+      res.off('close', cancel);
+    }
   }
 
   @Post('briefs')

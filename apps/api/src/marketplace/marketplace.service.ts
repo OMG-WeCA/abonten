@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
+import type { EntityTarget, ObjectLiteral, Repository } from 'typeorm';
 import { DatabaseService } from '../common/database.service';
 import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
 import { SiteFaceEntity } from '../common/entities/site-face.entity';
@@ -22,18 +23,22 @@ export class MarketplaceService {
 
   private postgisCache: boolean | undefined;
   /** True when the PostGIS extension is installed (enables ST_DWithin). */
-  private async hasPostgis(): Promise<boolean> {
+  private async hasPostgis(signal?: AbortSignal): Promise<boolean> {
+    checkDetailCancelled(signal);
     if (this.postgisCache !== undefined) return this.postgisCache;
     const repo = await this.db.repo(BillboardSiteEntity);
+    checkDetailCancelled(signal);
     const rows = await repo
       .query("SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='postgis')::bool AS has")
       .catch(() => [{ has: false }]);
+    checkDetailCancelled(signal);
     this.postgisCache = !!rows[0]?.has;
     return this.postgisCache;
   }
 
   /** Search listed sites available for booking, with filters + spatial radius. */
-  async search(q: MarketplaceQueryDto) {
+  async search(q: MarketplaceQueryDto, signal?: AbortSignal) {
+    checkDetailCancelled(signal);
     if (q.startDate && q.endDate && q.startDate >= q.endDate) {
       throw new BadRequestException('End date must be after start date.');
     }
@@ -43,6 +48,7 @@ export class MarketplaceService {
     const page = Math.max(1, q.page ?? 1);
     const limit = Math.min(100, Math.max(1, q.limit ?? 20));
     const repo = await this.db.repo(BillboardSiteEntity);
+    checkDetailCancelled(signal);
 
     const params: unknown[] = [];
     const hasWindow = Boolean(q.startDate && q.endDate);
@@ -127,7 +133,7 @@ export class MarketplaceService {
       push(`${priceSql} <= ?`, q.maxPrice);
     }
     if (q.lat !== undefined && q.lng !== undefined && q.radius !== undefined) {
-      if (await this.hasPostgis()) {
+      if (await this.hasPostgis(signal)) {
         // PostGIS available: ST_DWithin on geometry built from the float columns (meters).
         push(
           'ST_DWithin(ST_SetSRID(ST_MakePoint(s.longitude, s.latitude), 4326)::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)',
@@ -151,6 +157,7 @@ export class MarketplaceService {
     // Demo-class rows (seeded showcase fiction) never aggregate into the
     // planner's key-metadata map: the predicate lives inside the subselect so
     // the aggregate physically cannot include one.
+    checkDetailCancelled(signal);
     const rows = await repo.query(
       `SELECT s.id, s.code, s.name, s.format, s.city, s.country, s.illumination_type AS "illuminationType",
         s.width, s.height, s.area, s.latitude, s.longitude,
@@ -161,31 +168,44 @@ export class MarketplaceService {
        FROM billboard_sites s WHERE ${whereSql} ORDER BY s.created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       params,
     );
+    checkDetailCancelled(signal);
     const totalRows = await repo.query(`SELECT count(*)::int AS c FROM billboard_sites s WHERE ${whereSql}`, params);
+    checkDetailCancelled(signal);
     return { items: rows, total: totalRows[0]?.c ?? 0, page, limit };
   }
 
   /** Authenticated buyer detail of a listed site (faces, assets, metadata, rate cards). */
-  async getMarketplaceSite(siteId: string) {
+  async getMarketplaceSite(siteId: string, signal?: AbortSignal) {
+    siteId = siteId.toLowerCase();
+    checkDetailCancelled(signal);
     const repo = await this.db.repo(BillboardSiteEntity);
+    checkDetailCancelled(signal);
     const rows = await repo.query(`SELECT ${SITE_COLUMNS} FROM billboard_sites WHERE id = $1`, [siteId]);
+    checkDetailCancelled(signal);
     const site = rows[0];
     if (!site) throw new NotFoundException('Site not found');
     if (site.status !== 'listed') {
       throw new NotFoundException('Site not listed');
     }
+    const load = async <T extends ObjectLiteral, R>(target: EntityTarget<T>, read: (repository: Repository<T>) => Promise<R>) => {
+      checkDetailCancelled(signal);
+      const repository = await this.db.repo(target);
+      checkDetailCancelled(signal);
+      return read(repository);
+    };
     const [faces, assets, metadata, rateCards] = await Promise.all([
-      this.db.repo(SiteFaceEntity).then((r) => r.find({ where: { siteId } })),
-      this.db.repo(SiteAssetEntity).then((r) => r.find({ where: { siteId } })),
+      load(SiteFaceEntity, (r) => r.find({ where: { siteId } })),
+      load(SiteAssetEntity, (r) => r.find({ where: { siteId } })),
       // Demo-class rows never reach the buyer detail surface (§1.4.1).
-      this.db.repo(SiteMetadataEntity).then((r) =>
+      load(SiteMetadataEntity, (r) =>
         r.query(
           `SELECT ${METADATA_COLUMNS} FROM site_metadata WHERE site_id = $1 AND ${PRODUCTION_METADATA_WHERE} ORDER BY created_at ASC`,
           [siteId],
         ),
       ),
-      this.db.repo(RateCardEntity).then((r) => r.find({ where: { siteId } })),
+      load(RateCardEntity, (r) => r.find({ where: { siteId } })),
     ]);
+    checkDetailCancelled(signal);
     const today = new Date().toISOString().slice(0, 10);
     const bookable = faces.filter((face) => face.bookable);
     const ready = (!site.permitExpiresAt || new Date(site.permitExpiresAt).toISOString().slice(0, 10) >= today) &&
@@ -203,4 +223,8 @@ export class MarketplaceService {
     if (!ready) throw new NotFoundException('Site is not ready for the marketplace');
     return { ...site, faces, assets, metadata, rateCards };
   }
+}
+
+function checkDetailCancelled(signal?: AbortSignal) {
+  if (signal?.aborted) throw new HttpException('The marketplace detail request was cancelled.', 499);
 }

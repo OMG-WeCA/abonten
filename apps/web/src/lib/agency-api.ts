@@ -1,5 +1,11 @@
 import { apiJson } from './api';
 import type { SiteDetail } from './sites-api';
+import type {
+  FaceCostEstimate,
+  PlanningWindow,
+  selectionDistances,
+  summarizeBudget,
+} from './agency-planning';
 
 export interface BriefConstraints {
   budget: number | null;
@@ -11,14 +17,15 @@ export interface BriefConstraints {
 }
 
 export interface AssistantStatus {
-  mode: 'local';
-  provider: null;
-  aiAvailable: false;
+  mode: 'local' | 'openai';
+  provider: null | 'openai';
+  model: null | 'gpt-6-luna';
+  aiAvailable: boolean;
   message: string;
   documentFormats: string[];
   maxUploadBytes: number;
   documentsRetained: false;
-  externalTransfer: false;
+  externalTransfer: boolean;
 }
 
 export interface ExtractedBrief {
@@ -33,13 +40,65 @@ export interface ExtractedBrief {
 }
 
 export interface PlannerReply {
-  mode: 'local';
-  provider: null;
-  aiAvailable: false;
+  mode: 'local' | 'openai';
+  provider: null | 'openai';
+  model: null | 'gpt-6-luna';
+  aiAvailable: boolean;
   message: string;
   constraints: BriefConstraints;
   missing: string[];
   requiresConfirmation: true;
+  briefShared?: boolean;
+  recommendations?: { siteId: string; faceId: string; reason: string }[];
+  questions?: string[];
+  facts?: PlannerFacts;
+}
+
+export interface PlannerContext {
+  selectedSiteIds?: string[];
+  selectedFaceIds?: string[];
+  faceCurrencies?: { faceId: string; currency: string }[];
+  selectionTruncated?: boolean;
+  filters?: { country?: string; city?: string; format?: string; search?: string };
+  window?: PlanningWindow;
+  budget?: { amount: number; currency: string };
+}
+
+export interface PlannerRequest {
+  message: string;
+  locale?: 'en' | 'fr';
+  briefText?: string;
+  shareBriefWithProvider?: boolean;
+  history?: { role: 'user' | 'assistant'; content: string }[];
+  context?: PlannerContext;
+}
+
+export interface PlannerFacts {
+  checkedAt: string;
+  window: PlanningWindow | null;
+  requestedBudget?: PlannerContext['budget'] | null;
+  filters?: NonNullable<PlannerContext['filters']>;
+  selectionTruncated?: boolean;
+  sites: {
+    siteId: string;
+    name: string;
+    city: string;
+    country: string;
+    latitude: number;
+    longitude: number;
+    faces: {
+      faceId: string;
+      faceLabel?: string | null;
+      selected: boolean;
+      availability: 'available' | 'unavailable' | 'unknown';
+      estimate: FaceCostEstimate;
+    }[];
+  }[];
+  budget: ReturnType<typeof summarizeBudget>;
+  distances: ReturnType<typeof selectionDistances>;
+  ots: null;
+  reach: null;
+  assumptions: string[];
 }
 
 export interface SiteOptions {
@@ -78,13 +137,14 @@ export function extractBrief(
 
 export function askPlanner(
   orgId: string,
-  message: { message: string; briefText?: string; locale?: 'en' | 'fr' },
+  message: PlannerRequest,
   signal?: AbortSignal,
 ): Promise<PlannerReply> {
   return apiJson(`${PLANNING_BASE}/assistant`, {
     method: 'POST',
     headers: { ...headers(orgId), 'Content-Type': 'application/json' },
     body: JSON.stringify(message),
+    timeoutMs: 45000,
     signal,
   });
 }

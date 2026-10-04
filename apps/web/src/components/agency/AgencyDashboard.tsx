@@ -40,6 +40,7 @@ import {
   type PlanningWindow,
 } from '../../lib/agency-planning';
 import type { SiteDetail } from '../../lib/sites-api';
+import { buildPlannerSelection } from '../../lib/planner-selection';
 import { AgencyMap } from './AgencyMap';
 import { BoardDetail, money } from './BoardDetail';
 import { AgencyPlanner } from './AgencyPlanner';
@@ -312,7 +313,11 @@ function AgencyWorkspace() {
   );
   const estimates = useMemo(() => shortlist.map(estimateFor), [shortlist, estimateFor]);
   const budgetAmount = Number(budget);
-  const validBudget = budget.trim() !== '' && Number.isFinite(budgetAmount) && budgetAmount > 0;
+  const validBudget =
+    budget.trim() !== '' &&
+    Number.isFinite(budgetAmount) &&
+    budgetAmount > 0 &&
+    budgetAmount <= 1e12;
   const summary = summarizeBudget(
     estimates,
     validBudget ? { amount: budgetAmount, currency } : undefined,
@@ -321,6 +326,10 @@ function AgencyWorkspace() {
   const distances = useMemo(
     () => selectionDistances(shortlist.map((item) => item.site)),
     [shortlist],
+  );
+  const plannerSelection = useMemo(
+    () => buildPlannerSelection(shortlist, selectedId),
+    [shortlist, selectedId],
   );
   const select = (id: string) => {
     setSelectedId(id);
@@ -842,6 +851,14 @@ function AgencyWorkspace() {
           currency={currency}
           onCurrency={setCurrency}
           shortlist={shortlist}
+          plannerSelectionOmittedFaces={plannerSelection.omittedFaces}
+          plannerContext={{
+            filters: { country, search: query, format },
+            selectedSiteIds: plannerSelection.selectedSiteIds,
+            selectedFaceIds: plannerSelection.selectedFaceIds,
+            faceCurrencies: plannerSelection.faceCurrencies,
+            selectionTruncated: plannerSelection.selectionTruncated,
+          }}
           estimates={estimates}
           summary={summary}
           distances={distances}

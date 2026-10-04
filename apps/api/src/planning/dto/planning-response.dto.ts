@@ -21,14 +21,20 @@ export class BriefConstraintsResponse {
 }
 
 export class AssistantStatusResponse {
-  @ApiProperty({ enum: ['local'] }) mode!: 'local';
-  @ApiProperty({ type: String, nullable: true }) provider!: null;
-  @ApiProperty({ type: Boolean, example: false }) aiAvailable!: false;
+  @ApiProperty({ enum: ['local', 'openai'] }) mode!: 'local' | 'openai';
+  @ApiProperty({ type: String, enum: ['openai'], nullable: true }) provider!: 'openai' | null;
+  @ApiProperty({ type: String, enum: ['gpt-6-luna'], nullable: true }) model!: 'gpt-6-luna' | null;
+  @ApiProperty({ type: Boolean }) aiAvailable!: boolean;
   @ApiProperty() message!: string;
   @ApiProperty({ type: [String] }) documentFormats!: string[];
   @ApiProperty({ example: 10485760 }) maxUploadBytes!: number;
   @ApiProperty({ type: Boolean, example: false }) documentsRetained!: false;
-  @ApiProperty({ type: Boolean, example: false }) externalTransfer!: false;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'Chat provider configured; brief text is transferred only with explicit per-brief consent.',
+  })
+  externalTransfer!: boolean;
 }
 
 export class ExtractedBriefResponse {
@@ -43,11 +49,30 @@ export class ExtractedBriefResponse {
   @ApiProperty({ type: Boolean, example: false }) retained!: false;
 }
 
+export class PlannerRecommendationResponse {
+  @ApiProperty({ format: 'uuid' }) siteId!: string;
+  @ApiProperty({ format: 'uuid' }) faceId!: string;
+  @ApiProperty({ maxLength: 1000 }) reason!: string;
+}
 export class PlannerReplyResponse {
-  @ApiProperty({ enum: ['local'] }) mode!: 'local';
-  @ApiProperty({ type: String, nullable: true }) provider!: null;
-  @ApiProperty({ type: Boolean, example: false }) aiAvailable!: false;
+  @ApiProperty({ enum: ['local', 'openai'] }) mode!: 'local' | 'openai';
+  @ApiProperty({ type: String, enum: ['openai'], nullable: true }) provider!: 'openai' | null;
+  @ApiProperty({ type: String, enum: ['gpt-6-luna'], nullable: true }) model!: 'gpt-6-luna' | null;
+  @ApiProperty({ type: Boolean }) aiAvailable!: boolean;
   @ApiProperty() message!: string;
+  @ApiProperty({
+    description: 'True only when this request sent explicitly consented confirmed text to OpenAI.',
+  })
+  briefShared!: boolean;
+  @ApiProperty({ type: [PlannerRecommendationResponse] })
+  recommendations!: PlannerRecommendationResponse[];
+  @ApiProperty({ type: [String] }) questions!: string[];
+  @ApiProperty({
+    type: Object,
+    description:
+      'Authoritative server facts: checkedAt, UTC window, marketplace sites/faces with canonical media estimates and availability, selected budget summary, selected WGS84 Haversine distances in km, ots:null, reach:null and assumptions. See docs/agency-planner-api.md.',
+  })
+  facts!: object;
   @ApiProperty({ type: BriefConstraintsResponse }) constraints!: BriefConstraintsResponse;
   @ApiProperty({ type: [String] }) missing!: string[];
   @ApiProperty({ type: Boolean, example: true }) requiresConfirmation!: true;
@@ -56,7 +81,8 @@ export class PlannerReplyResponse {
 export class FaceAvailabilityResponse {
   @ApiProperty() faceId!: string;
   @ApiProperty({
-    description: 'Bookable face without an overlapping blackout or active booking at checkedAt',
+    description:
+      'Physically flight-eligible face (permit coverage and digital specs) without an overlapping blackout or active booking at checkedAt',
   })
   available!: boolean;
 }

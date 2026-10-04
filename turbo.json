@@ -22,6 +22,24 @@
     },
     "seed": {
       "cache": false
+    },
+    "@abonten/web#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**", "expo-dist/**"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/apps/api/src/planning/planning-math.ts"]
+    },
+    "@abonten/web#test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/apps/api/src/planning/planning-math.ts"]
+    },
+    "@abonten/web#type-check": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/apps/api/src/planning/planning-math.ts"]
+    },
+    "@abonten/web#lint": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/apps/api/src/planning/planning-math.ts"]
     }
   }
 }

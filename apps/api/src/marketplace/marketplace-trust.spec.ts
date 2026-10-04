@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { NotFoundException } from '@nestjs/common';
+import { HttpException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../common/database.service';
 import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
 import { SiteFaceEntity } from '../common/entities/site-face.entity';
@@ -179,5 +179,109 @@ describe('marketplace demo-data suppression (§1.4.1)', () => {
     const { service, assets } = buildHarness();
     assets.length = 0;
     await assert.rejects(() => service.getMarketplaceSite('site-listed'), NotFoundException);
+  });
+});
+
+describe('marketplace detail cancellation boundaries', () => {
+  it('does not start face, asset, metadata or rate reads after cancellation during the initial site query', async () => {
+    const abort = new AbortController();
+    const acquired: unknown[] = [];
+    let reads = 0;
+    let finish: (rows: object[]) => void = () => {};
+    const db = {
+      async repo(entity: unknown) {
+        acquired.push(entity);
+        return {
+          async query() {
+            reads++;
+            return new Promise<object[]>((resolve) => {
+              finish = resolve;
+            });
+          },
+        };
+      },
+    } as unknown as DatabaseService;
+    const market = new MarketplaceService(db);
+    const pending = market.getMarketplaceSite('abcdefab-0000-4000-8000-000000000001', abort.signal);
+    await new Promise((resolve) => setImmediate(resolve));
+    abort.abort();
+    finish([{ id: 'abcdefab-0000-4000-8000-000000000001', status: 'listed' }]);
+    await assert.rejects(
+      pending,
+      (error: unknown) => error instanceof HttpException && error.getStatus() === 499,
+    );
+    assert.deepEqual(acquired, [BillboardSiteEntity]);
+    assert.equal(reads, 1);
+    await assert.rejects(
+      market.getMarketplaceSite('site-listed', abort.signal),
+      (error: unknown) => error instanceof HttpException && error.getStatus() === 499,
+    );
+    assert.equal(reads, 1);
+    assert.equal(acquired.length, 1);
+  });
+
+  it('does not start secondary reads after cancellation while their repositories are acquired', async () => {
+    const abort = new AbortController();
+    let secondaryReads = 0;
+    const waiting: Array<(repository: object) => void> = [];
+    const db = {
+      async repo(entity: unknown) {
+        if (entity === BillboardSiteEntity)
+          return {
+            async query() {
+              return [{ id: 'site-listed', status: 'listed' }];
+            },
+          };
+        return new Promise<object>((resolve) => {
+          waiting.push(resolve);
+        });
+      },
+    } as unknown as DatabaseService;
+    const pending = new MarketplaceService(db).getMarketplaceSite('site-listed', abort.signal);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(waiting.length, 4);
+    abort.abort();
+    for (const finish of waiting)
+      finish({
+        async find() {
+          secondaryReads++;
+          return [];
+        },
+        async query() {
+          secondaryReads++;
+          return [];
+        },
+      });
+    await assert.rejects(
+      pending,
+      (error: unknown) => error instanceof HttpException && error.getStatus() === 499,
+    );
+    assert.equal(secondaryReads, 0);
+  });
+  it('does not start the search count after cancellation during candidate rows', async () => {
+    const abort = new AbortController();
+    let reads = 0;
+    let finish: (rows: object[]) => void = () => {};
+    const db = {
+      async repo() {
+        return {
+          async query() {
+            reads++;
+            return new Promise<object[]>((resolve) => {
+              finish = resolve;
+            });
+          },
+        };
+      },
+    } as unknown as DatabaseService;
+    const pending = new MarketplaceService(db).search({ limit: 8 }, abort.signal);
+    await new Promise((resolve) => setImmediate(resolve));
+    abort.abort();
+    finish([]);
+    await assert.rejects(
+      pending,
+      (error: unknown) => error instanceof HttpException && error.getStatus() === 499,
+    );
+    assert.equal(reads, 1);
   });
 });

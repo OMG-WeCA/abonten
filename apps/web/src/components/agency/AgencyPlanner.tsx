@@ -9,7 +9,15 @@ import {
   type AssistantStatus,
   type BriefConstraints,
   type ExtractedBrief,
+  type PlannerContext,
+  type PlannerReply,
 } from '../../lib/agency-api';
+import {
+  buildPlannerContext,
+  buildPlannerRequest,
+  isOpenAiReady,
+  type PlanningMessage,
+} from '../../lib/planner-conversation';
 import type {
   FaceCostEstimate,
   PlanningWindow,
@@ -42,10 +50,14 @@ interface PlannerProps {
   onCancelRecommendation: () => void;
   canRecommend: boolean;
   notice: string;
+  plannerContext?: Pick<
+    PlannerContext,
+    'filters' | 'selectedSiteIds' | 'selectedFaceIds' | 'faceCurrencies' | 'selectionTruncated'
+  >;
+  plannerSelectionOmittedFaces?: number;
 }
-interface Message {
-  role: 'user' | 'assistant';
-  text: string;
+interface Message extends PlanningMessage {
+  reply?: PlannerReply;
 }
 
 export function AgencyPlanner(props: PlannerProps) {
@@ -64,21 +76,33 @@ export function AgencyPlanner(props: PlannerProps) {
   const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
   const [status, setStatus] = useState<AssistantStatus | null>(null);
   const [statusError, setStatusError] = useState(false);
+  const [statusRetry, setStatusRetry] = useState(0);
   const [brief, setBrief] = useState<ExtractedBrief | null>(null);
   const [briefText, setBriefText] = useState('');
   const [briefConfirmed, setBriefConfirmed] = useState(false);
+  const [briefConsentText, setBriefConsentText] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatting, setChatting] = useState(false);
+  const [failedMessage, setFailedMessage] = useState<string | null>(null);
   const [suggested, setSuggested] = useState<BriefConstraints | null>(null);
   const uploadRef = useRef<AbortController | null>(null);
   const chatRef = useRef<AbortController | null>(null);
+  const statusRefreshRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
+  const external = isOpenAiReady(status);
+  const assistantUsable =
+    !statusError &&
+    (external || (status?.mode === 'local' && status.provider === null && !status.aiAvailable));
+  const briefShared =
+    external && briefConfirmed && briefConsentText === briefText && Boolean(briefText.trim());
   useEffect(() => {
     const controller = new AbortController();
+    setStatus(null);
+    setStatusError(false);
     void getAssistantStatus(orgId, controller.signal).then(
       (result) => {
         if (!controller.signal.aborted) setStatus(result);
@@ -87,10 +111,13 @@ export function AgencyPlanner(props: PlannerProps) {
         if (!controller.signal.aborted) setStatusError(true);
       },
     );
+    return () => controller.abort();
+  }, [orgId, statusRetry]);
+  useEffect(() => {
     return () => {
-      controller.abort();
       uploadRef.current?.abort();
       chatRef.current?.abort();
+      statusRefreshRef.current?.abort();
     };
   }, [orgId]);
   useEffect(() => {
@@ -100,7 +127,17 @@ export function AgencyPlanner(props: PlannerProps) {
     uploadRef.current?.abort();
     setUploading(false);
   };
+  const resetConversation = () => {
+    chatRef.current?.abort();
+    setChatting(false);
+    setMessages([]);
+    setSuggested(null);
+    setFailedMessage(null);
+    setError('');
+  };
   const upload = async (file: File) => {
+    resetConversation();
+    setBriefConsentText(null);
     uploadRef.current?.abort();
     const controller = new AbortController();
     uploadRef.current = controller;
@@ -158,23 +195,53 @@ export function AgencyPlanner(props: PlannerProps) {
     // Dates and geography remain editable flight filters; extracted language does not establish inclusive/exclusive intent.
     setSuggested(null);
   };
-  const send = async () => {
-    const submittedDraft = message;
-    const text = message.trim();
-    if (!text || chatting || uploading || !props.canPlan) return;
+  const send = async (retryText?: string) => {
+    const submittedDraft = retryText ?? message;
+    const text = submittedDraft.trim();
+    if (!text || chatting || uploading || !props.canPlan || !assistantUsable) return;
     const controller = new AbortController();
     chatRef.current = controller;
     setChatting(true);
     setError('');
+    setFailedMessage(null);
     try {
       const reply = await askPlanner(
         orgId,
-        { message: text, locale, ...(briefConfirmed ? { briefText } : {}) },
+        buildPlannerRequest({
+          message: text,
+          locale,
+          status,
+          messages,
+          context: buildPlannerContext(props.plannerContext, props.window, budget, currency),
+          briefText,
+          briefConfirmed,
+          briefConsentText,
+        }),
         controller.signal,
       );
       if (controller.signal.aborted) return;
+      if (reply.mode !== status?.mode) {
+        statusRefreshRef.current?.abort();
+        const refreshController = new AbortController();
+        statusRefreshRef.current = refreshController;
+        void getAssistantStatus(orgId, refreshController.signal).then(
+          (result) => {
+            if (!refreshController.signal.aborted) {
+              setStatus(result);
+              setStatusError(false);
+            }
+          },
+          () => {
+            if (!refreshController.signal.aborted) setStatusError(true);
+          },
+        );
+      }
       let response = reply.message;
-      if (/distance|apart|spacing|éloign|écart/i.test(text) && distances.length) {
+      if (
+        reply.mode === 'local' &&
+        /distance|apart|spacing|éloign|écart/i.test(text) &&
+        distances.length
+      ) {
         response = t(
           'Straight-line distances from the registered WGS84 board coordinates:',
           'Distances à vol d’oiseau selon les coordonnées WGS84 enregistrées :',
@@ -190,7 +257,7 @@ export function AgencyPlanner(props: PlannerProps) {
             })
             .join('\n');
       }
-      if (/budget|cost|price|coût|prix/i.test(text) && shortlist.length) {
+      if (reply.mode === 'local' && /budget|cost|price|coût|prix/i.test(text) && shortlist.length) {
         response = t(
           'Published media cost estimates for the current draft. Tax, production and installation are excluded; currencies are kept separate.',
           'Estimations média publiées pour la sélection actuelle. Hors taxes, production et installation ; les devises restent séparées.',
@@ -213,29 +280,41 @@ export function AgencyPlanner(props: PlannerProps) {
         [
           ...items,
           { role: 'user' as const, text },
-          { role: 'assistant' as const, text: response },
+          { role: 'assistant' as const, text: response, reply },
         ].slice(-30),
       );
       setMessage((current) => (current === submittedDraft ? '' : current));
       if (reply.constraints.budget != null || reply.constraints.currency)
         setSuggested(reply.constraints);
     } catch (failure) {
-      if (!controller.signal.aborted)
+      if (!controller.signal.aborted) {
+        setFailedMessage(submittedDraft);
         setError(
-          failure instanceof Error
-            ? failure.message
-            : t(
-                'Planner unavailable. Your message is preserved.',
-                'Assistant indisponible. Votre message est conservé.',
-              ),
+          failure instanceof Error &&
+            (failure.name === 'AbortError' || failure.name === 'TimeoutError')
+            ? t(
+                'The planner timed out. Your message is preserved; retry when ready.',
+                'L’assistant a dépassé le délai. Votre message est conservé ; réessayez.',
+              )
+            : failure instanceof Error
+              ? failure.message
+              : t(
+                  'Planner unavailable. Your message is preserved.',
+                  'Assistant indisponible. Votre message est conservé.',
+                ),
         );
+      }
     } finally {
       if (!controller.signal.aborted) setChatting(false);
     }
   };
   const subtotal = summary.totals[currency] ?? 0;
   const budgetAmount = Number(budget);
-  const hasBudget = budget.trim() !== '' && Number.isFinite(budgetAmount) && budgetAmount > 0;
+  const hasBudget =
+    budget.trim() !== '' &&
+    Number.isFinite(budgetAmount) &&
+    budgetAmount > 0 &&
+    budgetAmount <= 1e12;
   return (
     <section
       className="agency-planner agency-panel"
@@ -249,9 +328,13 @@ export function AgencyPlanner(props: PlannerProps) {
           <div>
             <h2 id="planner-heading">{t('Plan with Abonten', 'Planifier avec Abonten')}</h2>
             <p>
-              {statusError
+              {statusError || (status !== null && !assistantUsable)
                 ? t('Planner connection unavailable', 'Connexion à l’assistant indisponible')
-                : t('Local planning help · AI not connected', 'Aide locale · IA non connectée')}
+                : external
+                  ? `${t('OpenAI configured', 'OpenAI configuré')} · gpt-6-luna`
+                  : status === null
+                    ? t('Checking planner connection…', 'Vérification de la connexion…')
+                    : t('Local planning help · AI not connected', 'Aide locale · IA non connectée')}
             </p>
           </div>
         </div>
@@ -264,6 +347,38 @@ export function AgencyPlanner(props: PlannerProps) {
         </button>
       </header>
       <div className="agency-planner-scroll">
+        {(statusError || (status !== null && !assistantUsable)) && (
+          <div className="agency-form-error" role="alert">
+            <p>
+              {t(
+                'Check the planner connection before sending. Your draft is preserved.',
+                'Vérifiez la connexion avant l’envoi. Votre brouillon est conservé.',
+              )}
+            </p>
+            <button
+              className="agency-text-button"
+              onClick={() => setStatusRetry((value) => value + 1)}
+            >
+              {t('Retry connection', 'Réessayer la connexion')}
+            </button>
+          </div>
+        )}
+        {external && (
+          <p className="agency-assistant-disclosure">
+            {t(
+              'Chat messages, recent conversation and current planning context are sent to OpenAI. Uploaded briefs stay local unless you allow sharing below.',
+              'Les messages, la conversation récente et le contexte de planification sont envoyés à OpenAI. Les documents restent locaux sauf autorisation ci-dessous.',
+            )}
+          </p>
+        )}
+        {Boolean(props.plannerSelectionOmittedFaces && props.plannerSelectionOmittedFaces > 0) && (
+          <p className="agency-assistant-disclosure" role="status">
+            {t(
+              `Chat includes up to 12 boards / 24 faces. ${props.plannerSelectionOmittedFaces} draft faces are outside this context; chat totals are partial.`,
+              `Le chat inclut jusqu’à 12 panneaux / 24 faces. ${props.plannerSelectionOmittedFaces} faces du brouillon sont hors de ce contexte ; les totaux du chat sont partiels.`,
+            )}
+          </p>
+        )}
         <div className="agency-planner-intro">
           <p>
             {t(
@@ -284,6 +399,7 @@ export function AgencyPlanner(props: PlannerProps) {
             <input
               type="number"
               min="1"
+              max="1000000000000"
               step="any"
               inputMode="decimal"
               value={budget}
@@ -302,7 +418,12 @@ export function AgencyPlanner(props: PlannerProps) {
         </div>
         {budget.trim() && !hasBudget && (
           <p role="alert" className="agency-form-error">
-            {t('Enter a budget greater than zero.', 'Saisissez un budget supérieur à zéro.')}
+            {budgetAmount > 1e12
+              ? t(
+                  'The planner supports budgets up to 1,000,000,000,000. Enter a smaller amount.',
+                  'L’assistant prend en charge les budgets jusqu’à 1 000 000 000 000. Saisissez un montant inférieur.',
+                )
+              : t('Enter a budget greater than zero.', 'Saisissez un budget supérieur à zéro.')}
           </p>
         )}
         <p className="agency-flight-caption">
@@ -323,10 +444,12 @@ export function AgencyPlanner(props: PlannerProps) {
               <button
                 className="agency-icon-button"
                 onClick={() => {
+                  resetConversation();
                   uploadRef.current?.abort();
                   setBrief(null);
                   setBriefText('');
                   setBriefConfirmed(false);
+                  setBriefConsentText(null);
                 }}
                 aria-label={t('Remove brief', 'Retirer le document')}
               >
@@ -338,11 +461,14 @@ export function AgencyPlanner(props: PlannerProps) {
               <label className="agency-field">
                 <span className="sr-only">{t('Extracted brief text', 'Texte extrait')}</span>
                 <textarea
+                  aria-label={t('Extracted brief text', 'Texte extrait')}
                   value={briefText}
                   maxLength={60000}
                   onChange={(event) => {
+                    resetConversation();
                     setBriefText(event.target.value);
                     setBriefConfirmed(false);
+                    setBriefConsentText(null);
                   }}
                   rows={5}
                 />
@@ -390,6 +516,40 @@ export function AgencyPlanner(props: PlannerProps) {
                 {t('Confirm brief & budget', 'Confirmer le document et le budget')}
               </button>
             </details>
+            {external && (
+              <div className="agency-brief-sharing">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={briefShared}
+                    disabled={!briefConfirmed}
+                    onChange={(event) => {
+                      if (!event.target.checked) resetConversation();
+                      setBriefConsentText(
+                        event.target.checked && briefConfirmed ? briefText : null,
+                      );
+                    }}
+                  />
+                  <span>
+                    {t(
+                      'Include this confirmed brief in OpenAI chat',
+                      'Inclure ce document confirmé dans le chat OpenAI',
+                    )}
+                  </span>
+                </label>
+                <p>
+                  {briefConfirmed
+                    ? t(
+                        'Only the confirmed text is shared when you send a message. The original file stays local. Editing, replacing or removing the brief clears consent and the conversation.',
+                        'Seul le texte confirmé est partagé à l’envoi d’un message. Le fichier original reste local. Modifier, remplacer ou retirer le document réinitialise l’autorisation et la conversation.',
+                      )
+                    : t(
+                        'Confirm the extracted text before allowing sharing with OpenAI.',
+                        'Confirmez le texte extrait avant d’autoriser le partage avec OpenAI.',
+                      )}
+                </p>
+              </div>
+            )}
           </div>
         )}
         {shortlist.length > 0 ? (
@@ -605,6 +765,14 @@ export function AgencyPlanner(props: PlannerProps) {
             )}
           </details>
         )}
+        {(messages.length > 0 || chatting || failedMessage !== null) && (
+          <div className="agency-section-row agency-chat-heading">
+            <h3>{t('Conversation', 'Conversation')}</h3>
+            <button className="agency-text-button" onClick={resetConversation}>
+              {t('Clear conversation', 'Effacer la conversation')}
+            </button>
+          </div>
+        )}
         <div
           className="agency-chat-thread"
           ref={threadRef}
@@ -613,8 +781,21 @@ export function AgencyPlanner(props: PlannerProps) {
         >
           {messages.map((item, index) => (
             <div className={`agency-chat-message ${item.role}`} key={index}>
-              <span className="sr-only">{item.role}</span>
+              <span className="sr-only">
+                {item.role === 'user' ? t('You', 'Vous') : t('Planner', 'Assistant')}
+              </span>
+              {item.reply && (
+                <small className="agency-chat-source">
+                  {item.reply.mode === 'openai'
+                    ? `OpenAI · ${item.reply.model}`
+                    : t('Local planning help', 'Aide locale')}
+                  {item.reply.briefShared ? ` · ${t('brief shared', 'document partagé')}` : ''}
+                </small>
+              )}
               {item.text}
+              {item.reply && (
+                <ReplyFacts reply={item.reply} locale={locale} onSelect={props.onSelect} />
+              )}
             </div>
           ))}
           {chatting && (
@@ -653,6 +834,23 @@ export function AgencyPlanner(props: PlannerProps) {
         {error && (
           <div className="agency-form-error" role="alert">
             <p>{error}</p>
+            {failedMessage !== null && (
+              <>
+                <p>
+                  {t(
+                    'Your message is preserved. Retrying uses the current flight, filters, shortlist and brief-sharing choice.',
+                    'Votre message est conservé. La nouvelle tentative utilise les dates, filtres, sélection et choix de partage actuels.',
+                  )}
+                </p>
+                <button
+                  className="agency-secondary-button"
+                  disabled={chatting || uploading || !assistantUsable}
+                  onClick={() => void send(failedMessage)}
+                >
+                  {t('Retry last message', 'Réessayer le dernier message')}
+                </button>
+              </>
+            )}
             <button className="agency-text-button" onClick={() => setError('')}>
               {t('Dismiss', 'Fermer')}
             </button>
@@ -710,17 +908,24 @@ export function AgencyPlanner(props: PlannerProps) {
           <button
             type="submit"
             className="agency-send"
-            disabled={!message.trim() || chatting || uploading || !props.canPlan}
+            disabled={
+              !message.trim() || chatting || uploading || !props.canPlan || !assistantUsable
+            }
             aria-label={t('Send planning message', 'Envoyer la demande')}
           >
             <Send size={18} />
           </button>
         </form>
         <p>
-          {t(
-            'Briefs: PDF, PPTX, XLSX, DOCX, text · extracted locally',
-            'Documents : PDF, PPTX, XLSX, DOCX, texte · extraction locale',
-          )}
+          {external
+            ? t(
+                'Messages and planning context sent to OpenAI · briefs require permission',
+                'Messages et contexte envoyés à OpenAI · documents avec autorisation',
+              )
+            : t(
+                'Briefs: PDF, PPTX, XLSX, DOCX, text · extracted locally',
+                'Documents : PDF, PPTX, XLSX, DOCX, texte · extraction locale',
+              )}
         </p>
         {!props.canPlan && (
           <p>
@@ -732,6 +937,195 @@ export function AgencyPlanner(props: PlannerProps) {
         )}
       </footer>
     </section>
+  );
+}
+
+function ReplyFacts({
+  reply,
+  locale,
+  onSelect,
+}: {
+  reply: PlannerReply;
+  locale: 'en' | 'fr';
+  onSelect: (id: string) => void;
+}) {
+  const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
+  const facts = reply.facts;
+  const references = (reply.recommendations ?? []).flatMap((reference) => {
+    const site = facts?.sites.find((candidate) => candidate.siteId === reference.siteId);
+    const face = site?.faces.find((candidate) => candidate.faceId === reference.faceId);
+    return site && face ? [{ reference, site, face }] : [];
+  });
+  const availabilityLabel = (value: 'available' | 'unavailable' | 'unknown') =>
+    value === 'available'
+      ? t(
+          'Available at the check time · no reservation',
+          'Disponible lors du contrôle · sans réservation',
+        )
+      : value === 'unavailable'
+        ? t('Unavailable for this flight', 'Indisponible pour ces dates')
+        : t('Availability needs checking', 'Disponibilité à vérifier');
+  const faceSources =
+    facts?.sites.flatMap((site) =>
+      site.faces
+        .filter(
+          (face) =>
+            face.selected ||
+            references.some(
+              (candidate) =>
+                candidate.site.siteId === site.siteId && candidate.face.faceId === face.faceId,
+            ),
+        )
+        .map((face) => ({ site, face })),
+    ) ?? [];
+  return (
+    <div className="agency-reply-facts">
+      {references.length > 0 && (
+        <div className="agency-reply-boards">
+          {references.map(({ reference, site, face }) => (
+            <div key={`${site.siteId}:${face.faceId}`}>
+              <button
+                type="button"
+                className="agency-text-button"
+                onClick={() => onSelect(site.siteId)}
+                aria-label={`${t('View board', 'Voir le panneau')} ${site.name}`}
+              >
+                <strong>{site.name}</strong>
+              </button>
+              <p>{reference.reason}</p>
+              {face.faceLabel && (
+                <p>
+                  {t('Face', 'Face')} {face.faceLabel}
+                </p>
+              )}
+              <p
+                className={
+                  face.availability === 'available'
+                    ? 'text-success'
+                    : face.availability === 'unavailable'
+                      ? 'text-error'
+                      : 'text-muted'
+                }
+              >
+                {availabilityLabel(face.availability)}
+              </p>
+              {face.estimate.status === 'ready' && (
+                <small>
+                  {money(face.estimate.amount, face.estimate.currency, locale)} /{' '}
+                  {face.estimate.days} {t('days', 'jours')}
+                </small>
+              )}
+              {face.estimate.status === 'unavailable' && (
+                <p>
+                  {t('Price unavailable', 'Tarif indisponible')} : {face.estimate.reason}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {Boolean(reply.questions?.length) && (
+        <div className="agency-reply-questions">
+          <strong>{t('To clarify', 'À préciser')}</strong>
+          <ul>
+            {reply.questions!.map((question, index) => (
+              <li key={index}>{question}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {facts && (
+        <details>
+          <summary>{t('Checked planning facts', 'Données de planification vérifiées')}</summary>
+          <p>
+            {t('Checked', 'Vérifiées')} :{' '}
+            {new Date(facts.checkedAt).toLocaleString(locale, { timeZone: 'UTC' })} UTC
+          </p>
+          {facts.window && (
+            <p>
+              {facts.window.startDate} → {facts.window.endDate} ·{' '}
+              {t('end exclusive', 'fin exclusive')}
+            </p>
+          )}
+          {facts.selectionTruncated && (
+            <p>
+              {t(
+                'Partial selection: these chat totals cannot establish the full draft’s budget fit.',
+                'Sélection partielle : ces totaux du chat ne permettent pas de vérifier le budget du brouillon complet.',
+              )}
+            </p>
+          )}
+          <p>
+            {t('Published media cost', 'Coût média publié')} :{' '}
+            {Object.entries(facts.budget.totals)
+              .map(([code, amount]) => money(amount, code, locale))
+              .join(' + ') || '—'}
+          </p>
+          <p>
+            {facts.budget.fit === 'within'
+              ? t('Within the stated budget.', 'Dans le budget indiqué.')
+              : facts.budget.fit === 'over'
+                ? t('Above the stated budget.', 'Au-dessus du budget indiqué.')
+                : t('Budget fit remains unconfirmed.', 'Le budget reste à confirmer.')}
+          </p>
+          {faceSources.map(({ site, face }) => (
+            <div key={`${site.siteId}:${face.faceId}`}>
+              <p>
+                <strong>
+                  {site.name}
+                  {face.faceLabel ? ` · ${t('Face', 'Face')} ${face.faceLabel}` : ''}
+                </strong>
+              </p>
+              <p>{availabilityLabel(face.availability)}</p>
+              {face.estimate.status === 'ready' ? (
+                <>
+                  <p>
+                    {money(face.estimate.amount, face.estimate.currency, locale)} /{' '}
+                    {face.estimate.days} {t('days', 'jours')} ·{' '}
+                    {money(face.estimate.unitRate, face.estimate.currency, locale)} ×{' '}
+                    {face.estimate.quantity}{' '}
+                    {face.estimate.basis === 'perDay' ? t('days', 'jours') : t('weeks', 'semaines')}
+                  </p>
+                  <p>{face.estimate.provenance}</p>
+                  {face.estimate.assumptions.map((assumption, index) => (
+                    <p key={index}>{assumption}</p>
+                  ))}
+                </>
+              ) : (
+                <p>
+                  {t('Price unavailable', 'Tarif indisponible')} : {face.estimate.reason}
+                </p>
+              )}
+            </div>
+          ))}
+          {facts.distances.slice(0, 10).map((pair) => (
+            <p key={`${pair.fromSiteId}:${pair.toSiteId}`}>
+              {facts.sites.find((site) => site.siteId === pair.fromSiteId)?.name ??
+                t('Board', 'Panneau')}{' '}
+              ↔{' '}
+              {facts.sites.find((site) => site.siteId === pair.toSiteId)?.name ??
+                t('Board', 'Panneau')}{' '}
+              :{' '}
+              {pair.value == null
+                ? '—'
+                : new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(
+                    pair.value,
+                  )}{' '}
+              km · {t('straight-line', 'à vol d’oiseau')}
+            </p>
+          ))}
+          <p>
+            {t(
+              'OTS and deduplicated reach are unavailable. Residential population is geographic context.',
+              'Les occasions de voir et la couverture dédupliquée sont indisponibles. La population résidentielle est un contexte géographique.',
+            )}
+          </p>
+          {facts.assumptions.map((assumption, index) => (
+            <p key={index}>{assumption}</p>
+          ))}
+        </details>
+      )}
+    </div>
   );
 }
 

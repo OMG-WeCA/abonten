@@ -6,7 +6,7 @@
     "dev": "bash scripts/dev.sh",
     "build": "next build",
     "start": "next start -p 3001",
-    "test": "rm -rf .test-dist; tsc -p tsconfig.test.json && node --test .test-dist/lib/*.spec.js; status=$?; rm -rf .test-dist; exit $status",
+    "test": "rm -rf .test-dist; tsc -p tsconfig.test.json && node --test .test-dist/web/src/lib/*.spec.js; status=$?; rm -rf .test-dist; exit $status",
     "lint": "eslint .",
     "type-check": "tsc --noEmit -p tsconfig.json"
   },
