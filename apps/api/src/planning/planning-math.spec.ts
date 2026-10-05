@@ -6,6 +6,7 @@ import {
   estimateGrossOts,
   faceFlightEligibility,
   planningDays,
+  planningCoordinate,
   selectionDistances,
   summarizeBudget,
   summarizeGrossOts,
@@ -183,6 +184,22 @@ test('canonical great-circle distances provide registered-coordinate provenance 
   assert.match(pairs[0].provenance, /WGS84/);
   assert.match(pairs[0].assumptions[0], /road routes.*not calculated/);
   assert.equal(pairs[1].value, null);
+});
+test('missing coordinates never become zero and only complete locations produce distances', () => {
+  for (const missing of [null, undefined, '', '  ', false, true, [], {}, 'not recorded', NaN, Infinity]) {
+    assert.equal(planningCoordinate(missing, 'latitude'), null);
+    assert.equal(planningCoordinate(missing, 'longitude'), null);
+  }
+  assert.equal(planningCoordinate(0, 'latitude'), 0);
+  assert.equal(planningCoordinate(' -0.20 ', 'longitude'), -0.2);
+  assert.equal(planningCoordinate(91, 'latitude'), null);
+  assert.equal(planningCoordinate(181, 'longitude'), null);
+  const pairs = selectionDistances([
+    { id: 'known', latitude: 6.5, longitude: 3.4 },
+    { id: 'unknown', latitude: null, longitude: null },
+    { id: 'partial', latitude: 6.5, longitude: null },
+  ]);
+  assert.ok(pairs.every((pair) => pair.value === null));
 });
 test('server OTS grounding excludes demo and stale records and never extrapolates observed counts', () => {
   const now = Date.parse('2026-10-04');

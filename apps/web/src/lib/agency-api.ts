@@ -84,8 +84,8 @@ export interface PlannerFacts {
     name: string;
     city: string;
     country: string;
-    latitude: number;
-    longitude: number;
+    latitude: number | null;
+    longitude: number | null;
     faces: {
       faceId: string;
       faceLabel?: string | null;

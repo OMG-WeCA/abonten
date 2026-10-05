@@ -33,8 +33,26 @@ export interface PlanningFace {
   spotsPerLoop?: number | null;
 }
 export interface PlanningGeoPoint {
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+/** Database numeric strings are accepted; absent or malformed coordinates stay
+ * unknown rather than being coerced to the Gulf of Guinea at zero. */
+export function planningCoordinate(
+  value: unknown,
+  axis: 'latitude' | 'longitude',
+): number | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (
+    typeof value === 'string' &&
+    !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim())
+  )
+    return null;
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) && Math.abs(coordinate) <= (axis === 'latitude' ? 90 : 180)
+    ? coordinate
+    : null;
 }
 export interface PlanningMetadata {
   id: string;
@@ -367,20 +385,26 @@ export function straightLineDistanceKm(
   from: PlanningGeoPoint,
   to: PlanningGeoPoint,
 ): number | null {
+  const { latitude: fromLatitude, longitude: fromLongitude } = from;
+  const { latitude: toLatitude, longitude: toLongitude } = to;
   if (
-    ![from.latitude, from.longitude, to.latitude, to.longitude].every(Number.isFinite) ||
-    Math.abs(from.latitude) > 90 ||
-    Math.abs(to.latitude) > 90 ||
-    Math.abs(from.longitude) > 180 ||
-    Math.abs(to.longitude) > 180
+    typeof fromLatitude !== 'number' ||
+    typeof fromLongitude !== 'number' ||
+    typeof toLatitude !== 'number' ||
+    typeof toLongitude !== 'number' ||
+    ![fromLatitude, fromLongitude, toLatitude, toLongitude].every(Number.isFinite) ||
+    Math.abs(fromLatitude) > 90 ||
+    Math.abs(toLatitude) > 90 ||
+    Math.abs(fromLongitude) > 180 ||
+    Math.abs(toLongitude) > 180
   )
     return null;
   const rad = (degrees: number) => (degrees * Math.PI) / 180;
   const a =
-    Math.sin(rad(to.latitude - from.latitude) / 2) ** 2 +
-    Math.cos(rad(from.latitude)) *
-      Math.cos(rad(to.latitude)) *
-      Math.sin(rad(to.longitude - from.longitude) / 2) ** 2;
+    Math.sin(rad(toLatitude - fromLatitude) / 2) ** 2 +
+    Math.cos(rad(fromLatitude)) *
+      Math.cos(rad(toLatitude)) *
+      Math.sin(rad(toLongitude - fromLongitude) / 2) ** 2;
   return (
     6371.0088 *
     2 *

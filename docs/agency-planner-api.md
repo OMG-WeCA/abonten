@@ -53,7 +53,8 @@ The reply includes `mode`, `provider`, `model`, `aiAvailable`, `message`,
 `requiresConfirmation: true`, `questions`, validated
 `recommendations: [{siteId, faceId, reason}]` and `facts`:
 
-- `checkedAt`, `window` or null; `sites` with IDs, display labels, WGS84 coordinates,
+- `checkedAt`, `window` or null; `sites` with IDs, display labels, WGS84 coordinates
+  (missing or malformed values remain null; no distance is inferred),
   format, physical `specs` (elevation metres, orientation degrees, width/height
   in recorded site `units`; null values/units remain unknown), and faces (`selected`, flight eligibility/reason, availability,
   `estimate: FaceCostEstimate`). Estimates use canonical planning-math rules and

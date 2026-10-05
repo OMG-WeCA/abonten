@@ -35,7 +35,12 @@ const metadata = (index: number) => [
     expiresAt: '2027-09-01T00:00:00Z',
   },
 ];
-function fixture(options: { failGeo?: boolean; deniedGeo?: boolean; removed?: number } = {}) {
+function fixture(options: {
+  failGeo?: boolean;
+  deniedGeo?: boolean;
+  removed?: number;
+  missingCoordinates?: boolean;
+} = {}) {
   const calls = {
     queries: [] as MarketplaceQueryDto[],
     details: [] as string[],
@@ -60,8 +65,8 @@ function fixture(options: { failGeo?: boolean; deniedGeo?: boolean; removed?: nu
         name: `Accra QA board ${index}`,
         city: 'Accra',
         country: 'Ghana',
-        latitude: 5.55,
-        longitude: -0.2 + index / 1000,
+        latitude: options.missingCoordinates && index === 1 ? null : 5.55,
+        longitude: options.missingCoordinates && index === 1 ? '' : -0.2 + index / 1000,
         format: 'static',
         width: 8,
         height: 3,
@@ -93,6 +98,12 @@ function fixture(options: { failGeo?: boolean; deniedGeo?: boolean; removed?: nu
     async repo() {
       return {
         async query(_sql: string, args: unknown[]) {
+          if (Array.isArray(args[0])) {
+            return args[0].map((selected) => ({
+              id: selected,
+              siteId: id(Number(String(selected).slice(-12))),
+            }));
+          }
           const index = Number(String(args[0]).slice(-12));
           return [{ faceId: faceId(index), available: true }];
         },
@@ -140,6 +151,32 @@ function fixture(options: { failGeo?: boolean; deniedGeo?: boolean; removed?: nu
   } as unknown as GeographicContextService;
   return { service: new PlanningService(db, market, provider, () => {}, geographic), calls };
 }
+
+test('malformed location facts remain unknown in the response and provider snapshot while budget planning still works', async () => {
+  const { service, calls } = fixture({ missingCoordinates: true });
+  const reply = await service.plan(
+    {
+      message: 'Compare the selected Accra boards by cost and distance.',
+      context: {
+        window,
+        budget: { amount: 1000000, currency: 'GHS' },
+        selectedSiteIds: [id(1), id(2)],
+        selectedFaceIds: [faceId(1), faceId(2)],
+      },
+    },
+    scope,
+  );
+  const site = reply.facts.sites.find((item) => item.siteId === id(1));
+  assert.equal(site?.latitude, null);
+  assert.equal(site?.longitude, null);
+  assert.equal(reply.facts.distances[0].value, null);
+  assert.equal(reply.facts.budget.fit, 'within');
+  assert.deepEqual(reply.facts.budget.totals, { GHS: 280000 });
+  assert.ok(calls.input);
+  const transferred = calls.input.snapshot as typeof reply.facts;
+  assert.equal(transferred.sites.find((item) => item.siteId === id(1))?.latitude, null);
+  assert.equal(transferred.distances[0].value, null);
+});
 
 test('discovers an affordable source-backed board on page three outside the initial eight-board snapshot', async () => {
   const { service, calls } = fixture();

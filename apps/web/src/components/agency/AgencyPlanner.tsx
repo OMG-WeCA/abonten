@@ -18,11 +18,12 @@ import {
   isOpenAiReady,
   type PlanningMessage,
 } from '../../lib/planner-conversation';
-import type {
-  FaceCostEstimate,
-  PlanningWindow,
-  selectionDistances,
-  summarizeBudget,
+import {
+  planningDays,
+  type FaceCostEstimate,
+  type PlanningWindow,
+  type selectionDistances,
+  type summarizeBudget,
 } from '../../lib/agency-planning';
 import type { ShortlistFace } from './AgencyDashboard';
 import { money } from './BoardDetail';
@@ -435,7 +436,12 @@ export function AgencyPlanner(props: PlannerProps) {
           </p>
         )}
         <p className="agency-flight-caption">
-          {props.window.startDate} → {props.window.endDate} · {t('end exclusive', 'fin exclusive')}
+          {planningDays(props.window) === null
+            ? t(
+                'Choose valid flight dates in Flight & filters.',
+                'Choisissez des dates valides dans Dates et filtres.',
+              )
+            : `${props.window.startDate} → ${props.window.endDate} · ${t('end exclusive', 'fin exclusive')}`}
         </p>
         {brief && (
           <div className="agency-brief">
@@ -685,13 +691,13 @@ export function AgencyPlanner(props: PlannerProps) {
         <div className="agency-ots">
           <div className="agency-section-row">
             <span>{t('Opportunity to see', 'Occasions de voir')}</span>
-            <span className="agency-data-badge">{t('Data needed', 'Données requises')}</span>
+            <span className="agency-data-badge">{t('Not estimated', 'Non estimé')}</span>
           </div>
           <strong>—</strong>
           <p>
             {t(
-              'Validated traffic and an approved exposure model are unavailable for this flight.',
-              'Le trafic validé et un modèle d’exposition approuvé ne sont pas disponibles pour ces dates.',
+              'Budget and location planning work without traffic data. Exposure estimates need suitable traffic evidence and an approved exposure model.',
+              'La planification du budget et des emplacements fonctionne sans données de trafic. Les estimations d’exposition nécessitent des observations adaptées et un modèle d’exposition approuvé.',
             )}
           </p>
           <details>

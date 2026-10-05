@@ -38,6 +38,7 @@ import {
   estimateFaceCost,
   faceFlightEligibility,
   planningDays,
+  planningCoordinate,
   selectionDistances,
   summarizeBudget,
   type FaceCostEstimate,
@@ -451,8 +452,8 @@ export class PlanningService {
         name: String(detail.name ?? '').slice(0, 160),
         city: String(detail.city ?? '').slice(0, 80),
         country: String(detail.country ?? '').slice(0, 80),
-        latitude: Number(detail.latitude),
-        longitude: Number(detail.longitude),
+        latitude: planningCoordinate(detail.latitude, 'latitude'),
+        longitude: planningCoordinate(detail.longitude, 'longitude'),
         format: detail.format,
         specs: {
           elevation: finite(detail.elevation),
@@ -645,8 +646,8 @@ interface GroundedSite {
   name: string;
   city: string;
   country: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   format: string;
   budgetMatch: 'within' | 'over' | 'unknown';
   enrichment: PlanningEnrichmentProjection;

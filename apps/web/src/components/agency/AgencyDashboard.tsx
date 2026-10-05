@@ -24,6 +24,9 @@ import { useAuth } from '../auth/AuthProvider';
 import { useTheme } from '../ThemeProvider';
 import { AccountLoading, AccountRecovery } from '../account/WorkspaceFrame';
 import { workspaceAccessState } from '../../lib/account-session-recovery';
+import { ApiError } from '../../lib/api';
+import { draftFaceEligibility, loadAgencyDraft, saveAgencyDraft, summarizeDraftBudget, MAX_DRAFT_FACES,
+  type AgencyDraftFace } from '../../lib/agency-draft';
 import {
   getAgencySite as getBoard,
   searchAgencySites as searchBoards,
@@ -34,7 +37,6 @@ import {
   estimateFaceCost,
   planningDays,
   selectionDistances,
-  summarizeBudget,
   type FaceCostEstimate,
   type PlanningAvailability,
   type PlanningWindow,
@@ -100,7 +102,7 @@ export function AgencyDashboard() {
         </div>
       </div>
     );
-  return <AgencyWorkspace key={auth.activeOrganization.organizationId} />;
+  return <AgencyWorkspace key={`${auth.profile?.id}:${auth.activeOrganization.organizationId}`} />;
 }
 
 function AgencyWorkspace() {
@@ -117,6 +119,7 @@ function AgencyWorkspace() {
   const locale = profile?.locale === 'fr' ? 'fr' : 'en';
   const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
   const orgId = org!.organizationId;
+  const userId = profile!.id;
   const [window, setWindow] = useState<PlanningWindow>(() => {
     const start = new Date();
     start.setUTCDate(start.getUTCDate() + 1);
@@ -152,6 +155,101 @@ function AgencyWorkspace() {
   const validWindow = planningDays(window) !== null;
   const canPlan = capabilities.includes('CAMPAIGN_CREATE');
   const [notice, setNotice] = useState('');
+  const [draftReady, setDraftReady] = useState(false);
+  const [restoringDraft, setRestoringDraft] = useState(false);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [unrestoredFaces, setUnrestoredFaces] = useState<AgencyDraftFace[]>([]);
+  const pendingDraftRef = useRef<AgencyDraftFace[]>([]);
+  const draftRestoreRef = useRef<AbortController | null>(null);
+  const [draftNotice, setDraftNotice] = useState('');
+  const [draftSaved, setDraftSaved] = useState(false);
+  const initializedDraftRef = useRef(false);
+
+  useEffect(() => {
+    if (initializedDraftRef.current) return;
+    initializedDraftRef.current = true;
+    const stored = loadAgencyDraft(userId, orgId);
+    if (stored) {
+      setWindow(stored.window);
+      setCountry(stored.country);
+      setQuery(stored.query);
+      setFormat(stored.format);
+      setBudget(stored.budget);
+      setCurrency(stored.currency);
+      pendingDraftRef.current = stored.faces;
+      setUnrestoredFaces(stored.faces);
+      setDraftNotice(locale === 'fr'
+        ? 'Brouillon de cet onglet restauré. Les données sont revérifiées ; document et conversation sont réinitialisés.'
+        : 'This tab’s draft restored. Board facts are checked again; brief and conversation start fresh.');
+    }
+    setDraftReady(true);
+  }, [orgId, userId, locale]);
+
+  useEffect(() => {
+    if (!draftReady || !pendingDraftRef.current.length) return;
+    const controller = new AbortController();
+    draftRestoreRef.current = controller;
+    const references = pendingDraftRef.current;
+    const restoreWindow = { ...window };
+    setRestoringDraft(true);
+    void (async () => {
+      const restored: ShortlistFace[] = [];
+      const failed: AgencyDraftFace[] = [];
+      const snapshots: Record<string, OptionSnapshot> = {};
+      let removed = 0;
+      const sites = [...new Set(references.map((item) => item.siteId))];
+      for (let start = 0; start < sites.length; start += 4) {
+        if (controller.signal.aborted) return;
+        await Promise.all(sites.slice(start, start + 4).map(async (id) => {
+          const refs = references.filter((item) => item.siteId === id);
+          try {
+            // Stored IDs never restore cached rates, availability, names or coordinates.
+            const [site, snapshot] = await Promise.all([
+              getBoard(orgId, id, controller.signal),
+              getSiteOptions(orgId, id, restoreWindow, controller.signal).catch(() => null),
+            ]);
+            if (controller.signal.aborted) return;
+            if (snapshot) snapshots[id] = { ...snapshot, window: restoreWindow };
+            for (const ref of refs) {
+              const face = site.faces.find((item) => item.id === ref.faceId);
+              if (!face || !face.bookable) { removed++; continue; }
+              restored.push({ site, faceId: ref.faceId, pricingCurrency: ref.pricingCurrency });
+            }
+          } catch (error) {
+            if (controller.signal.aborted) return;
+            if (error instanceof ApiError && [403, 404].includes(error.status)) removed += refs.length;
+            else failed.push(...refs);
+          }
+        }));
+      }
+      if (controller.signal.aborted) return;
+      const restoredById = new globalThis.Map(restored.map((item) => [item.faceId, item]));
+      const ordered = references.flatMap((ref) => {
+        const item = restoredById.get(ref.faceId);
+        return item ? [item] : [];
+      });
+      setShortlist((current) => [...new globalThis.Map([...current, ...ordered].map((item) => [item.faceId, item])).values()]);
+      setOptions((current) => ({ ...current, ...snapshots }));
+      pendingDraftRef.current = failed;
+      setUnrestoredFaces(failed);
+      if (failed.length || removed) setDraftNotice(locale === 'fr'
+        ? `${failed.length} faces restent à vérifier ; ${removed} faces supprimées ou inaccessibles retirées. Document et conversation réinitialisés.`
+        : `${failed.length} draft faces still need loading; ${removed} deleted or inaccessible faces removed. Brief and conversation start fresh.`);
+      setRestoringDraft(false);
+    })();
+    return () => controller.abort();
+    // Retry loads unresolved identifiers using the current controls, while a
+    // flight change is independently rechecked by the shortlist effect below.
+  }, [draftReady, restoreAttempt, orgId]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    setDraftSaved(saveAgencyDraft(userId, orgId, {
+      version: 1, window, country, query, format, budget, currency,
+      faces: [...shortlist.map((item) => ({ siteId: item.site.id, faceId: item.faceId,
+        ...(item.pricingCurrency ? { pricingCurrency: item.pricingCurrency } : {}) })), ...unrestoredFaces],
+    }));
+  }, [draftReady, userId, orgId, window, country, query, format, budget, currency, shortlist, unrestoredFaces]);
 
   useEffect(() => {
     if (!validWindow) return;
@@ -327,8 +425,9 @@ function AgencyWorkspace() {
     Number.isFinite(budgetAmount) &&
     budgetAmount > 0 &&
     budgetAmount <= 1e12;
-  const summary = summarizeBudget(
+  const summary = summarizeDraftBudget(
     estimates,
+    unrestoredFaces,
     validBudget ? { amount: budgetAmount, currency } : undefined,
   );
   const selectedEstimate = detail && faceId ? estimateFor({ site: detail, faceId }) : null;
@@ -337,8 +436,13 @@ function AgencyWorkspace() {
     [shortlist],
   );
   const plannerSelection = useMemo(
-    () => buildPlannerSelection(shortlist, selectedId),
-    [shortlist, selectedId],
+    () => {
+      const selection = buildPlannerSelection(shortlist, selectedId);
+      return { ...selection,
+        selectionTruncated: selection.selectionTruncated || unrestoredFaces.length > 0,
+        omittedFaces: selection.omittedFaces + unrestoredFaces.length };
+    },
+    [shortlist, selectedId, unrestoredFaces],
   );
   const select = (id: string, preferredFaceId?: string) => {
     preferredFaceRef.current = preferredFaceId ? { siteId: id, faceId: preferredFaceId } : null;
@@ -353,23 +457,30 @@ function AgencyWorkspace() {
     setPanel('map');
   };
   const add = () => {
+    const face = detail?.faces.find((item) => item.id === faceId);
     if (
       !detail ||
       !faceId ||
       !canPlan ||
-      selectedEstimate?.status !== 'ready' ||
-      selectedEstimate.availability !== 'available'
+      restoringDraft ||
+      !draftFaceEligibility(detail, face, window, availability(detail.id, faceId)).eligible
     )
       return;
+    if (shortlist.length + unrestoredFaces.length >= MAX_DRAFT_FACES) {
+      setNotice(t('This draft holds up to 100 faces. Remove a face before adding another.',
+        'Ce brouillon contient au maximum 100 faces. Retirez une face avant d’en ajouter une.'));
+      return;
+    }
     setShortlist((items) =>
       items.some((item) => item.faceId === faceId)
         ? items
-        : [...items, { site: detail, faceId, pricingCurrency: selectedEstimate.currency }],
+        : [...items, { site: detail, faceId,
+          ...(selectedEstimate?.status === 'ready' ? { pricingCurrency: selectedEstimate.currency } : {}) }],
     );
     setNotice(t('Face added to your draft shortlist.', 'Face ajoutée à votre sélection.'));
   };
   const recommend = async () => {
-    if (!canPlan || !validBudget || !validWindow || loadState !== 'ready') return;
+    if (!canPlan || !validBudget || !validWindow || loadState !== 'ready' || restoringDraft) return;
     recommendationRef.current?.abort();
     const controller = new AbortController();
     recommendationRef.current = controller;
@@ -450,6 +561,8 @@ function AgencyWorkspace() {
         }
       // Explicit action replaces the draft; a cancelled or stale request never does.
       setShortlist(proposal);
+      pendingDraftRef.current = [];
+      setUnrestoredFaces([]);
       setPlannerOpen(true);
       setNotice(
         proposal.length
@@ -484,8 +597,13 @@ function AgencyWorkspace() {
   };
   const clear = () => {
     recommendationRef.current?.abort();
+    draftRestoreRef.current?.abort();
+    setRestoringDraft(false);
     setRecommending(false);
     setShortlist([]);
+    pendingDraftRef.current = [];
+    setUnrestoredFaces([]);
+    setDraftNotice('');
     setNotice(t('Draft shortlist cleared.', 'Sélection effacée.'));
   };
   return (
@@ -844,7 +962,10 @@ function AgencyWorkspace() {
             }}
             estimate={selectedEstimate}
             selected={shortlist.some((item) => item.faceId === faceId)}
-            canPlan={canPlan}
+            canPlan={canPlan && !restoringDraft}
+            window={window}
+            availability={availability(detail.id, faceId)}
+            onRetryAvailability={() => setRetry((attempt) => attempt + 1)}
             onAdd={add}
             onClose={() => setSelectedId(null)}
           />
@@ -893,14 +1014,14 @@ function AgencyWorkspace() {
             recommendationRef.current?.abort();
             setRecommending(false);
           }}
-          canRecommend={validBudget && validWindow && loadState === 'ready'}
-          notice={notice}
+          canRecommend={validBudget && validWindow && loadState === 'ready' && !restoringDraft}
+          notice={[notice, draftNotice].filter(Boolean).join(' ')}
         />
         <div className="agency-plan-bar">
           <ClipboardList size={21} />
           <strong>{t('Draft shortlist', 'Sélection provisoire')}</strong>
           <span>
-            {shortlist.length} {t('faces', 'faces')}
+            {shortlist.length + unrestoredFaces.length} {t('faces', 'faces')}
           </span>
           <span className="agency-bar-divider" />
           <b>
@@ -911,10 +1032,18 @@ function AgencyWorkspace() {
               : '—'}
           </b>
           <small>
+            {draftSaved ? t('Saved in this tab · ', 'Enregistré dans cet onglet · ') :
+              t('Draft not saved in this tab · ', 'Brouillon non enregistré dans cet onglet · ')}
             {summary.remaining != null
               ? `${money(Math.abs(summary.remaining), currency, locale)} ${summary.remaining < 0 ? t('over budget', 'de dépassement') : t('remaining', 'restants')}`
               : t('Published media estimates', 'Estimations média publiées')}
           </small>
+          {unrestoredFaces.length > 0 && (
+            <button className="agency-secondary-button" disabled={restoringDraft}
+              onClick={() => setRestoreAttempt((attempt) => attempt + 1)}>
+              {restoringDraft ? t('Checking draft…', 'Vérification…') : t('Retry draft loading', 'Recharger le brouillon')}
+            </button>
+          )}
           <button
             className="agency-secondary-button"
             onClick={() => {

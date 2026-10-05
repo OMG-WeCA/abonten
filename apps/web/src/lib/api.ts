@@ -1,3 +1,5 @@
+import { clearAgencyDrafts } from './agency-draft';
+
 export interface StoredSession {
   accessToken: string;
   refreshToken: string;
@@ -59,6 +61,7 @@ export function saveSession(session: StoredSession): void {
 
 export function clearSession(): void {
   localStorage.removeItem(SESSION_STORAGE_KEY);
+  clearAgencyDrafts();
 }
 
 interface RequestOptions extends RequestInit {

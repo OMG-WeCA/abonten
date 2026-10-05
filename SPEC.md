@@ -437,6 +437,14 @@ states. Distances are geodesic straight-line kilometres, not travel distances.
 Cost estimates use effective published face/site rates and state their duration,
 currency, minimum term and availability-check time; no FX or monthly daily rate
 is inferred. Selection is a draft shortlist and never reserves inventory.
+Manual draft interest may retain a listed, physically flight-eligible face whose
+quote or calendar check remains unknown; known unavailability still blocks adding
+it, and incomplete facts never confirm budget fit. This tab retains bounded controls
+and at most 100 face identifiers, scoped to the user and agency. Returning reloads
+authorized inventory and availability; incomplete restoration keeps full-plan budget
+fit unknown. Signout clears these drafts. Briefs, chat and sharing consent are not stored.
+Popup visibility follows the same source, classification and freshness rules as
+planner grounding. Malformed locations remain unknown and cannot create distances.
 
 Briefs support PDF, PPTX, XLSX, DOCX and text/CSV equivalents through bounded,
 inert local text extraction. Documents are untrusted data: active content is not
