@@ -1,5 +1,7 @@
 'use client';
 
+import { displayUiText } from '../../lib/display-ui-text';
+
 import {
   Building2,
   ChevronDown,
@@ -19,6 +21,7 @@ import { canSeeSitesArea } from '../../lib/sites-access';
 import { workspaceAccessState } from '../../lib/account-session-recovery';
 import { confirmUnsavedNavigation } from '../../lib/unsaved-navigation';
 import { useAuth } from '../auth/AuthProvider';
+import { LanguageSwitcher, useLocale } from '../LocaleProvider';
 
 export function WorkspaceFrame({
   children,
@@ -40,8 +43,9 @@ export function WorkspaceFrame({
     signOut,
     switchOrganization,
   } = useAuth();
-  const copy = getAccountCopy(profile?.locale);
-  const sitesCopy = getSitesCopy(profile?.locale);
+  const { locale } = useLocale();
+  const copy = getAccountCopy(locale);
+  const sitesCopy = getSitesCopy(locale);
   // The server only lets media-partner organizations manage billboard sites
   // (assertMediaPartnerOrg) — the nav mirrors that rule, not just capabilities.
   const canSeeSites = canSeeSitesArea({
@@ -67,7 +71,7 @@ export function WorkspaceFrame({
   if (accessState === 'recovery') {
     return (
       <AccountRecovery
-        locale={profile?.locale}
+        locale={locale}
         onRetry={refreshAccount}
         onSignOut={async () => {
           await signOut();
@@ -77,7 +81,7 @@ export function WorkspaceFrame({
     );
   }
   if (accessState !== 'ready' || !profile || !activeOrganization) {
-    return <AccountLoading locale={profile?.locale} />;
+    return <AccountLoading locale={locale} />;
   }
 
   const switchTo = async (organizationId: string) => {
@@ -97,7 +101,7 @@ export function WorkspaceFrame({
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-xl">
-        <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
+        <div className="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center gap-3 px-4 py-2 sm:px-6">
           <button
             type="button"
             onClick={() => {
@@ -214,6 +218,7 @@ export function WorkspaceFrame({
               <LogOut className="hidden h-4 w-4 lg:block" />
             </button>
           </nav>
+          <LanguageSwitcher />
         </div>
       </header>
       {switchError && (
@@ -221,7 +226,7 @@ export function WorkspaceFrame({
           role="alert"
           className="mx-auto mt-4 max-w-7xl px-4 text-sm font-medium text-error sm:px-6"
         >
-          {switchError}
+          {displayUiText(switchError, locale)}
         </p>
       )}
       <main

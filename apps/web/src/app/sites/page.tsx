@@ -1,10 +1,13 @@
 'use client';
 
+import { displayUiText } from '../../lib/display-ui-text';
+
 import { MapPin, PlusCircle, Search, ShieldCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { WorkspaceFrame } from '../../components/account/WorkspaceFrame';
 import { useAuth } from '../../components/auth/AuthProvider';
+import { useLocale } from '../../components/LocaleProvider';
 import {
   AuthAssetThumb,
   StatusBadge,
@@ -17,6 +20,7 @@ import { getAccountCopy } from '../../lib/account-locale';
 import { listSites, siteThumbUrl, type SiteSummary } from '../../lib/sites-api';
 import { canManageSites, canSeeSitesArea } from '../../lib/sites-access';
 import { getSitesCopy } from '../../lib/sites-locale';
+import { localizedRejectionReason } from '../../lib/location-verification-locale';
 
 const STATUS_ORDER: Record<string, number> = {
   rejected: 0,
@@ -30,9 +34,9 @@ const STATUS_ORDER: Record<string, number> = {
 
 export default function SitesPage() {
   const router = useRouter();
-  const { activeOrganization, capabilities, profile } = useAuth();
-  const copy = getSitesCopy(profile?.locale);
-  const accountCopy = getAccountCopy(profile?.locale);
+  const { activeOrganization, capabilities } = useAuth();
+  const { locale } = useLocale();
+  const copy = getSitesCopy(locale);
   const orgId = activeOrganization?.organizationId;
   const canView = canSeeSitesArea({ capabilities, orgType: activeOrganization?.type });
   // Mirror of the server rule: only media-partner organizations can manage
@@ -72,13 +76,13 @@ export default function SitesPage() {
           setTotal(knownTotal);
         }
       } catch {
-        if (!cancelled) setError(accountCopy.settings.genericError);
+        if (!cancelled) setError(getAccountCopy('en').settings.genericError);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [orgId, canView, accountCopy.settings.genericError]);
+  }, [orgId, canView]);
 
   const filtered = useMemo(() => {
     if (!sites) return null;
@@ -131,7 +135,9 @@ export default function SitesPage() {
   const reasonSnippetOf = (site: SiteSummary) => {
     if (displayStatus(site) !== 'rejected') return null;
     return (
-      <span className="mt-1 block truncate text-xs font-medium text-error">{site.rejectionReason}</span>
+      <span className="mt-1 block truncate text-xs font-medium text-error">
+        {localizedRejectionReason(site.rejectionReason ?? '', locale)}
+      </span>
     );
   };
 
@@ -144,7 +150,8 @@ export default function SitesPage() {
             {copy.list.intro}
             {total != null && total > 0 && (
               <span className="font-semibold text-foreground">
-                {' · '}{copy.list.countLabel.replace('{{label}}', formatCount(total, profile?.locale))}
+                {' · '}
+                {copy.list.countLabel.replace('{{label}}', formatCount(total, locale))}
               </span>
             )}
           </p>
@@ -200,7 +207,9 @@ export default function SitesPage() {
                       : 'border border-border text-muted hover:text-foreground'
                   }`}
                 >
-                  {status === 'all' ? copy.list.all : copy.status[status as keyof typeof copy.status]}
+                  {status === 'all'
+                    ? copy.list.all
+                    : copy.status[status as keyof typeof copy.status]}
                 </button>
               ))}
             </nav>
@@ -209,15 +218,21 @@ export default function SitesPage() {
       )}
 
       {error && (
-        <p role="alert" className="mt-6 rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error">
-          {error}
+        <p
+          role="alert"
+          className="mt-6 rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error"
+        >
+          {displayUiText(error, locale)}
         </p>
       )}
 
       {!error && filtered === null && (
         <div className="mt-8 space-y-3" aria-hidden>
           {[0, 1, 2].map((row) => (
-            <div key={row} className="h-20 animate-pulse rounded-xl border border-border bg-surface" />
+            <div
+              key={row}
+              className="h-20 animate-pulse rounded-xl border border-border bg-surface"
+            />
           ))}
         </div>
       )}
@@ -244,17 +259,16 @@ export default function SitesPage() {
                     <code className="rounded bg-muted/15 px-1.5 py-0.5 text-xs font-semibold text-muted">
                       {site.code}
                     </code>
-                    <StatusBadge status={displayStatus(site)} locale={profile?.locale} />
+                    <StatusBadge status={displayStatus(site)} locale={locale} />
                   </span>
                   <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
-                    <span className="font-semibold">{prettyFormat(site.format, profile?.locale)}</span>
+                    <span className="font-semibold">{prettyFormat(site.format, locale)}</span>
                     <span className="inline-flex items-center gap-1">
                       <MapPin className="h-3 w-3" />
                       {[site.city, site.region].filter(Boolean).join(', ')}
                     </span>
                   </span>
                   {reasonSnippetOf(site)}
-
                 </span>
               </button>
             </li>
@@ -271,7 +285,9 @@ export default function SitesPage() {
       {sites !== null && sites.length === 0 && canManage && (
         <div className="mt-8 rounded-2xl border border-dashed border-border bg-surface px-6 py-12 text-center">
           <h2 className="text-lg font-bold">{copy.list.emptyTitle}</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted">{copy.list.emptyDetail}</p>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted">
+            {copy.list.emptyDetail}
+          </p>
           <button
             type="button"
             onClick={() => router.push('/sites/new')}

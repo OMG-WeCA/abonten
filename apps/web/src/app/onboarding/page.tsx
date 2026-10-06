@@ -1,5 +1,7 @@
 'use client';
 
+import { displayUiText } from '../../lib/display-ui-text';
+
 import { SUPPORTED_MARKETS, findMarket } from '../../lib/markets';
 import { PartnerTermsDialog } from '../../components/terms/PartnerTermsDialog';
 import { getTermsCopy, loadPartnerTerms, type PartnerTermsDocument } from '../../lib/partner-terms';
@@ -8,6 +10,7 @@ import { FormEvent, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { AccountLoading, AccountRecovery } from '../../components/account/WorkspaceFrame';
 import { useAuth } from '../../components/auth/AuthProvider';
+import { useLocale } from '../../components/LocaleProvider';
 import { getAccountCopy } from '../../lib/account-locale';
 import { workspaceAccessState } from '../../lib/account-session-recovery';
 import { ApiError, apiJson } from '../../lib/api';
@@ -20,6 +23,7 @@ import {
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { locale: displayLocale } = useLocale();
   const {
     activeOrganization,
     organizations,
@@ -30,6 +34,7 @@ export default function OnboardingPage() {
     signOut,
     switchOrganization,
   } = useAuth();
+  const initializedProfileId = useRef<string | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [locale, setLocale] = useState<'en' | 'fr'>('en');
@@ -70,12 +75,13 @@ export default function OnboardingPage() {
   }, [accessState, profile, router]);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || initializedProfileId.current === profile.id) return;
+    initializedProfileId.current = profile.id;
     setName(profile.name);
     setPhone(profile.phone ?? '');
-    setLocale(profile.locale);
+    setLocale(displayLocale);
     setTimezone(profile.timezone);
-  }, [profile]);
+  }, [profile, displayLocale]);
 
   useEffect(() => {
     if (organizationType !== 'media_partner') return;
@@ -178,7 +184,7 @@ export default function OnboardingPage() {
   if (accessState === 'recovery') {
     return (
       <AccountRecovery
-        locale={profile?.locale}
+        locale={displayLocale}
         onRetry={refreshAccount}
         onSignOut={async () => {
           await signOut();
@@ -188,7 +194,7 @@ export default function OnboardingPage() {
     );
   }
   if (accessState !== 'onboarding' || !profile) {
-    return <AccountLoading locale={profile?.locale} />;
+    return <AccountLoading locale={displayLocale} />;
   }
 
   return (
@@ -448,7 +454,7 @@ export default function OnboardingPage() {
                 role="alert"
                 className="mt-6 rounded-lg bg-error/10 px-3 py-2.5 text-sm text-error"
               >
-                {error}
+                {displayUiText(error, locale)}
               </p>
             )}
             <button

@@ -1,8 +1,11 @@
 'use client';
+
+import { displayUiText } from '../../../lib/display-ui-text';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { FileCheck2 } from 'lucide-react';
 import { useAuth } from '../../../components/auth/AuthProvider';
+import { useLocale } from '../../../components/LocaleProvider';
 import { WorkspaceFrame } from '../../../components/account/WorkspaceFrame';
 import { PartnerTermsDialog } from '../../../components/terms/PartnerTermsDialog';
 import { ApiError, apiJson } from '../../../lib/api';
@@ -27,7 +30,7 @@ interface AcceptanceRecord {
 }
 export default function AcceptedPartnerTermsPage() {
   const { activeOrganization, profile } = useAuth();
-  const locale = profile?.locale ?? 'en';
+  const { locale } = useLocale();
   const french = locale === 'fr';
   const [records, setRecords] = useState<AcceptanceRecord[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -151,7 +154,7 @@ export default function AcceptedPartnerTermsPage() {
         </p>
         {acceptError && !needsCurrent && (
           <p role="alert" className="mt-4 text-sm text-error">
-            {acceptError}
+            {displayUiText(acceptError, locale)}
           </p>
         )}
         {currentTermsFailed && (
@@ -212,7 +215,7 @@ export default function AcceptedPartnerTermsPage() {
             </label>
             {acceptError && (
               <p role="alert" className="mt-3 text-sm text-error">
-                {acceptError}
+                {displayUiText(acceptError, locale)}
               </p>
             )}
             <button

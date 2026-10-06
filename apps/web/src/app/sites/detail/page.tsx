@@ -1,5 +1,7 @@
 'use client';
 
+import { displayUiText } from '../../../lib/display-ui-text';
+
 import {
   AlertTriangle,
   ArrowLeft,
@@ -28,12 +30,14 @@ import {
 } from 'react';
 import { WorkspaceFrame } from '../../../components/account/WorkspaceFrame';
 import { useAuth } from '../../../components/auth/AuthProvider';
+import { useLocale } from '../../../components/LocaleProvider';
 import {
   MediaCapturePicker,
   type PendingSiteMedia,
 } from '../../../components/sites/MediaCapturePicker';
 import { AuthBoardVideo, MediaEvidence } from '../../../components/sites/BoardMedia';
 import { LocationVerification } from '../../../components/sites/LocationVerification';
+import { localizedRejectionReason } from '../../../lib/location-verification-locale';
 import { RegistrationMap } from '../../../components/sites/RegistrationMap';
 import { Lightbox, lightboxAlt, type LightboxAsset } from '../../../components/sites/Lightbox';
 import { SiteMapView } from '../../../components/sites/SiteMap';
@@ -85,9 +89,9 @@ function DetailInner() {
   const params = useSearchParams();
   const siteId = params.get('id') ?? '';
   const photoErrorParam = params.get('photoError') === '1';
-  const { activeOrganization, capabilities, profile } = useAuth();
-  const locale = profile?.locale;
-  const copy = getSitesCopy(profile?.locale);
+  const { activeOrganization, capabilities } = useAuth();
+  const { locale } = useLocale();
+  const copy = getSitesCopy(locale);
   const orgId = activeOrganization?.organizationId;
   const canEdit = capabilities.includes('INVENTORY_EDIT');
   const canCreateFace = capabilities.includes('INVENTORY_CREATE');
@@ -127,11 +131,11 @@ function DetailInner() {
     const controller = new AbortController();
     loadControllerRef.current = controller;
     if (!orgId) {
-      setLoadError(copy.detail.notFound);
+      setLoadError(getSitesCopy('en').detail.notFound);
       return;
     }
     if (!siteId) {
-      setLoadError(copy.detail.notFound);
+      setLoadError(getSitesCopy('en').detail.notFound);
       return;
     }
     try {
@@ -143,11 +147,11 @@ function DetailInner() {
       if (controller.signal.aborted) return;
       setLoadError(
         error instanceof ApiError && error.status === 403
-          ? copy.detail.notFound
-          : copy.admin.loadError,
+          ? getSitesCopy('en').detail.notFound
+          : getSitesCopy('en').admin.loadError,
       );
     }
-  }, [orgId, siteId, copy.detail.notFound, copy.admin.loadError]);
+  }, [orgId, siteId]);
 
   useEffect(() => {
     const resource = `${orgId ?? ''}:${siteId}`;
@@ -230,7 +234,7 @@ function DetailInner() {
     return (
       <WorkspaceFrame current="sites">
         <div className="rounded-xl border border-border bg-surface px-5 py-8 text-center">
-          <p className="text-sm text-muted">{loadError}</p>
+          <p className="text-sm text-muted">{displayUiText(loadError, locale)}</p>
           <button
             type="button"
             onClick={() => void reload()}
@@ -273,7 +277,7 @@ function DetailInner() {
             <code className="rounded bg-muted/15 px-2 py-1 text-xs font-semibold text-muted">
               {site.code}
             </code>
-            <StatusBadge status={displayStatus(site)} locale={profile?.locale} />
+            <StatusBadge status={displayStatus(site)} locale={locale} />
           </div>
 
           {photoErrorParam && (
@@ -293,7 +297,9 @@ function DetailInner() {
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 {copy.detail.rejectedBanner}
               </p>
-              <p className="mt-1.5 pl-6 text-sm text-foreground">“{site.rejectionReason}”</p>
+              <p className="mt-1.5 pl-6 text-sm text-foreground">
+                “{localizedRejectionReason(site.rejectionReason ?? '', locale)}”
+              </p>
               <p className="mt-1 pl-6 text-xs text-muted">{copy.detail.rejectedFix}</p>
             </div>
           )}
@@ -404,7 +410,7 @@ function DetailInner() {
               role="alert"
               className="mt-4 rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error"
             >
-              {actionError}
+              {displayUiText(actionError, locale)}
             </p>
           )}
 
@@ -1305,7 +1311,7 @@ function PhotosSection({
           />
           {uploadError && (
             <p role="alert" className="mt-2 text-sm text-error">
-              {uploadError}
+              {displayUiText(uploadError, locale)}
             </p>
           )}
           {pending.length > 0 && (
@@ -1578,7 +1584,7 @@ function FacesSection({
                   form={form}
                   setForm={setForm}
                   isDigital={isDigital}
-                  formError={formError}
+                  formError={displayUiText(formError, locale)}
                   busy={busy}
                   busyKey={`face-edit-${face.id}`}
                   copy={copy}
@@ -1667,7 +1673,7 @@ function FacesSection({
           form={form}
           setForm={setForm}
           isDigital={isDigital}
-          formError={formError}
+          formError={displayUiText(formError, locale)}
           busy={busy}
           busyKey="face"
           copy={copy}
@@ -1719,6 +1725,7 @@ function FaceForm({
   onSubmit: (event: FormEvent) => void;
   onCancel: () => void;
 }) {
+  const { locale } = useLocale();
   return (
     <form
       onSubmit={onSubmit}
@@ -1894,7 +1901,7 @@ function FaceForm({
       )}
       {formError && (
         <p role="alert" className="text-xs font-medium text-error">
-          {formError}
+          {displayUiText(formError, locale)}
         </p>
       )}
       <div className="flex gap-3">
@@ -2305,7 +2312,7 @@ function RatesSection({
           </div>
           {formError && (
             <p role="alert" className="text-xs font-medium text-error">
-              {formError}
+              {displayUiText(formError, locale)}
             </p>
           )}
           <div className="flex gap-3">

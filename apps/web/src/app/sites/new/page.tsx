@@ -1,5 +1,7 @@
 'use client';
 
+import { displayUiText } from '../../../lib/display-ui-text';
+
 import {
   ArrowLeft,
   Camera,
@@ -19,6 +21,7 @@ const withLabel = (template: string, label: string): string => template.replace(
 
 import { WorkspaceFrame } from '../../../components/account/WorkspaceFrame';
 import { useAuth } from '../../../components/auth/AuthProvider';
+import { useLocale } from '../../../components/LocaleProvider';
 import { Field, inputClass } from '../../../components/sites/sites-ui';
 import {
   createSite,
@@ -101,10 +104,11 @@ const INITIAL: FormState = {
 
 export default function RegisterSitePage() {
   const router = useRouter();
-  const { activeOrganization, capabilities, profile } = useAuth();
-  const copy = getSitesCopy(profile?.locale);
+  const { activeOrganization, capabilities } = useAuth();
+  const { locale } = useLocale();
+  const copy = getSitesCopy(locale);
   const orgId = activeOrganization?.organizationId;
-  const t = (en: string, fr: string) => (profile?.locale === 'fr' ? fr : en);
+  const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
   // Server rule: site registration is a media-partner capability. Without the
   // org-type match the save would 403 after the form is filled in.
   const canManage = canManageSites({ capabilities, orgType: activeOrganization?.type });
@@ -121,7 +125,7 @@ export default function RegisterSitePage() {
   const [markets, setMarkets] = useState<Market[]>([]);
   const kindToUpload = (kind: PendingSiteMedia['kind']) =>
     kind === 'board_video'
-      ? profile?.locale === 'fr'
+      ? locale === 'fr'
         ? 'Vidéo du panneau LED'
         : 'LED board video'
       : copy.register[
@@ -450,7 +454,7 @@ export default function RegisterSitePage() {
       if (uploadFailed) {
         setUploadCancelled(site.id);
         setSubmitError(
-          profile?.locale === 'fr'
+          locale === 'fr'
             ? 'Le brouillon est enregistré. Certains médias n’ont pas été transférés ; vos fichiers restent ici. Réessayez ou ouvrez le brouillon.'
             : 'Draft saved. Some media did not upload; your files remain here. Retry or open the draft.',
         );
@@ -588,7 +592,7 @@ export default function RegisterSitePage() {
           <section className="rounded-xl border border-border bg-surface px-5 py-5">
             {sectionHeading(<MapPin className="h-4 w-4" />, copy.register.sectionLocation)}
             <p className="mt-3 text-xs leading-5 text-muted">
-              {profile?.locale === 'fr'
+              {locale === 'fr'
                 ? 'Le panneau et l’adresse doivent désigner le même lieu. Après l’enregistrement, vérifiez l’adresse et le repère avant l’envoi. Une différence confirmée entraîne un rejet automatique ; une recherche incertaine nécessite une vérification.'
                 : 'The board pin and address must describe the same place. After saving, check the address and pin before submitting. A confirmed mismatch is automatically rejected; an uncertain lookup needs review.'}
             </p>
@@ -657,11 +661,11 @@ export default function RegisterSitePage() {
                     className={inputClass}
                   >
                     <option value="">
-                      {profile?.locale === 'fr' ? 'Choisir le pays' : 'Choose country'}
+                      {locale === 'fr' ? 'Choisir le pays' : 'Choose country'}
                     </option>
                     {SUPPORTED_MARKETS.map((market) => (
                       <option key={market.code} value={market.name}>
-                        {market.labels[profile?.locale === 'fr' ? 'fr' : 'en']}
+                        {market.labels[locale === 'fr' ? 'fr' : 'en']}
                       </option>
                     ))}
                   </select>
@@ -691,7 +695,7 @@ export default function RegisterSitePage() {
                 latitude={form.latitude}
                 longitude={form.longitude}
                 country={form.country}
-                locale={profile?.locale === 'fr' ? 'fr' : 'en'}
+                locale={locale === 'fr' ? 'fr' : 'en'}
                 onPick={(latitude, longitude) => {
                   set('latitude')(latitude);
                   set('longitude')(longitude);
@@ -819,9 +823,9 @@ export default function RegisterSitePage() {
                       className={inputClass}
                     />
                     <datalist id="provenanceSources">
-                      <option value="Google Maps street view" />
-                      <option value="Site visit" />
-                      <option value="Survey plan" />
+                      <option value={t('Google Maps street view', 'Vue de rue Google Maps')} />
+                      <option value={t('Site visit', 'Visite du site')} />
+                      <option value={t('Survey plan', 'Plan de relevé')} />
                     </datalist>
                   </Field>
                   <Field
@@ -928,7 +932,7 @@ export default function RegisterSitePage() {
             <MediaCapturePicker
               value={photos}
               onChange={setPhotos}
-              locale={profile?.locale}
+              locale={locale}
               allowVideo={form.format === 'digital_led'}
               disabled={saving}
               errors={mediaErrors}
@@ -940,7 +944,7 @@ export default function RegisterSitePage() {
           <div className="flex items-center gap-2 rounded-lg bg-surface-2 border border-border px-4 py-3 text-sm">
             <Loader2 className="h-4 w-4 animate-spin text-primary" />
             <span className="font-medium">
-              {withLabel(copy.register.uploadingPhoto, uploadingPhoto)}
+              {withLabel(copy.register.uploadingPhoto, displayUiText(uploadingPhoto, locale))}
             </span>
             <button
               type="button"
@@ -959,7 +963,7 @@ export default function RegisterSitePage() {
           <div className="flex flex-wrap items-center gap-2 rounded-lg bg-warning/10 border border-warning/30 px-4 py-3 text-sm text-foreground">
             <span>
               {submitError
-                ? profile?.locale === 'fr'
+                ? locale === 'fr'
                   ? 'Vos fichiers restants sont conservés.'
                   : 'Remaining files are preserved.'
                 : copy.register.cancelledUploads}
@@ -978,7 +982,7 @@ export default function RegisterSitePage() {
             role="alert"
             className="rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error"
           >
-            {errorSummary}
+            {displayUiText(errorSummary, locale)}
           </p>
         )}
         {submitError && (
@@ -986,7 +990,7 @@ export default function RegisterSitePage() {
             role="alert"
             className="rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error"
           >
-            {submitError}
+            {displayUiText(submitError, locale)}
           </p>
         )}
 
@@ -1014,7 +1018,7 @@ export default function RegisterSitePage() {
               {saving
                 ? copy.register.saving
                 : uploadCancelled
-                  ? profile?.locale === 'fr'
+                  ? locale === 'fr'
                     ? 'Réessayer les médias restants'
                     : 'Retry remaining media'
                   : copy.register.saveDraft}

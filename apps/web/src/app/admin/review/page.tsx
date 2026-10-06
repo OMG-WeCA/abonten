@@ -1,5 +1,7 @@
 'use client';
 
+import { displayUiText } from '../../../lib/display-ui-text';
+
 import { AlertTriangle, ChevronDown, ExternalLink, Loader2, ShieldCheck, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -13,6 +15,7 @@ const withLabel = (template: string, label: string): string => template.replace(
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { WorkspaceFrame } from '../../../components/account/WorkspaceFrame';
 import { useAuth } from '../../../components/auth/AuthProvider';
+import { useLocale } from '../../../components/LocaleProvider';
 import {
   AuthAssetThumb,
   Field,
@@ -37,8 +40,9 @@ import { getSitesCopy } from '../../../lib/sites-locale';
 
 export default function ReviewQueuePage() {
   const router = useRouter();
-  const { profile, capabilities, activeOrganization } = useAuth();
-  const copy = getSitesCopy(profile?.locale);
+  const { capabilities, activeOrganization } = useAuth();
+  const { locale } = useLocale();
+  const copy = getSitesCopy(locale);
   const orgId = activeOrganization?.organizationId;
   const isAdmin = capabilities.includes('PLATFORM_ADMIN');
 
@@ -85,9 +89,9 @@ export default function ReviewQueuePage() {
       }
       setSites(collected);
     } catch {
-      setLoadError(copy.admin.loadError);
+      setLoadError(getSitesCopy('en').admin.loadError);
     }
-  }, [orgId, copy.admin.loadError]);
+  }, [orgId]);
 
   useEffect(() => {
     if (isAdmin) void load();
@@ -190,7 +194,7 @@ export default function ReviewQueuePage() {
           role="alert"
           className="mt-6 rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error"
         >
-          {loadError}
+          {displayUiText(loadError, locale)}
         </p>
       )}
 
@@ -224,7 +228,7 @@ export default function ReviewQueuePage() {
           role="alert"
           className="mt-6 rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error"
         >
-          {actionError}
+          {displayUiText(actionError, locale)}
         </p>
       )}
 
@@ -246,18 +250,15 @@ export default function ReviewQueuePage() {
                   <code className="rounded bg-muted/15 px-1.5 py-0.5 text-xs font-semibold text-muted">
                     {site.code}
                   </code>
-                  <StatusBadge status={site.status} locale={profile?.locale} />
+                  <StatusBadge status={site.status} locale={locale} />
                 </span>
                 <span className="mt-1 block text-xs text-muted">
-                  {[site.city, site.region, marketLabel(site.country, profile?.locale)]
+                  {[site.city, site.region, marketLabel(site.country, locale)]
                     .filter(Boolean)
                     .join(', ')}{' '}
-                  ·{' '}
-                  <span className="font-semibold">
-                    {prettyFormat(site.format, profile?.locale)}
-                  </span>
+                  · <span className="font-semibold">{prettyFormat(site.format, locale)}</span>
                   {site.width != null && site.height != null
-                    ? ` · ${displayNumber(site.width, profile?.locale)} × ${displayNumber(site.height, profile?.locale)}${site.units ? ` ${agencyEvidenceUnit(site.units, profile?.locale === 'fr' ? 'fr' : 'en')}` : ''}`
+                    ? ` · ${displayNumber(site.width, locale)} × ${displayNumber(site.height, locale)}${site.units ? ` ${agencyEvidenceUnit(site.units, locale === 'fr' ? 'fr' : 'en')}` : ''}`
                     : ''}
                 </span>
               </span>
@@ -346,7 +347,9 @@ export default function ReviewQueuePage() {
             {openId === site.id && (
               <div className="mt-4 rounded-lg border border-border bg-surface-2 p-3 text-sm">
                 {detail === null && detailError?.id !== site.id && <p className="text-muted">…</p>}
-                {detailError?.id === site.id && <p className="text-error">{detailError.message}</p>}
+                {detailError?.id === site.id && (
+                  <p className="text-error">{displayUiText(detailError.message, locale)}</p>
+                )}
                 {detail?.id === site.id && (
                   <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
                     {(
@@ -359,12 +362,12 @@ export default function ReviewQueuePage() {
                         ],
                         [
                           copy.detail.dimsLabel,
-                          `${detail.data.width != null ? displayNumber(detail.data.width, profile?.locale) : '—'} × ${detail.data.height != null ? displayNumber(detail.data.height, profile?.locale) : '—'} ${detail.data.units ? agencyEvidenceUnit(detail.data.units, profile?.locale === 'fr' ? 'fr' : 'en') : ''}`.trim(),
+                          `${detail.data.width != null ? displayNumber(detail.data.width, locale) : '—'} × ${detail.data.height != null ? displayNumber(detail.data.height, locale) : '—'} ${detail.data.units ? agencyEvidenceUnit(detail.data.units, locale === 'fr' ? 'fr' : 'en') : ''}`.trim(),
                         ],
                         [
                           copy.detail.areaLabel,
                           detail.data.area != null
-                            ? formatArea(detail.data.area, detail.data.units, profile?.locale)
+                            ? formatArea(detail.data.area, detail.data.units, locale)
                             : '—',
                         ],
                         [
@@ -373,7 +376,7 @@ export default function ReviewQueuePage() {
                         ],
                         [
                           copy.detail.illuminationLabel,
-                          `${prettyIllumination(detail.data.illuminationType, profile?.locale)}${detail.data.illuminationHours ? ` · ${detail.data.illuminationHours}` : ''}`,
+                          `${prettyIllumination(detail.data.illuminationType, locale)}${detail.data.illuminationHours ? ` · ${detail.data.illuminationHours}` : ''}`,
                         ],
                         [copy.detail.permitLabel, detail.data.permitRef ?? copy.detail.permitNone],
                       ] as Array<[string, string]>
@@ -397,7 +400,7 @@ export default function ReviewQueuePage() {
                           : detail.data.faces
                               .map(
                                 (face) =>
-                                  `${face.faceLabel} (${displayNumber(face.width, profile?.locale)} × ${displayNumber(face.height, profile?.locale)} ${agencyEvidenceUnit(face.units, profile?.locale === 'fr' ? 'fr' : 'en')})`,
+                                  `${face.faceLabel} (${displayNumber(face.width, locale)} × ${displayNumber(face.height, locale)} ${agencyEvidenceUnit(face.units, locale === 'fr' ? 'fr' : 'en')})`,
                               )
                               .join(', ')}
                       </dd>
@@ -412,7 +415,7 @@ export default function ReviewQueuePage() {
                                 (card) =>
                                   `${card.currency} · ${Object.values(card.rates)
                                     .filter(Boolean)
-                                    .map((value) => displayNumber(value!, profile?.locale))
+                                    .map((value) => displayNumber(value!, locale))
                                     .join(' / ')}`,
                               )
                               .join(', ')}
@@ -440,7 +443,7 @@ export default function ReviewQueuePage() {
                           >
                             <AuthAssetThumb
                               display={assetDisplay(asset)}
-                              alt={`${site.name} — ${({ front: copy.register.photoFront, context: copy.register.photoContext, night: copy.register.photoNight, diagram: copy.register.photoDiagram, board_video: profile?.locale === 'fr' ? 'Vidéo du panneau' : 'Board video' } as Record<string, string>)[asset.kind] ?? asset.kind}`}
+                              alt={`${site.name} — ${({ front: copy.register.photoFront, context: copy.register.photoContext, night: copy.register.photoNight, diagram: copy.register.photoDiagram, board_video: locale === 'fr' ? 'Vidéo du panneau' : 'Board video' } as Record<string, string>)[asset.kind] ?? asset.kind}`}
                               size="h-28 w-40"
                             />
                           </button>

@@ -1,5 +1,7 @@
 'use client';
 
+import { displayUiText } from '../../lib/display-ui-text';
+
 import {
   Camera,
   ChevronRight,
@@ -10,7 +12,7 @@ import {
   LogOut,
   ShieldCheck,
 } from 'lucide-react';
-import { ChangeEvent, FormEvent, useEffect, useState, type ReactNode } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { WorkspaceFrame } from '../../components/account/WorkspaceFrame';
@@ -37,13 +39,17 @@ export default function SettingsPage() {
   const router = useRouter();
   const { activeOrganization, avatarUrl, capabilities, profile, refreshAccount, signOut } =
     useAuth();
-  const accountCopy = getAccountCopy(profile?.locale);
+  const { locale: displayLocale } = useLocale();
+  const accountCopy = getAccountCopy(displayLocale);
   const copy = accountCopy.settings;
   const canManageOrganization = capabilities.includes('ORG_SETTINGS_EDIT');
   const [tab, setTab] = useState<Tab>('profile');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const initializedProfileId = useRef<string | null>(null);
+  const previousSavedLocale = useRef<'en' | 'fr' | null>(null);
+  const initializedOrganizationId = useRef<string | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [locale, setLocale] = useState<'en' | 'fr'>('en');
@@ -58,6 +64,15 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!profile) return;
+    if (initializedProfileId.current === profile.id) {
+      // Follow a saved language only while the preference field is unedited.
+      const savedLocale = previousSavedLocale.current;
+      setLocale((current) => (current === savedLocale ? profile.locale : current));
+      previousSavedLocale.current = profile.locale;
+      return;
+    }
+    initializedProfileId.current = profile.id;
+    previousSavedLocale.current = profile.locale;
     setName(profile.name);
     setPhone(profile.phone ?? '');
     setLocale(profile.locale);
@@ -65,7 +80,12 @@ export default function SettingsPage() {
   }, [profile]);
 
   useEffect(() => {
-    if (!activeOrganization) return;
+    if (
+      !activeOrganization ||
+      initializedOrganizationId.current === activeOrganization.organizationId
+    )
+      return;
+    initializedOrganizationId.current = activeOrganization.organizationId;
     setOrganizationName(activeOrganization.name);
     setCountry(findMarket(activeOrganization.country)?.name ?? activeOrganization.country);
     setCurrency(activeOrganization.defaultCurrency);
@@ -226,7 +246,7 @@ export default function SettingsPage() {
             href="/partner-terms/accepted"
             className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-sm font-semibold hover:bg-surface focus-visible:ring-2 focus-visible:ring-primary"
           >
-            {profile?.locale === 'fr'
+            {displayLocale === 'fr'
               ? 'Conditions partenaires et acceptations'
               : 'Partner terms and acceptance records'}
           </Link>
@@ -257,12 +277,12 @@ export default function SettingsPage() {
               role="status"
               className="mb-5 rounded-lg bg-success/10 px-3 py-2.5 text-sm text-success"
             >
-              {notice}
+              {displayUiText(notice, displayLocale)}
             </p>
           )}
           {error && (
             <p role="alert" className="mb-5 rounded-lg bg-error/10 px-3 py-2.5 text-sm text-error">
-              {error}
+              {displayUiText(error, displayLocale)}
             </p>
           )}
           {tab === 'profile' && (
@@ -307,7 +327,7 @@ export default function SettingsPage() {
           {tab === 'security' && (
             <SecurityPanel
               copy={copy}
-              locale={profile?.locale}
+              locale={displayLocale}
               timezone={profile?.timezone}
               sessions={sessions}
               loading={sessionsLoading}

@@ -13,8 +13,10 @@ import { useRouter } from 'next/navigation';
 import { PartnerDashboard } from '../../components/dashboard/PartnerDashboard';
 import { WorkspaceFrame } from '../../components/account/WorkspaceFrame';
 import { useAuth } from '../../components/auth/AuthProvider';
+import { useLocale } from '../../components/LocaleProvider';
 import { getAccountCopy } from '../../lib/account-locale';
 import { AgencyDashboard } from '../../components/agency/AgencyDashboard';
+import { marketLabel } from '../../lib/markets';
 
 const workspaceIcons = {
   media_partner: Landmark,
@@ -26,7 +28,8 @@ const workspaceIcons = {
 export default function DashboardPage() {
   const router = useRouter();
   const { activeOrganization, capabilities, profile } = useAuth();
-  const copy = getAccountCopy(profile?.locale);
+  const { locale } = useLocale();
+  const copy = getAccountCopy(locale);
   const type = activeOrganization?.type ?? 'agency';
   const details = copy.dashboard[type];
   const WorkspaceIcon = workspaceIcons[type];
@@ -91,7 +94,8 @@ export default function DashboardPage() {
               <p className="mt-1.5 max-w-xl text-sm leading-6 text-muted">
                 {copy.dashboard.activeOrganization}{' '}
                 <span className="font-semibold text-foreground">{activeOrganization?.name}</span> ·{' '}
-                {activeOrganization?.country} · {activeOrganization?.defaultCurrency}
+                {marketLabel(activeOrganization?.country ?? '', locale)} ·{' '}
+                {activeOrganization?.defaultCurrency}
               </p>
             </div>
           </div>
