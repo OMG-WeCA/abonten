@@ -1449,6 +1449,19 @@
   z-index: 40;
   padding: 7px;
 }
+.agency-desktop-language {
+  flex-shrink: 0;
+}
+.agency-menu-language {
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 4px;
+}
+@media (max-width: 899px) {
+  .agency-desktop-language {
+    display: none;
+  }
+}
 .agency-account-menu > button {
   display: flex;
   align-items: center;

@@ -870,7 +870,7 @@ export function AgencyPlanner(props: PlannerProps) {
         )}
         {error && (
           <div className="agency-form-error" role="alert">
-            <p>{error}</p>
+            <p>{agencyEvidenceText(error, locale)}</p>
             {failedMessage !== null && (
               <>
                 <p>

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { Loader2, PlayCircle } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { assetDisplay, type SiteAsset } from '../../lib/sites-api';
+import { displayDateOnly, displayNumber, displayUtcTimestamp } from '../../lib/locale-format';
+import { agencyEvidenceText } from '../../lib/agency-evidence-locale';
 
 export function AuthBoardVideo({ asset, locale }: { asset: SiteAsset; locale?: string }) {
   const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
@@ -101,8 +103,10 @@ export function AuthBoardVideo({ asset, locale }: { asset: SiteAsset; locale?: s
           'Installed LED board · partner-supplied reference media',
           'Panneau LED installé · média de référence fourni par le partenaire',
         )}
-        {asset.durationSeconds != null && ` · ${Math.round(asset.durationSeconds)} s`}
-        {asset.byteSize != null && ` · ${(asset.byteSize / 1024 / 1024).toFixed(1)} MB`}
+        {asset.durationSeconds != null &&
+          ` · ${displayNumber(Math.round(asset.durationSeconds), locale)} s`}
+        {asset.byteSize != null &&
+          ` · ${displayNumber(asset.byteSize / 1024 / 1024, locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${t('MB', 'Mo')}`}
       </figcaption>
     </figure>
   );
@@ -138,11 +142,17 @@ export function MediaEvidence({ asset, locale }: { asset: SiteAsset; locale?: st
     ],
     capture_time_missing: ['Capture time is unknown.', 'La date de prise de vue est inconnue.'],
   };
-  const warningMessages = metadata?.warningCodes?.length
-    ? metadata.warningCodes.flatMap((code) => (warnings[code] ? [t(...warnings[code])] : []))
-    : locale === 'fr'
-      ? []
-      : (metadata?.warnings ?? []);
+  const lang = locale === 'fr' ? 'fr' : 'en';
+  const knownCodes = metadata?.warningCodes?.filter((code) => warnings[code]) ?? [];
+  const knownEnglish = new Set(knownCodes.map((code) => warnings[code][0]));
+  const warningMessages = [
+    ...new Set([
+      ...knownCodes.map((code) => t(...warnings[code])),
+      ...(metadata?.warnings ?? [])
+        .filter((warning) => !knownEnglish.has(warning))
+        .map((warning) => agencyEvidenceText(warning, lang)),
+    ]),
+  ];
   return (
     <details className="mt-2 text-xs leading-5 text-muted">
       <summary className="cursor-pointer font-semibold">
@@ -153,7 +163,7 @@ export function MediaEvidence({ asset, locale }: { asset: SiteAsset; locale?: st
           <dt className="inline font-semibold">{t('Location', 'Position')} : </dt>
           <dd className="inline">
             {metadata?.location?.latitude != null && metadata.location.longitude != null
-              ? `${metadata.location.latitude.toFixed(5)}, ${metadata.location.longitude.toFixed(5)} · ${metadata.location.source === 'exif' ? t('embedded EXIF', 'EXIF intégré') : t('device GPS', 'GPS de l’appareil')}${metadata.location.accuracyMeters != null ? ` · ±${Math.round(metadata.location.accuracyMeters)} m` : ''}`
+              ? `${displayNumber(metadata.location.latitude, locale, { minimumFractionDigits: 5, maximumFractionDigits: 5 })} ; ${displayNumber(metadata.location.longitude, locale, { minimumFractionDigits: 5, maximumFractionDigits: 5 })} · ${metadata.location.source === 'exif' ? t('embedded EXIF', 'EXIF intégré') : t('device GPS', 'GPS de l’appareil')}${metadata.location.accuracyMeters != null ? ` · ±${displayNumber(Math.round(metadata.location.accuracyMeters), locale)} m` : ''}`
               : t('GPS not recorded', 'GPS non renseigné')}
           </dd>
         </div>
@@ -163,13 +173,13 @@ export function MediaEvidence({ asset, locale }: { asset: SiteAsset; locale?: st
             {(metadata?.time?.precision === 'day' ||
               (metadata?.time?.source === 'partner_declared' && !metadata.time.precision)) &&
             (metadata.time.declaredDate || metadata.time.value)
-              ? `${metadata.time.declaredDate || metadata.time.value?.slice(0, 10)} · ${t('time unknown', 'heure inconnue')}`
+              ? `${displayDateOnly(metadata.time.declaredDate || metadata.time.value!, locale)} · ${t('time unknown', 'heure inconnue')}`
               : metadata?.time?.value
-                ? `${new Date(metadata.time.value).toLocaleString(locale === 'fr' ? 'fr-FR' : 'en', { timeZone: 'UTC' })} UTC`
+                ? displayUtcTimestamp(metadata.time.value, locale)
                 : metadata?.time?.localValue
                   ? `${metadata.time.localValue} · ${t('timezone unknown', 'fuseau horaire inconnu')}`
                   : asset.capturedAt
-                    ? `${asset.capturedAt.slice(0, 10)} · ${t('declared date', 'date déclarée')}`
+                    ? `${displayDateOnly(asset.capturedAt, locale)} · ${t('declared date', 'date déclarée')}`
                     : t('Unknown', 'Inconnue')}
             {metadata?.time?.source && metadata.time.source !== 'missing'
               ? ` · ${metadata.time.source === 'partner_declared' ? t('partner declared', 'déclarée par le partenaire') : metadata.time.source === 'exif' ? 'EXIF' : t('device capture', 'capture de l’appareil')}`
@@ -181,7 +191,9 @@ export function MediaEvidence({ asset, locale }: { asset: SiteAsset; locale?: st
             <dt className="inline font-semibold">
               {t('Distance from board pin', 'Distance du repère du panneau')} :{' '}
             </dt>
-            <dd className="inline">{Math.round(metadata.evidenceDistanceMeters)} m</dd>
+            <dd className="inline">
+              {displayNumber(Math.round(metadata.evidenceDistanceMeters), locale)} m
+            </dd>
           </div>
         )}
       </dl>
@@ -191,7 +203,9 @@ export function MediaEvidence({ asset, locale }: { asset: SiteAsset; locale?: st
           'Les métadonnées sont des preuves non vérifiées et ne prouvent pas l’authenticité.',
         )}
       </p>
-      {metadata?.missingMetadataReason && <p>{metadata.missingMetadataReason}</p>}
+      {metadata?.missingMetadataReason && (
+        <p>{agencyEvidenceText(metadata.missingMetadataReason, lang)}</p>
+      )}
       {warningMessages.map((warning: string) => (
         <p key={warning}>{warning}</p>
       ))}

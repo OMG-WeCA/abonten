@@ -20,141 +20,9 @@ export function requestLocale(header: string | undefined): 'en' | 'fr' {
     .sort((a, b) => b.q - a.q || a.index - b.index);
   return candidates[0]?.language === 'fr' ? 'fr' : 'en';
 }
-const messages: Record<string, string> = {
-  'Name is required': 'Le nom est requis',
-  'Profile photo not found': 'Photo de profil introuvable',
-  'Choose a PNG, JPEG, or WebP profile photo under 5 MB':
-    'Choisissez une photo de profil PNG, JPEG ou WebP de moins de 5 Mo',
-  'Profile photo must be under 5 MB': 'La photo de profil doit faire moins de 5 Mo',
-  'a front-on reference photo with a known capture date is required':
-    'Ajoutez une photo de face avec une date de prise connue pour pouvoir soumettre le site',
-  'a front-on reference photo is required': 'Une photo de référence de face est requise',
-  'add at least one bookable face': 'Ajoutez au moins une face réservable',
-  'add a current rate for each bookable face':
-    'Ajoutez un tarif en cours pour chaque face réservable',
-  'complete the pixel and loop/spot details for each bookable digital face':
-    'Complétez les pixels et les durées de boucle et de spot de chaque face numérique réservable',
-  'the recorded permit has expired': 'Le permis enregistré a expiré',
-  'Terms version is unavailable': 'Cette version des conditions est indisponible',
-  'Terms language must match the selected onboarding language':
-    'La langue des conditions doit correspondre à celle choisie à l’inscription',
-  'Confirm your authority and expressly accept the displayed version.':
-    'Confirmez votre autorité et acceptez expressément la version affichée.',
-  'The terms version changed. Review it and accept again.':
-    'La version des conditions a changé. Consultez-la et acceptez-la à nouveau.',
-  'The review draft is not active for acceptance.':
-    'Le projet de revue n’est pas activé pour acceptation.',
-  'No approved terms release is configured. The review draft cannot be activated.':
-    'Aucune version approuvée des conditions n’est configurée. Le projet de revue ne peut pas être activé.',
-  'Bad Request': 'Vérifiez les informations saisies.',
-  Unauthorized: 'Reconnectez-vous pour continuer.',
-  Forbidden: 'Vous n’avez pas accès à cette action.',
-  'Not Found': 'Cet élément est introuvable.',
-  Conflict: 'Cet élément a changé. Actualisez et réessayez.',
-  'ThrottlerException: Too Many Requests': 'Trop de demandes. Réessayez dans quelques instants.',
-  'Organization name is required': 'Le nom de l’organisation est requis',
-  'Country is required': 'Le pays est requis',
-  'Partner terms apply only to media partners':
-    'Les conditions partenaires concernent uniquement les partenaires média',
-  'An active partner organization owner must accept terms':
-    'Le propriétaire actif d’une organisation partenaire doit accepter les conditions',
-  'Terms acceptance is not active': 'L’acceptation des conditions n’est pas activée',
-  'Active organization membership required': 'Une adhésion active à l’organisation est requise',
-  'Active representative not found': 'Le représentant actif est introuvable',
-  'Add at least one positive daily, weekly, or monthly rate.':
-    'Ajoutez au moins un tarif journalier, hebdomadaire ou mensuel positif.',
-  'Use a three-letter currency code.': 'Utilisez un code de devise à trois lettres.',
-  'Rate end date must be on or after its start date.':
-    'La fin du tarif doit être postérieure ou égale à son début.',
-  'Minimum booking length must be at least one day.':
-    'La durée minimale de réservation est d’un jour.',
-  'Site not found': 'Site introuvable',
-  'Face not found': 'Face introuvable',
-  'Asset not found': 'Média introuvable',
-  'Metadata not found': 'Métadonnées introuvables',
-  'Rate card not found': 'Tarif introuvable',
-  'Organization not found': 'Organisation introuvable',
-  'User not found': 'Utilisateur introuvable',
-  'Active membership not found': 'Adhésion active introuvable',
-  'No file uploaded': 'Choisissez un fichier à importer',
-  'Unknown photo kind.': 'Choisissez un type de photo valide.',
-  'The uploaded file is empty.': 'Le fichier importé est vide.',
-  'Only JPEG, PNG, or WebP images are accepted.':
-    'Seules les images JPEG, PNG ou WebP sont acceptées.',
-  'Reference photos are limited to 10 MB.': 'Les photos de référence sont limitées à 10 Mo.',
-  'Board videos are limited to 50 MB.': 'Les vidéos du panneau sont limitées à 50 Mo.',
-  'This image could not be decoded safely. Use a complete, still JPEG, PNG or WebP image up to 40 megapixels.':
-    'Cette image ne peut pas être décodée en sécurité. Utilisez une image complète et fixe JPEG, PNG ou WebP de 40 mégapixels maximum.',
-  'Use an actual MP4 or WebM recording of the LED board.':
-    'Utilisez une vidéo MP4 ou WebM du panneau LED réel.',
-  'Use one H.264 MP4 or VP8/VP9 WebM board recording, up to 60 seconds and 1920 × 1080 pixels (portrait also supported).':
-    'Utilisez une seule vidéo H.264 MP4 ou VP8/VP9 WebM du panneau, de 60 secondes et 1920 × 1080 pixels maximum (portrait accepté).',
-  'This video could not be decoded safely. Export a complete H.264 MP4 or VP8/VP9 WebM recording and retry.':
-    'Cette vidéo ne peut pas être décodée en sécurité. Exportez une vidéo complète H.264 MP4 ou VP8/VP9 WebM et réessayez.',
-  'Board video validation is unavailable. Keep your file and retry after service recovery.':
-    'La validation vidéo est indisponible. Conservez votre fichier et réessayez après le rétablissement du service.',
-  'Media processing is busy. Keep your file and retry shortly.':
-    'Le traitement des médias est occupé. Conservez votre fichier et réessayez bientôt.',
-  'Capture times need a timezone; a calendar date may be supplied without a time.':
-    'Indiquez le fuseau horaire de la prise de vue ; une date seule peut être fournie sans heure.',
-  'Device capture needs a timestamp with timezone; GPS latitude, longitude and accuracy must be supplied together when available.':
-    'La capture sur place nécessite une date et une heure avec fuseau horaire ; fournissez ensemble la latitude, la longitude et la précision GPS lorsqu’elles sont disponibles.',
-  'GPS fix time needs complete device GPS and a timezone.':
-    'L’heure du relevé GPS nécessite la latitude, la longitude, la précision GPS et un fuseau horaire.',
-  'Use a valid capture date that is not in the future.':
-    'Utilisez une date de prise valide qui n’est pas dans le futur.',
-  'Board recordings are only available for digital LED inventory.':
-    'Les vidéos du panneau sont réservées aux sites LED numériques.',
-  'This upload operation already belongs to a different file or metadata. Start a new upload.':
-    'Cet import correspond déjà à un autre fichier ou à d’autres métadonnées. Lancez un nouvel import.',
-  'This legacy asset needs a replacement photo before it can be displayed.':
-    'Remplacez cette ancienne photo avant de pouvoir l’afficher.',
-  'Location changed during verification. Check the saved address and pin, then retry.':
-    'L’emplacement a changé pendant la vérification. Vérifiez l’adresse et le point enregistrés, puis réessayez.',
-  'Site status changed during verification. Refresh the site before retrying.':
-    'Le statut du site a changé pendant la vérification. Actualisez avant de réessayer.',
-  'Correct the address/pin mismatch and resubmit before listing this site.':
-    'Corrigez l’incohérence entre l’adresse et le point, puis soumettez à nouveau avant publication.',
-  'The selected face does not belong to this site.': 'La face choisie n’appartient pas à ce site.',
-  'Only future rate cards can be withdrawn. End a current rate instead.':
-    'Seuls les tarifs futurs peuvent être retirés. Terminez un tarif en cours.',
-  'Remove this face’s unavailable periods before removing the face.':
-    'Retirez les périodes d’indisponibilité de cette face avant de la supprimer.',
-  'Choose a valid period of 1 to 366 days. The end date is the first available day.':
-    'Choisissez une période valide de 1 à 366 jours. La date de fin est le premier jour disponible.',
-  'Give a reason for the unavailable period.':
-    'Indiquez un motif pour la période d’indisponibilité.',
-  'An unavailable period already overlaps these dates.':
-    'Une période d’indisponibilité recouvre déjà ces dates.',
-  'A reservation already overlaps these dates.': 'Une réservation recouvre déjà ces dates.',
-  'Unavailable period not found': 'Période d’indisponibilité introuvable',
-  'No active organization context': 'Choisissez une organisation active',
-  'No inventory or marketplace access': 'Vous n’avez pas accès aux sites ou à la place de marché',
-  'Only media-partner organizations can manage billboard inventory':
-    'Seules les organisations partenaires média peuvent gérer les sites',
-  'Site not available': 'Site indisponible',
-  'Not your site': 'Ce site n’appartient pas à votre organisation',
-  'Not your face': 'Cette face n’appartient pas à votre organisation',
-  'Not your rate card': 'Ce tarif n’appartient pas à votre organisation',
-  'Not your unavailable period': 'Cette période n’appartient pas à votre organisation',
-  'Too many sign-in code requests. Please try again later.':
-    'Trop de demandes de code de connexion. Réessayez plus tard.',
-  'Too many verification attempts. Please try again later.':
-    'Trop de tentatives de vérification. Réessayez plus tard.',
-  'Sign-in is temporarily unavailable. Please try again.':
-    'La connexion est temporairement indisponible. Réessayez.',
-  'Invalid or expired sign-in code': 'Code de connexion incorrect ou expiré',
-  'latitude must be between -90 and 90': 'la latitude doit être comprise entre -90 et 90',
-  'longitude must be between -180 and 180': 'la longitude doit être comprise entre -180 et 180',
-  'orientation must be between 0 and 359 degrees':
-    'l’orientation doit être comprise entre 0 et 359 degrés',
-  'viewing distance must be greater than 0': 'la distance de vision doit être supérieure à 0',
-  'elevation cannot be negative': 'la hauteur ne peut pas être négative',
-  'illumination hours should look like 18:00-06:00 or 24/7':
-    'les horaires d’éclairage doivent être du type 18:00-06:00 ou 24/7',
-  'Add at least one bookable face': 'Ajoutez au moins une face réservable',
-  'Add a front photo': 'Ajoutez une photo de face',
-};
+// One public, controlled-copy registry is shared with client error display.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const messages: Record<string, string> = require('@abonten/contracts/http-error-copy.json');
 const codeMessages: Record<string, string> = {
   'auth.request_limit': messages['Too many sign-in code requests. Please try again later.'],
   'auth.verify_limit': messages['Too many verification attempts. Please try again later.'],
@@ -212,6 +80,20 @@ const fields: Record<string, string> = {
   faceId: 'face',
   organizationId: 'organisation',
   minBookingDays: 'durée minimale de réservation',
+  amount: 'montant',
+  message: 'message',
+  briefText: 'texte du brief',
+  shareBriefWithProvider: 'autorisation de partage du brief',
+  selectedSiteIds: 'panneaux sélectionnés',
+  selectedFaceIds: 'faces sélectionnées',
+  faceCurrencies: 'devises des faces',
+  selectionTruncated: 'sélection partielle',
+  history: 'historique du chat',
+  role: 'rôle',
+  content: 'contenu',
+  search: 'recherche',
+  expectedDigest: 'empreinte du texte affiché',
+  authority: 'autorité du représentant',
 };
 function fallback(status: number): string {
   if (status === 401) return messages.Unauthorized;
@@ -229,6 +111,36 @@ function fallback(status: number): string {
 export function localizedErrorMessage(message: string, status: number): string {
   if (messages[message]) return messages[message];
   if (Object.values(messages).includes(message)) return message;
+  if (
+    [
+      'Invalid Office document archive.',
+      'Invalid Office document directory.',
+      'Invalid Office archive entry.',
+      'Invalid Office local entry.',
+      'Inconsistent Office archive entry.',
+      'Corrupt Office archive entry.',
+      'Invalid Office archive directory size.',
+      'Malformed Office relationship attributes.',
+    ].includes(message)
+  )
+    return 'La structure du document Office est invalide ou endommagée. Exportez-le à nouveau ou utilisez un export texte.';
+  // These are parser-owned structural labels, not document text or diagnostics.
+  const office = '(?:PowerPoint slide|Excel worksheet)';
+  if (
+    new RegExp(
+      `^(?:${office} relationships are missing|Malformed ${office} relationships|${office} order is missing)\\. Export the document again\\.$`,
+    ).test(message) ||
+    new RegExp(
+      `^(?:Malformed (?:or duplicate )?${office} relationships|${office} order references a missing or duplicate relationship|${office} order references an invalid relationship type|Malformed ${office} order)\\.$`,
+    ).test(message)
+  )
+    return 'Les liens ou l’ordre des diapositives PowerPoint ou des feuilles Excel sont invalides ou incomplets. Exportez le document à nouveau.';
+  if (
+    new RegExp(
+      `^(?:External ${office} relationships are not accepted|Unsafe ${office} relationship target|${office} relationship target is missing or unsafe)\\.$`,
+    ).test(message)
+  )
+    return 'Les liens externes ou les cibles manquantes ou non sûres du document ne sont pas acceptés. Utilisez un export texte.';
   const combined =
     /^(Please fix: |Site is not ready for review: |Site cannot be listed yet: )(.+)\.$/.exec(
       message,
@@ -240,7 +152,7 @@ export function localizedErrorMessage(message: string, status: number): string {
       .join(' ; ')}.`;
   if (/^coordinates fall outside .+'s bounding box — check the pin$/.test(message))
     return 'Les coordonnées se trouvent hors du pays choisi. Vérifiez le point sur la carte.';
-  const match = /^([a-zA-Z][\w.]*)(?: each value in)? (.+)$/.exec(message);
+  const match = /^(?:each value in )?([a-zA-Z][\w.]*)(?: each value in)? (.+)$/.exec(message);
   if (match) {
     const key = match[1].split('.').at(-1) ?? '';
     const label = fields[key];
@@ -258,6 +170,14 @@ export function localizedErrorMessage(message: string, status: number): string {
       if (rule.includes('must be one of the following values'))
         return `Choisissez une valeur proposée pour « ${label} ».`;
       if (rule.includes('must be a boolean')) return `Confirmez le choix pour « ${label} ».`;
+      if (rule.includes('must be an array'))
+        return `Choisissez une liste valide pour « ${label} ».`;
+      if (rule.includes('must contain a UUID'))
+        return `Choisissez des éléments valides pour « ${label} ».`;
+      if (rule.includes('must be unique') || rule.includes("mustn't contain duplicate"))
+        return `Chaque élément de « ${label} » doit être unique.`;
+      const items = /must contain (?:not more than|no more than) (\d+) elements/.exec(rule);
+      if (items) return `Choisissez au maximum ${items[1]} éléments pour « ${label} ».`;
       if (rule.includes('must be a UUID')) return `Choisissez un élément valide pour « ${label} ».`;
       const min = /must not be less than ([\d.-]+)/.exec(rule);
       if (min) return `Le champ « ${label} » doit être supérieur ou égal à ${min[1]}.`;

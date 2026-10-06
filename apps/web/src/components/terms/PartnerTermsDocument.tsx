@@ -1,5 +1,6 @@
 import type { PartnerTermsDocument as Document } from '../../lib/partner-terms';
 import { getTermsCopy } from '../../lib/partner-terms';
+import { displayDateOnly } from '../../lib/locale-format';
 
 export function PartnerTermsDocument({ document }: { document: Document }) {
   const copy = getTermsCopy(document.locale);
@@ -11,7 +12,8 @@ export function PartnerTermsDocument({ document }: { document: Document }) {
         </p>
         <h2 className="mt-2 text-2xl font-bold tracking-tight">{document.title}</h2>
         <p className="mt-2 text-sm text-muted">
-          {copy.version} {document.version} · {copy.date} {document.publishedDate}
+          {copy.version} {document.version} · {copy.date}{' '}
+          {displayDateOnly(document.publishedDate, document.locale)}
         </p>
         {document.status === 'review_draft' && (
           <p className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm leading-6">

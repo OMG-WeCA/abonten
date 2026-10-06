@@ -36,6 +36,18 @@ function translated(value: string): string {
   return french;
 }
 
+test('retained planner and action failures change display language without rewriting unknown diagnostics', () => {
+  for (const value of [
+    'Boards could not be checked. Your draft shortlist is preserved; retry when the connection recovers.',
+    'Upload could not finish. Check your connection and retry.',
+    'Choose a non-empty document to upload.',
+    'Camera access was unavailable. Check permission or upload a photo.',
+  ])
+    translated(value);
+  const original = 'Provider diagnostic: preserve source.txt';
+  assert.equal(agencyEvidenceText(original, 'fr'), original);
+});
+
 test('localizes real canonical price failures, cost provenance and assumptions without changing facts', () => {
   const failures = [
     estimateFaceCost(site, face, { startDate: 'invalid', endDate: '2026-10-08' }),

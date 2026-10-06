@@ -1,6 +1,8 @@
 /** Display translations for application-owned evidence explanations only.
  * Canonical facts, document text and arbitrary source content remain unchanged.
  * Exact matches deliberately avoid guessing whether other prose needs translation. */
+import { displayUiText } from './display-ui-text';
+
 const frenchText = new Map<string, string>([
   [
     'Choose valid start and exclusive end dates.',
@@ -136,6 +138,38 @@ const frenchText = new Map<string, string>([
   ['This listed face is no longer available.', 'Cette face publiée n’est plus disponible.'],
   ['Face no longer available.', 'Face indisponible.'],
   ['Face added to your draft shortlist.', 'Face ajoutée à votre sélection.'],
+  [
+    'Boards could not be checked. Your draft shortlist is preserved; retry when the connection recovers.',
+    'Les panneaux n’ont pas pu être vérifiés. Votre sélection est conservée ; réessayez après reconnexion.',
+  ],
+  ['Could not switch workspace. Try again.', 'Impossible de changer d’espace. Réessayez.'],
+  [
+    'The budget currency is unclear. Set the media budget and currency manually before finding boards.',
+    'La devise du budget est incertaine. Définissez manuellement le budget média et la devise avant de rechercher des panneaux.',
+  ],
+  [
+    'The planner timed out. Your message is preserved; retry when ready.',
+    'L’assistant a dépassé le délai. Votre message est conservé ; réessayez.',
+  ],
+  [
+    'Planner unavailable. Your message is preserved.',
+    'Assistant indisponible. Votre message est conservé.',
+  ],
+  ['Brief could not be read. Try again.', 'Le document n’a pas pu être lu. Réessayez.'],
+  [
+    'Camera capture needs a secure connection and a supported browser. You can upload a photo instead.',
+    'La prise de photo nécessite une connexion sécurisée et un navigateur compatible. Vous pouvez importer une photo.',
+  ],
+  [
+    'Camera access was unavailable. Check permission or upload a photo.',
+    'Accès à la caméra indisponible. Vérifiez les autorisations ou importez une photo.',
+  ],
+  [
+    'The photo could not be saved. Try capturing again or upload a photo.',
+    'La photo n’a pas pu être enregistrée. Réessayez ou importez une photo.',
+  ],
+  ['Choose MP4 or WebM up to 50 MB.', 'Choisissez un MP4 ou WebM de 50 Mo maximum.'],
+  ['Choose JPEG, PNG or WebP up to 10 MB.', 'Choisissez un JPEG, PNG ou WebP de 10 Mo maximum.'],
   ['Draft shortlist cleared.', 'Sélection effacée.'],
   [
     'This draft holds up to 100 faces. Remove a face before adding another.',
@@ -459,6 +493,16 @@ function originalCount(value: string, allowZero = false): string | null {
 export function agencyEvidenceText(value: string, locale: 'en' | 'fr'): string {
   const exact = (locale === 'fr' ? frenchText : englishText).get(value);
   if (exact !== undefined) return exact;
+  const ui = displayUiText(value, locale);
+  if (ui !== value) return ui;
+  const briefSize = /^Choose a non-empty brief up to ([1-9]\d{0,3}) MB\.$/.exec(value);
+  if (locale === 'fr' && briefSize)
+    return `Choisissez un document non vide de ${briefSize[1]} Mo maximum.`;
+  const frenchBriefSize = /^Choisissez un document non vide de ([1-9]\d{0,3}) Mo maximum\.$/.exec(
+    value,
+  );
+  if (locale === 'en' && frenchBriefSize)
+    return `Choose a non-empty brief up to ${frenchBriefSize[1]} MB.`;
   if (value.length > 512) return value;
   if (locale === 'en') {
     const minimum =

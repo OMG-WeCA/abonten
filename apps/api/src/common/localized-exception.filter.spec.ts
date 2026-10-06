@@ -124,4 +124,67 @@ describe('localized API errors', () => {
       'Le contenu des conditions a changé. Rechargez-le, consultez-le et confirmez à nouveau.',
     );
   });
+  it('keeps document rejection and planner correction guidance in French with unchanged English contracts', () => {
+    for (const [message, expected] of [
+      [
+        'Use PDF, DOCX, PPTX, XLSX, TXT, CSV, TSV or Markdown. Legacy DOC, PPT and XLS files must be exported first.',
+        /Exportez d’abord les anciens fichiers DOC, PPT et XLS/,
+      ],
+      [
+        'No readable text found. Scanned documents need a text layer or a text export; OCR is unavailable.',
+        /couche de texte.*reconnaissance optique/,
+      ],
+      ['Document extraction timed out. Try a smaller document or text export.', /export texte/],
+      ['Corrupt Office archive entry.', /endommagée.*Exportez/],
+      [
+        'PowerPoint slide relationships are missing. Export the document again.',
+        /incomplets.*Exportez/,
+      ],
+      ['Unsafe Excel worksheet relationship target.', /non sûres.*export texte/],
+      ['Choose one pricing currency per selected face.', /une seule devise.*face/],
+      [
+        'Choose a valid inclusive start and exclusive end date within 366 days.',
+        /début incluse.*fin exclue.*366/,
+      ],
+    ] as const) {
+      assert.match(localizedErrorMessage(message, 400), expected);
+      const error = new BadRequestException({ message, code: 'unchanged' });
+      assert.equal(localizeHttpError(error, 'en').message, message);
+      assert.equal(localizeHttpError(error, 'fr').code, 'unchanged');
+    }
+    assert.match(
+      localizedErrorMessage('selectedFaceIds must contain no more than 24 elements', 400),
+      /24.*faces sélectionnées/,
+    );
+    assert.match(
+      localizedErrorMessage('briefText must be shorter than or equal to 60000 characters', 400),
+      /texte du brief.*60000/,
+    );
+    assert.doesNotMatch(
+      localizedErrorMessage('Unsafe PRIVATE_CUSTOM document content', 400),
+      /PRIVATE_CUSTOM/,
+    );
+  });
+  it('keeps provider retry/escalation guidance actionable without translating diagnostic schema codes', () => {
+    const result = localizeHttpError(
+      new ServiceUnavailableException({
+        message: 'The AI provider is unavailable. Contact your administrator.',
+        providerCode: 'invalid_api_key',
+      }),
+      'fr',
+    );
+    assert.match(String(result.message), /Contactez votre administrateur/);
+    assert.equal(result.providerCode, 'invalid_api_key');
+    assert.match(
+      localizedErrorMessage('The AI planner timed out. Please retry manually.', 504),
+      /délai.*manuellement/,
+    );
+    assert.match(
+      localizedErrorMessage(
+        'The planning context is too large. Shorten the brief or conversation.',
+        413,
+      ),
+      /Raccourcissez le brief/,
+    );
+  });
 });

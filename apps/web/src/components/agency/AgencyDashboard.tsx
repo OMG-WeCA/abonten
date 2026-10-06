@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { useTheme } from '../ThemeProvider';
+import { LanguageSwitcher, useLocale } from '../LocaleProvider';
 import { AccountLoading, AccountRecovery } from '../account/WorkspaceFrame';
 import { workspaceAccessState } from '../../lib/account-session-recovery';
 import { SUPPORTED_MARKETS, findMarket, marketLabel } from '../../lib/markets';
@@ -73,6 +74,7 @@ interface OptionSnapshot {
 
 export function AgencyDashboard() {
   const auth = useAuth();
+  const { locale } = useLocale();
   const router = useRouter();
   const access = workspaceAccessState({
     ready: auth.ready,
@@ -88,7 +90,7 @@ export function AgencyDashboard() {
   if (access === 'recovery')
     return (
       <AccountRecovery
-        locale={auth.profile?.locale}
+        locale={locale}
         onRetry={auth.refreshAccount}
         onSignOut={async () => {
           await auth.signOut();
@@ -96,19 +98,16 @@ export function AgencyDashboard() {
         }}
       />
     );
-  if (access !== 'ready' || !auth.activeOrganization)
-    return <AccountLoading locale={auth.profile?.locale} />;
+  if (access !== 'ready' || !auth.activeOrganization) return <AccountLoading locale={locale} />;
   if (!auth.capabilities.includes('MARKETPLACE_VIEW'))
     return (
       <div className="grid min-h-screen place-items-center bg-background p-6">
         <div>
           <h1 className="text-2xl font-bold">
-            {auth.profile?.locale === 'fr'
-              ? 'Accès au marché requis'
-              : 'Marketplace access required'}
+            {locale === 'fr' ? 'Accès au marché requis' : 'Marketplace access required'}
           </h1>
           <button className="agency-secondary-button mt-4" onClick={() => router.push('/settings')}>
-            {auth.profile?.locale === 'fr' ? 'Paramètres' : 'Settings'}
+            {locale === 'fr' ? 'Paramètres' : 'Settings'}
           </button>
         </div>
       </div>
@@ -127,7 +126,7 @@ function AgencyWorkspace() {
   } = useAuth();
   const { theme, toggle } = useTheme();
   const router = useRouter();
-  const locale = profile?.locale === 'fr' ? 'fr' : 'en';
+  const { locale } = useLocale();
   const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
   const orgId = org!.organizationId;
   const userId = profile!.id;
@@ -737,6 +736,9 @@ function AgencyWorkspace() {
           <span>{t('Flight & filters', 'Dates et filtres')}</span>
           {format && <span className="agency-filter-count">1</span>}
         </button>
+        <div className="agency-desktop-language">
+          <LanguageSwitcher />
+        </div>
         <button
           className="agency-icon-button agency-theme-toggle"
           onClick={toggle}
@@ -757,6 +759,9 @@ function AgencyWorkspace() {
             className="agency-account-menu agency-panel"
             aria-label={t('Workspace options', 'Options de l’espace')}
           >
+            <div className="agency-menu-language">
+              <LanguageSwitcher />
+            </div>
             <button onClick={() => router.push('/settings')}>
               <Settings2 size={17} />
               {t('Settings', 'Réglages')}
@@ -1160,7 +1165,7 @@ function AgencyWorkspace() {
         </div>
         {actionError && (
           <p className="agency-toast" role="alert">
-            {actionError}
+            {agencyEvidenceText(actionError, locale)}
             <button
               onClick={() => setActionError('')}
               aria-label={t('Dismiss error', 'Fermer l’erreur')}

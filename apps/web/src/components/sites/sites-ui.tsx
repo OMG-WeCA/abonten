@@ -14,6 +14,8 @@ import { getSitesCopy } from '../../lib/sites-locale';
 import { fetchAssetHeaders } from '../../lib/api';
 import type { AssetDisplay, SiteStatus, SiteSummary } from '../../lib/sites-api';
 import type { SiteLocale } from '../../lib/sites-locale';
+import { useLocale } from '../LocaleProvider';
+import { displayUiText } from '../../lib/display-ui-text';
 
 export const inputClass =
   'w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-foreground outline-none transition placeholder:text-muted/70 focus:border-primary focus:ring-2 focus:ring-primary/25';
@@ -33,6 +35,7 @@ export function Field({
   children: ReactNode;
   className?: string;
 }) {
+  const { locale } = useLocale();
   return (
     <div className={className}>
       <label htmlFor={htmlFor} className="block text-sm font-semibold text-foreground">
@@ -41,7 +44,7 @@ export function Field({
       <div className="mt-1.5">{children}</div>
       {error ? (
         <p className="mt-1 text-xs font-medium text-error" role="alert">
-          {error}
+          {displayUiText(error, locale)}
         </p>
       ) : null}
       {hint && !error && <p className="mt-1 text-xs leading-5 text-muted">{hint}</p>}

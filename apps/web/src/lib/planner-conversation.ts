@@ -1,5 +1,6 @@
 import type { AssistantStatus, PlannerContext, PlannerReply, PlannerRequest } from './agency-api';
 import { planningDays, type PlanningWindow } from './agency-planning';
+import { parseAmount } from './number-format';
 
 export interface PlanningMessage {
   role: 'user' | 'assistant';
@@ -76,7 +77,7 @@ export function buildPlannerContext(
     if (value && (key !== 'format' || FORMATS.has(value)))
       filters[key] = boundedText(value, key === 'search' ? 160 : 80);
   }
-  const amount = Number(budget);
+  const amount = parseAmount(budget) ?? NaN;
   const days = planningDays(window);
   const selectedFaceIds = ids(input?.selectedFaceIds, 24);
   const faceCurrencies = [

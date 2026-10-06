@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { CheckCircle2, Loader2, MapPin, ShieldAlert } from 'lucide-react';
 import { verifySiteLocation, type SiteDetail } from '../../lib/sites-api';
+import { locationVerificationMessage } from '../../lib/location-verification-locale';
+import { displayNumber, displayUtcTimestamp } from '../../lib/locale-format';
 
 export function LocationVerification({
   site,
@@ -133,17 +135,13 @@ export function LocationVerification({
           <summary className="cursor-pointer font-semibold">
             {t('Check details', 'Détails du contrôle')}
           </summary>
-          <p className="mt-1">{result.message}</p>
+          <p className="mt-1">{locationVerificationMessage(result, locale)}</p>
           <p>
-            {t('Tolerance', 'Tolérance')} : {result.toleranceMeters} m
+            {t('Tolerance', 'Tolérance')} : {displayNumber(result.toleranceMeters, locale)} m
             {result.distanceMeters !== null
-              ? ` · ${t('Distance', 'Distance')} : ${Math.round(result.distanceMeters)} m`
+              ? ` · ${t('Distance', 'Distance')} : ${displayNumber(Math.round(result.distanceMeters), locale)} m`
               : ''}{' '}
-            · {t('Checked', 'Contrôlé')} :{' '}
-            {new Date(result.checkedAt).toLocaleString(locale === 'fr' ? 'fr-FR' : 'en', {
-              timeZone: 'UTC',
-            })}{' '}
-            UTC
+            · {t('Checked', 'Contrôlé')} : {displayUtcTimestamp(result.checkedAt, locale)}
           </p>
           <p>
             {t('Policy', 'Règle')} : {result.policyVersion}
@@ -151,12 +149,13 @@ export function LocationVerification({
           </p>
           {result.lastAttempt && (
             <p className="mt-2">
-              {t('Latest attempt', 'Dernière tentative')} : {result.lastAttempt.message} ·{' '}
-              {new Date(result.lastAttempt.checkedAt).toLocaleString(
-                locale === 'fr' ? 'fr-FR' : 'en',
-                { timeZone: 'UTC' },
+              {t('Latest attempt', 'Dernière tentative')} :{' '}
+              {locationVerificationMessage(
+                { ...result.lastAttempt, policyVersion: result.policyVersion },
+                locale,
+                true,
               )}{' '}
-              UTC
+              · {displayUtcTimestamp(result.lastAttempt.checkedAt, locale)}
             </p>
           )}
         </details>

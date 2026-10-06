@@ -26,6 +26,18 @@ const defaults = {
   briefConsentText: null,
 };
 
+test('French budget input sends the same canonical amount as English without guessing ambiguous grouping', () => {
+  assert.deepEqual(buildPlannerContext(undefined, window, '3 000 000,50', 'NGN').budget, {
+    amount: 3000000.5,
+    currency: 'NGN',
+  });
+  assert.deepEqual(buildPlannerContext(undefined, window, '3000000.50', 'NGN').budget, {
+    amount: 3000000.5,
+    currency: 'NGN',
+  });
+  assert.equal(buildPlannerContext(undefined, window, '3,000', 'NGN').budget, undefined);
+});
+
 test('ready UI requires the exact configured provider/model and availability', () => {
   assert.equal(isOpenAiReady(status), true);
   for (const value of [

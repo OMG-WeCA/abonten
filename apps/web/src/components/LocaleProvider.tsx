@@ -27,10 +27,25 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   }, [profile?.locale]);
   useEffect(() => {
     document.documentElement.lang = locale;
-    document.title =
+    const title =
       locale === 'fr'
         ? 'Abonten — Sites publicitaires et intelligence géographique'
         : 'Abonten — Outdoor inventory & location intelligence';
+    document.title = title;
+    const description =
+      locale === 'fr'
+        ? 'Découvrez les sites publicitaires extérieurs, comparez les emplacements et préparez vos sélections de campagne en Afrique de l’Ouest et centrale.'
+        : 'Discover outdoor inventory, compare locations and prepare campaign shortlists across West & Central Africa.';
+    const socialDescription =
+      locale === 'fr'
+        ? 'Présentez les sites publicitaires extérieurs, consultez les médias de référence et planifiez vos campagnes avec les emplacements, les coûts et les sources clairement indiqués.'
+        : 'Present outdoor inventory, inspect reference media and plan campaigns with clear location, cost and source context.';
+    for (const [selector, content] of [
+      ['meta[name="description"]', description],
+      ['meta[property="og:title"]', title],
+      ['meta[property="og:description"]', socialDescription],
+    ])
+      document.querySelector(selector)?.setAttribute('content', content);
   }, [locale]);
   const setLocale = async (value: Locale) => {
     setSelectedLocale(value);

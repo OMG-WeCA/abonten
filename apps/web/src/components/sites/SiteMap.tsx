@@ -22,7 +22,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Copy, Check } from 'lucide-react';
 import { getSitesCopy, type SiteLocale } from '../../lib/sites-locale';
-import { LOCAL_REVIEW_OSM_MAP, SITE_MAP_ENABLED, SITE_MAP_TILES_URL, SITE_MAP_TILE_OPTIONS } from './mapbox-tiles';
+import { displayNumber } from '../../lib/locale-format';
+import {
+  LOCAL_REVIEW_OSM_MAP,
+  SITE_MAP_ENABLED,
+  SITE_MAP_TILES_URL,
+  SITE_MAP_TILE_OPTIONS,
+} from './mapbox-tiles';
 
 export { MAPBOX_PUBLIC_TOKEN } from './mapbox-tiles';
 
@@ -184,18 +190,20 @@ export function SiteMapView({
         const L = await import('leaflet');
         await import('leaflet/dist/leaflet.css');
         if (cancelled || !containerRef.current) return;
-        const map = L.map(containerRef.current, { zoomControl: false }).setView([latitude, longitude], 16);
+        const map = L.map(containerRef.current, { zoomControl: false }).setView(
+          [latitude, longitude],
+          16,
+        );
         mapRef.current = map;
         resizeObserver = new ResizeObserver(() => map.invalidateSize());
         resizeObserver.observe(containerRef.current);
 
-        const tiles = L.tileLayer(
-          SITE_MAP_TILES_URL,
-          SITE_MAP_TILE_OPTIONS,
-        ).addTo(map);
+        const tiles = L.tileLayer(SITE_MAP_TILES_URL, SITE_MAP_TILE_OPTIONS).addTo(map);
         let loadedTile = false;
         let tileErrors = 0;
-        tiles.on('tileload', () => { loadedTile = true; });
+        tiles.on('tileload', () => {
+          loadedTile = true;
+        });
         tiles.on('tileerror', () => {
           tileErrors += 1;
           if (!loadedTile && tileErrors >= 3) setFailed(true);
@@ -214,7 +222,12 @@ export function SiteMapView({
         markerEl.appendChild(pin);
         markerEl.appendChild(label);
         L.marker([latitude, longitude], {
-          icon: L.divIcon({ html: markerEl, className: '', iconSize: [22, 44], iconAnchor: [11, 22] }),
+          icon: L.divIcon({
+            html: markerEl,
+            className: '',
+            iconSize: [22, 44],
+            iconAnchor: [11, 22],
+          }),
         }).addTo(map);
 
         if (orientationDeg != null && Number.isFinite(orientationDeg)) {
@@ -233,7 +246,12 @@ export function SiteMapView({
           arrowInner.appendChild(arrowLabel);
           arrowEl.appendChild(arrowInner);
           L.marker([latitude, longitude], {
-            icon: L.divIcon({ html: arrowEl, className: '', iconSize: [22, 44], iconAnchor: [11, 22] }),
+            icon: L.divIcon({
+              html: arrowEl,
+              className: '',
+              iconSize: [22, 44],
+              iconAnchor: [11, 22],
+            }),
           }).addTo(map);
         }
 
@@ -276,6 +294,7 @@ export function SiteMapView({
   }, [showRadius]);
 
   const coordinates = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+  const displayedCoordinates = `${displayNumber(latitude, locale, { minimumFractionDigits: 6, maximumFractionDigits: 6 })} ; ${displayNumber(longitude, locale, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}`;
   const copyCoords = () => {
     void navigator.clipboard?.writeText(coordinates).then(() => {
       setCopied(true);
@@ -322,7 +341,7 @@ export function SiteMapView({
               <div className="absolute inset-0 z-20 grid place-items-center bg-[#0A0E27]/95 px-6 text-center">
                 <div className="space-y-3">
                   <p className="text-sm text-white/80">{copy.detail.mapFailed}</p>
-                  <p className="text-sm font-bold text-white">{coordinates}</p>
+                  <p className="text-sm font-bold text-white">{displayedCoordinates}</p>
                 </div>
               </div>
             )}
@@ -331,7 +350,9 @@ export function SiteMapView({
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 bg-surface-2 px-6 text-center">
             <p className="max-w-md text-sm text-muted">{copy.detail.mapUnavailable}</p>
             <div className="flex items-center gap-3">
-              <code className="rounded-lg bg-surface px-3 py-2 text-sm font-bold">{coordinates}</code>
+              <code className="rounded-lg bg-surface px-3 py-2 text-sm font-bold">
+                {displayedCoordinates}
+              </code>
               <button
                 type="button"
                 data-testid="site-map-copy"

@@ -52,11 +52,13 @@ test('formatArea rounds floating-point noise and displays square units in both l
   assert.equal(formatArea(5.76 * 8.64, 'm', 'en'), '49.77 m²');
   assert.equal(formatArea(5.76 * 8.64, 'm', 'fr'), '49,77 m²');
   assert.equal(formatArea(150, 'ft', 'en'), '150 ft²');
+  assert.equal(formatArea(150, 'ft', 'fr'), '150 pieds carrés');
   assert.equal(formatArea(150, undefined, 'en'), '150');
 });
 
 test('formatArea preserves unknown, zero and small non-zero measurements', () => {
-  for (const area of [null, undefined, NaN, Infinity]) assert.equal(formatArea(area, 'm', 'en'), '—');
+  for (const area of [null, undefined, NaN, Infinity])
+    assert.equal(formatArea(area, 'm', 'en'), '—');
   assert.equal(formatArea(0, 'm', 'en'), '0 m²');
   assert.equal(formatArea(0.0006, 'm', 'en'), '0.0006 m²');
 });

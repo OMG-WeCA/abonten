@@ -3,6 +3,8 @@
 import { Camera, Loader2, PlusCircle, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Field, inputClass } from './sites-ui';
+import { displayNumber } from '../../lib/locale-format';
+import { agencyEvidenceText } from '../../lib/agency-evidence-locale';
 
 export interface PendingSiteMedia {
   id: string;
@@ -179,10 +181,8 @@ export function MediaCapturePicker({
             deviceCapturedAt: capturedAt,
           }
         : {
-            missingMetadataReason: t(
-              'Device location was unavailable during camera capture.',
-              'La position de l’appareil était indisponible lors de la prise de photo.',
-            ),
+            // Persist canonical controlled evidence; localize only its display.
+            missingMetadataReason: 'Device location was unavailable during camera capture.',
           }),
     });
     closeCamera();
@@ -316,7 +316,7 @@ export function MediaCapturePicker({
       )}
       {error && (
         <p role="alert" className="text-sm text-error">
-          {error}
+          {agencyEvidenceText(error, locale === 'fr' ? 'fr' : 'en')}
         </p>
       )}
       <ul className="space-y-3">
@@ -327,7 +327,11 @@ export function MediaCapturePicker({
               <div className="min-w-0 flex-1">
                 <p className="break-all text-sm font-semibold">{media.file.name}</p>
                 <p className="mt-1 text-xs text-muted">
-                  {(media.file.size / 1024 / 1024).toFixed(1)} MB ·{' '}
+                  {displayNumber(media.file.size / 1024 / 1024, locale, {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}{' '}
+                  {t('MB', 'Mo')} ·{' '}
                   {media.captureMethod === 'device_camera'
                     ? t(
                         'Camera capture · device evidence, unverified',
@@ -340,8 +344,19 @@ export function MediaCapturePicker({
                 </p>
                 {media.deviceLatitude !== undefined && (
                   <p className="mt-1 text-xs text-muted">
-                    GPS {media.deviceLatitude.toFixed(5)}, {media.deviceLongitude?.toFixed(5)} · ±
-                    {Math.round(media.deviceAccuracyMeters ?? 0)} m
+                    GPS{' '}
+                    {displayNumber(media.deviceLatitude, locale, {
+                      minimumFractionDigits: 5,
+                      maximumFractionDigits: 5,
+                    })}{' '}
+                    ;{' '}
+                    {media.deviceLongitude !== undefined
+                      ? displayNumber(media.deviceLongitude, locale, {
+                          minimumFractionDigits: 5,
+                          maximumFractionDigits: 5,
+                        })
+                      : '—'}{' '}
+                    · ±{displayNumber(Math.round(media.deviceAccuracyMeters ?? 0), locale)} m
                   </p>
                 )}
               </div>
@@ -357,7 +372,7 @@ export function MediaCapturePicker({
             </div>
             {errors[media.id] && (
               <p role="alert" className="mt-2 text-sm text-error">
-                {errors[media.id]}{' '}
+                {agencyEvidenceText(errors[media.id], locale === 'fr' ? 'fr' : 'en')}{' '}
                 <span>
                   {t(
                     'Remove and choose a replacement file, or retry after correcting the issue.',
@@ -398,7 +413,10 @@ export function MediaCapturePicker({
                 >
                   <input
                     id={`${id}-${media.id}-reason`}
-                    value={media.missingMetadataReason}
+                    value={agencyEvidenceText(
+                      media.missingMetadataReason,
+                      locale === 'fr' ? 'fr' : 'en',
+                    )}
                     disabled={disabled}
                     maxLength={500}
                     onChange={(event) =>
@@ -455,7 +473,7 @@ export function MediaCapturePicker({
             </div>
             {error && (
               <p role="alert" className="mt-2 text-sm text-error">
-                {error}
+                {agencyEvidenceText(error, locale === 'fr' ? 'fr' : 'en')}
               </p>
             )}
             <video

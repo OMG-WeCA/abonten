@@ -78,7 +78,7 @@ The reply includes `mode`, `provider`, `model`, `aiAvailable`, `message`,
   Unknown expiry means unknown freshness, not current validity. Viewing orientation
   is not viewing angle; population/POIs/road proximity are not audience exposure.
 - `geographicContextState`: `loaded | unavailable | temporarily_unavailable |
-  read_budget_exhausted`. At most six context reads occur per request; production
+read_budget_exhausted`. At most six context reads occur per request; production
   metadata is still projected for every included board. Processing failures degrade
   explicitly, but authorization/listing/cancellation failures stop the request.
   Planner geographic SQL statements and GDAL child work have four-second bounds;
@@ -151,3 +151,20 @@ have a 20-second deadline; unfinished timed-out connections close. Extraction ha
 its separate 15-second child deadline. Client disconnect aborts the parser, and
 capacity is held until its child actually closes. Admission rejection starts no
 buffering or parser child. Authentication/capability guards run before admission.
+
+## English and French display
+
+The web display translates controlled pricing, eligibility, provenance, assumption,
+enrichment and parser-warning copy through `agency-evidence-locale.ts`. Canonical
+API facts, identifiers, units and source text remain unchanged. Unknown source
+attribution, manual reviewer notes, uploaded document text and model-generated
+prose are preserved rather than guessed or translated through another provider.
+The configured planner receives the selected language explicitly.
+
+Calendar-only dates stay date-only, explicit instants display in UTC, and an EXIF
+time without a timezone stays unknown. French numbers use decimal commas and
+locale grouping. Budget input and chat context share the existing amount parser:
+`3 000 000,50` and `3000000.50` both produce numeric `3000000.5`; ambiguous `3,000`
+is rejected instead of being interpreted as a different amount. Stored location
+decisions and exact automatic rejection copy render in the current UI language
+without repeating geocoding or altering historical evidence.

@@ -60,7 +60,7 @@ export function parseAmount(raw: string): number | null {
 }
 
 /** Locale-aware currency display: fr grouping uses spaces ('1 234 500 NGN').
-* Up to 2 decimals so small rates ('12,50') do not round to a different amount. */
+ * Up to 2 decimals so small rates ('12,50') do not round to a different amount. */
 export function formatMoney(
   amount: number,
   currency: string,
@@ -82,10 +82,12 @@ export function formatArea(
   locale: 'en' | 'fr' | undefined,
 ): string {
   if (area == null || !Number.isFinite(area)) return '—';
-  const options = area !== 0 && Math.abs(area) < 0.01
-    ? { maximumSignificantDigits: 2 }
-    : { maximumFractionDigits: 2 };
+  const options =
+    area !== 0 && Math.abs(area) < 0.01
+      ? { maximumSignificantDigits: 2 }
+      : { maximumFractionDigits: 2 };
   const value = new Intl.NumberFormat(locale === 'fr' ? 'fr-FR' : 'en-US', options).format(area);
   const unit = units?.trim();
+  if (locale === 'fr' && unit === 'ft') return `${value} pieds carrés`;
   return unit ? `${value} ${unit}²` : value;
 }
