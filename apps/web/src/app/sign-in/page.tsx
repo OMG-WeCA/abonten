@@ -4,6 +4,8 @@ import { ArrowLeft, ArrowRight, CheckCircle2, KeyRound, Mail, ShieldCheck } from
 import Link from 'next/link';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useLocale, LanguageSwitcher } from '../../components/LocaleProvider';
+import { authCopy } from '../../lib/auth-copy';
 import { useAuth } from '../../components/auth/AuthProvider';
 import { ApiError, apiUrl, publicJson, type StoredSession } from '../../lib/api';
 
@@ -11,6 +13,8 @@ type SignInStage = 'email' | 'code';
 
 export default function SignInPage() {
   const router = useRouter();
+  const { locale } = useLocale();
+  const copy = authCopy[locale];
   const { profile, ready, startSession } = useAuth();
   const [stage, setStage] = useState<SignInStage>('email');
   const [email, setEmail] = useState('');
@@ -18,9 +22,6 @@ export default function SignInPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [microsoftEnabled, setMicrosoftEnabled] = useState(false);
-  const [microsoftUnavailableReason, setMicrosoftUnavailableReason] = useState(
-    'Microsoft sign-in isn’t available. Use an email code instead.',
-  );
   const codeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -35,9 +36,6 @@ export default function SignInPage() {
     }>('/api/auth/config')
       .then((config) => {
         setMicrosoftEnabled(config.microsoftEnabled);
-        if (config.microsoftUnavailableReason) {
-          setMicrosoftUnavailableReason(config.microsoftUnavailableReason);
-        }
       })
       .catch(() => setMicrosoftEnabled(false));
   }, []);
@@ -50,10 +48,10 @@ export default function SignInPage() {
     setLoading(true);
     setMessage('');
     try {
-      await publicJson('/api/auth/email-code/request', { email });
+      await publicJson('/api/auth/email-code/request', { email, locale });
       setStage('code');
     } catch (error) {
-      setMessage(errorMessage(error));
+      setMessage(errorMessage(error, locale));
     } finally {
       setLoading(false);
     }
@@ -72,11 +70,12 @@ export default function SignInPage() {
       const session = await publicJson<StoredSession>('/api/auth/email-code/verify', {
         email,
         code,
+        locale,
       });
       await startSession(session);
       router.replace('/dashboard');
     } catch (error) {
-      setMessage(errorMessage(error));
+      setMessage(errorMessage(error, locale, true));
     } finally {
       setLoading(false);
     }
@@ -98,22 +97,23 @@ export default function SignInPage() {
               Abonten
             </Link>
             <div className="mt-28 max-w-lg">
-              <p className="text-sm font-semibold text-foreground">Account access</p>
+              <p className="text-sm font-semibold text-foreground">{copy.access}</p>
               <h1 className="mt-5 text-5xl font-extrabold tracking-[-0.055em] text-balance">
-                Your outdoor work, kept in context.
+                {copy.hero}
               </h1>
-              <p className="mt-6 max-w-md text-lg leading-8 text-muted">
-                Sign in with a short code. Your organization and account settings stay with you.
-              </p>
+              <p className="mt-6 max-w-md text-lg leading-8 text-muted">{copy.intro}</p>
             </div>
           </div>
           <div className="relative border-l-2 border-primary pl-5 text-sm leading-6 text-muted">
-            A code expires after ten minutes. We never ask you to create or remember a password.
+            {copy.expiry}
           </div>
           <div className="absolute -bottom-28 -right-24 h-80 w-80 rounded-full border-[28px] border-primary/15" />
         </section>
 
         <section className="flex flex-col justify-center px-6 py-10 sm:px-10 lg:px-12">
+          <div className="mb-5 flex justify-end">
+            <LanguageSwitcher />
+          </div>
           <div className="mb-12 flex items-center justify-between lg:hidden">
             <Link
               href="/"
@@ -128,7 +128,7 @@ export default function SignInPage() {
               href="/"
               className="inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-semibold text-muted transition hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2"
             >
-              About
+              {copy.about}
             </Link>
           </div>
 
@@ -138,12 +138,8 @@ export default function SignInPage() {
                 <div className="mb-5 grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary">
                   <Mail className="h-5 w-5" />
                 </div>
-                <h2 className="text-3xl font-bold tracking-[-0.04em]">
-                  Sign in or create an account
-                </h2>
-                <p className="mt-3 leading-6 text-muted">
-                  We’ll send a six-digit code to your work email.
-                </p>
+                <h2 className="text-3xl font-bold tracking-[-0.04em]">{copy.heading}</h2>
+                <p className="mt-3 leading-6 text-muted">{copy.codeIntro}</p>
               </div>
               <form onSubmit={requestCode} className="space-y-5">
                 <div>
@@ -151,7 +147,7 @@ export default function SignInPage() {
                     htmlFor="email"
                     className="mb-2 block text-sm font-semibold text-foreground"
                   >
-                    Email address
+                    {copy.email}
                   </label>
                   <input
                     id="email"
@@ -160,7 +156,7 @@ export default function SignInPage() {
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     required
-                    placeholder="you@company.com"
+                    placeholder={copy.placeholder}
                     className="h-12 w-full rounded-lg border border-border bg-background px-3.5 text-foreground outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
@@ -170,7 +166,7 @@ export default function SignInPage() {
                   disabled={loading}
                   className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white transition hover:bg-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2 disabled:cursor-wait disabled:opacity-70"
                 >
-                  {loading ? 'Sending code…' : 'Email me a code'}
+                  {loading ? copy.sending : copy.send}
                   {!loading && <ArrowRight className="h-4 w-4" />}
                 </button>
               </form>
@@ -182,10 +178,10 @@ export default function SignInPage() {
                   }}
                   className="mt-4 flex h-11 w-full items-center justify-center rounded-lg border border-border text-sm font-semibold text-foreground transition hover:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2"
                 >
-                  Continue with Microsoft
+                  {copy.microsoft}
                 </button>
               ) : (
-                <p className="mt-5 text-sm leading-6 text-muted">{microsoftUnavailableReason}</p>
+                <p className="mt-5 text-sm leading-6 text-muted">{copy.unavailable}</p>
               )}
             </div>
           ) : (
@@ -199,15 +195,15 @@ export default function SignInPage() {
                 }}
                 className="mb-8 inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-muted transition hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2"
               >
-                <ArrowLeft className="h-4 w-4" /> Use a different email
+                <ArrowLeft className="h-4 w-4" /> {copy.different}
               </button>
               <div className="mb-8">
                 <div className="mb-5 grid h-11 w-11 place-items-center rounded-xl bg-primary/10 text-primary">
                   <KeyRound className="h-5 w-5" />
                 </div>
-                <h2 className="text-3xl font-bold tracking-[-0.04em]">Check your inbox</h2>
+                <h2 className="text-3xl font-bold tracking-[-0.04em]">{copy.inbox}</h2>
                 <p className="mt-3 leading-6 text-muted">
-                  We sent a code to <span className="font-semibold text-foreground">{email}</span>.
+                  {copy.sent} <span className="font-semibold text-foreground">{email}</span>.
                 </p>
               </div>
               <form onSubmit={verifyCode} className="space-y-5">
@@ -216,7 +212,7 @@ export default function SignInPage() {
                     htmlFor="code"
                     className="mb-2 block text-sm font-semibold text-foreground"
                   >
-                    Six-digit code
+                    {copy.code}
                   </label>
                   <input
                     ref={codeRef}
@@ -238,7 +234,7 @@ export default function SignInPage() {
                   disabled={loading || code.length !== 6}
                   className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white transition hover:bg-primary-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2 disabled:cursor-not-allowed disabled:opacity-55"
                 >
-                  {loading ? 'Checking code…' : 'Continue'}
+                  {loading ? copy.checking : copy.continue}
                   {!loading && <ArrowRight className="h-4 w-4" />}
                 </button>
               </form>
@@ -248,16 +244,13 @@ export default function SignInPage() {
                 onClick={() => void sendCode()}
                 className="mt-5 min-h-10 rounded-lg px-1 text-sm font-semibold text-foreground transition hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2 disabled:opacity-60"
               >
-                Send another code
+                {copy.resend}
               </button>
             </div>
           )}
           <div className="mx-auto mt-10 flex max-w-sm items-start gap-3 text-xs leading-5 text-muted">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-            <p>
-              Your organization context stays with your account. You can switch later if you belong
-              to more than one.
-            </p>
+            <p>{copy.context}</p>
           </div>
         </section>
       </div>
@@ -277,6 +270,11 @@ function FormMessage({ message }: { message: string }) {
   );
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.';
+function errorMessage(error: unknown, locale: 'en' | 'fr', verification = false): string {
+  const copy = authCopy[locale];
+  if (!(error instanceof ApiError)) return copy.generic;
+  if (error.status === 401) return copy.invalid;
+  if (error.status === 429) return verification ? copy.verifyLimit : copy.requestLimit;
+  if (error.status === 503) return copy.authUnavailable;
+  return copy.generic;
 }

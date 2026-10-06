@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useLocale } from '../LocaleProvider';
 import { Sun, Moon } from 'lucide-react';
 
 interface Ad {
@@ -43,6 +44,7 @@ const STARS = [
  * state/interval; no IntersectionObserver, so it can never go blank.
  */
 export function BillboardShowcase() {
+  const { locale } = useLocale();
   const [night, setNight] = useState(true);
   const [index, setIndex] = useState(0);
 
@@ -90,7 +92,7 @@ export function BillboardShowcase() {
               }}
             >
               <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/80">
-                Abonten · Live
+                Abonten · Illustration
               </span>
               <div>
                 <div className="text-3xl font-black uppercase leading-none text-white drop-shadow sm:text-4xl">
@@ -120,13 +122,15 @@ export function BillboardShowcase() {
           type="button"
           onClick={() => setNight((n) => !n)}
           className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-foreground transition-colors hover:border-primary/60 hover:text-primary"
-          aria-label="Toggle day and night"
+          aria-label={locale === 'fr' ? 'Passer du jour à la nuit' : 'Toggle day and night'}
         >
           {night ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-          {night ? 'Night' : 'Day'}
+          {night ? (locale === 'fr' ? 'Nuit' : 'Night') : locale === 'fr' ? 'Jour' : 'Day'}
         </button>
         <p className="text-xs uppercase tracking-wider text-muted">
-          Illuminated at night · verified by day
+          {locale === 'fr'
+            ? 'Éclairage de nuit · vue de jour'
+            : 'Night illumination · daytime view'}
         </p>
       </div>
     </div>

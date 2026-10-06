@@ -82,8 +82,7 @@ export const sitesCopy = {
       saveDraft: 'Save draft',
       saving: 'Saving…',
       uploadingPhoto: 'Uploading {{label}}…',
-      cancelledUploads:
-        'Upload cancelled. The site is saved — finish the photos on the site page.',
+      cancelledUploads: 'Upload cancelled. The site is saved — finish the photos on the site page.',
 
       requiredFields: 'Fill in the highlighted fields.',
       // Extended format list (SPEC §5.1): all seven inventory formats.
@@ -128,15 +127,17 @@ export const sitesCopy = {
       errorIlluminationHours: 'Lit hours should look like 18:00–06:00 or 24/7.',
       errorCountryBox: 'These coordinates fall outside the selected country — check the pin.',
       errorSummarySuffix: 'fields need attention — start with the first one below.',
-      captureDateRequired: 'Front photos need a capture date. Enter it in the photo list, or leave the photo out.',
+      captureDateRequired:
+        'A front photo with a known capture date is required for listing. Undated uploads can be saved for reference.',
       photoHint:
-        'A front-on photo is required before you submit the site for review. Context and night photos are optional.',
+        'A front-on photo with a known capture date is required before review. Other photos and undated reference uploads are optional.',
       photoFront: 'Front-on',
       photoContext: 'Context',
       photoNight: 'Night',
       photoDiagram: 'Diagram',
       captureDate: 'Capture date',
-      captureDateHint: 'When this photo was taken — leave blank if unknown, never guess.',
+      captureDateHint:
+        'When this photo was taken. Available embedded metadata is extracted on upload; leave blank if unknown.',
       oldPhotoWarning:
         'This photo is over 12 months old — consider replacing it with a current one.',
       photosReady: 'ready to upload',
@@ -158,7 +159,8 @@ export const sitesCopy = {
         'Submit {{label}} for review? A platform admin will list it or send it back with a reason.',
       resubmit: 'Resubmit for review',
       resubmitConfirm: 'Resubmit {{label}} for review?',
-      underReview: 'This site is with the review team. Changes you make now will be seen before the decision.',
+      underReview:
+        'This site is with the review team. Changes you make now will be seen before the decision.',
       rejectedBanner: 'The review team sent this site back:',
       rejectedFix: 'Update the details, then resubmit.',
       photoUploadFailed: 'Some photos didn’t upload. Retry them in the reference photos section.',
@@ -188,7 +190,8 @@ export const sitesCopy = {
       faceRemove: 'Remove',
       faceRemoveConfirm: 'Remove the {{label}} face?',
       digitalHeading: 'Digital screen details',
-      digitalHeadingHint: 'Collected for LED screens — used for creative specs and, later, delivery maths.',
+      digitalHeadingHint:
+        'Collected for LED screens — used for creative specs and, later, delivery maths.',
       pixelDimensions: 'Screen resolution (px)',
       pixelWidth: 'Width (px)',
       pixelHeight: 'Height (px)',
@@ -243,9 +246,11 @@ export const sitesCopy = {
       notFound: 'This site is not in your organization, or the link is wrong.',
       digitalRequired: 'Complete the digital specs on every bookable face.',
       permitExpired: 'The recorded permit has expired. Update it before offering this site.',
-      bookingSetupNeeded: 'This site is listed, but agencies cannot find it in inventory until these details are complete:',
+      bookingSetupNeeded:
+        'This site is listed, but agencies cannot find it in inventory until these details are complete:',
       availability: 'Unavailable dates',
-      availabilityIntro: 'Block dates when a face cannot be sold, such as maintenance or an existing offline commitment.',
+      availabilityIntro:
+        'Block dates when a face cannot be sold, such as maintenance or an existing offline commitment.',
       availabilityFace: 'Face',
       availabilityStart: 'First unavailable day',
       availabilityEnd: 'Available again on',
@@ -292,10 +297,12 @@ export const sitesCopy = {
       mapRadiusToggle: '500 m radius',
       mapRadiusNote: '500 m around the pin — residents/roads context, not viewers.',
       mapFailed: 'The map could not load. Copy the coordinates instead:',
-      mapUnavailable: 'No map token is configured for this build. The site coordinates stay available below.',
+      mapUnavailable:
+        'No map token is configured for this build. The site coordinates stay available below.',
       mapCopy: 'Copy coordinates',
       mapCopied: 'Copied',
-      mapOrientationNote: 'The facing arrow shows the direction as entered — it is not independently verified.',
+      mapOrientationNote:
+        'The facing arrow shows the direction as entered — it is not independently verified.',
       mapAttribution: '© Mapbox © OpenStreetMap contributors',
       typeLabel: 'Type',
       subFormatLabel: 'Sub-format',
@@ -348,7 +355,8 @@ export const sitesCopy = {
       emptyTitle: 'Aucun site pour l’instant',
       emptyDetail:
         'Enregistrez votre premier panneau. Il reste un brouillon jusqu’à sa soumission en revue.',
-      viewOnlyDetail: 'Les sites enregistrés par votre équipe apparaîtront ici dès leur enregistrement.',
+      viewOnlyDetail:
+        'Les sites enregistrés par votre équipe apparaîtront ici dès leur enregistrement.',
       notPartnerNotice:
         'Les sites d’affichage appartiennent aux organisations partenaires médias — votre organisation ne gère pas d’inventaire ici.',
       changesRequested: 'Renvoyé avec un motif',
@@ -368,9 +376,12 @@ export const sitesCopy = {
       sectionLocation: 'Emplacement',
       mapTitle: 'Carte de l’emplacement du site',
       mapLoading: 'Chargement de la carte…',
-      mapUnavailable: 'Carte indisponible. Vous pouvez toujours saisir les coordonnées et enregistrer le site.',
-      mapPickHint: 'Cliquez sur la carte pour placer l’épingle, ou saisissez la latitude et la longitude.',
-      mapPinned: 'Épingle placée. Cliquez sur la carte ou modifiez les coordonnées pour la déplacer.',
+      mapUnavailable:
+        'Carte indisponible. Vous pouvez toujours saisir les coordonnées et enregistrer le site.',
+      mapPickHint:
+        'Cliquez sur la carte pour placer l’épingle, ou saisissez la latitude et la longitude.',
+      mapPinned:
+        'Épingle placée. Cliquez sur la carte ou modifiez les coordonnées pour la déplacer.',
       sectionPhysical: 'Caractéristiques',
       sectionIllumination: 'Éclairage',
       sectionPhotos: 'Photos de référence',
@@ -425,7 +436,8 @@ export const sitesCopy = {
       subFormatHint: 'Produit précis dans ce format, ex. 48 faces, camion LED.',
       subFormatPlaceholder: 'ex. 48 faces',
       siteCode: 'Code du site',
-      siteCodeHint: 'Votre propre référence pour cette structure. Laissez vide et nous en générons un.',
+      siteCodeHint:
+        'Votre propre référence pour cette structure. Laissez vide et nous en générons un.',
       market: 'Marché / zone',
       marketHint: 'Là où les planificateurs chercheront ce site.',
       viewingDistance: 'Distance de visibilité (m)',
@@ -434,7 +446,8 @@ export const sitesCopy = {
       elevation: 'Hauteur au-dessus du sol (m)',
       elevationHint: 'Hauteur du centre du panneau au-dessus du sol, mesurée ou estimée.',
       permitRef: 'Référence du permis',
-      permitRefHint: 'Numéro de permis ou licence tel que déclaré — nous le conservons, sans le valider.',
+      permitRefHint:
+        'Numéro de permis ou licence tel que déclaré — nous le conservons, sans le valider.',
       permitExpiry: 'Expiration du permis',
       provenanceHeading: 'Comment le savez-vous ?',
       provenanceHint:
@@ -451,15 +464,17 @@ export const sitesCopy = {
       errorIlluminationHours: 'Les heures d’éclairage doivent ressembler à 18:00–06:00 ou 24/7.',
       errorCountryBox: 'Ces coordonnées se trouvent hors du pays sélectionné — vérifiez l’épingle.',
       errorSummarySuffix: 'champs à corriger — commencez par le premier ci-dessous.',
-      captureDateRequired: 'Les photos de face ont besoin d’une date de prise. Saisissez-la dans la liste des photos, ou retirez la photo.',
+      captureDateRequired:
+        'Une photo de face avec une date de prise connue est requise pour publication. Les imports non datés peuvent être conservés comme référence.',
       photoHint:
-        'Une photo de face est requise avant la soumission en revue. Les photos contextuelles et nocturnes sont facultatives.',
+        'Une photo de face avec une date de prise connue est requise avant revue. Les autres photos et imports de référence non datés sont facultatifs.',
       photoFront: 'De face',
       photoContext: 'Contexte',
       photoNight: 'Nuit',
       photoDiagram: 'Schéma',
       captureDate: 'Date de prise',
-      captureDateHint: 'Quand cette photo a été prise — laissez vide si inconnue, ne devinez jamais.',
+      captureDateHint:
+        'Date de prise de la photo. Les métadonnées intégrées disponibles sont extraites à l’import ; laissez vide si inconnue.',
       oldPhotoWarning:
         'Cette photo a plus de 12 mois — envisagez de la remplacer par une photo récente.',
       photosReady: 'prête(s) à téléverser',
@@ -485,7 +500,8 @@ export const sitesCopy = {
         'Ce site est en cours de revue. Vos modifications seront visibles avant la décision.',
       rejectedBanner: 'L’équipe de revue a renvoyé ce site :',
       rejectedFix: 'Mettez à jour les détails, puis soumettez à nouveau.',
-      photoUploadFailed: 'Certaines photos n’ont pas pu être téléversées. Réessayez dans la section photos de référence.',
+      photoUploadFailed:
+        'Certaines photos n’ont pas pu être téléversées. Réessayez dans la section photos de référence.',
       listedNote: 'Ce site est publié sur la place de marché.',
       noPhotos: 'Aucune photo pour l’instant.',
       frontRequired: 'Ajoutez une photo de référence prise de face.',
@@ -512,7 +528,8 @@ export const sitesCopy = {
       faceRemove: 'Retirer',
       faceRemoveConfirm: 'Retirer la face {{label}} ?',
       digitalHeading: 'Détails de l’écran numérique',
-      digitalHeadingHint: 'Collectés pour les écrans LED — utiles aux specs créatives puis aux calculs de diffusion.',
+      digitalHeadingHint:
+        'Collectés pour les écrans LED — utiles aux specs créatives puis aux calculs de diffusion.',
       pixelDimensions: 'Résolution de l’écran (px)',
       pixelWidth: 'Largeur (px)',
       pixelHeight: 'Hauteur (px)',
@@ -531,7 +548,8 @@ export const sitesCopy = {
       seasonalRemove: 'Retirer la règle',
       seasonalEmpty: 'Aucune règle saisonnière — la grille s’applique toute l’année.',
       metadataHeading: 'Données et provenance enregistrées',
-      metadataIntro: 'Enregistrements en lecture seule attachés à ce site, avec qui a mesuré quoi et quand.',
+      metadataIntro:
+        'Enregistrements en lecture seule attachés à ce site, avec qui a mesuré quoi et quand.',
       metadataEmpty: 'Aucun enregistrement d’enrichissement pour l’instant.',
       metadataBy: 'Source',
       metadataMethod: 'Méthode',
@@ -562,15 +580,18 @@ export const sitesCopy = {
       rateEnd: 'Clôturer',
       rateEndConfirm: 'Clôturer la grille {{label}} aujourd’hui ? Ses tarifs restent conservés.',
       rateWithdraw: 'Retirer',
-      rateWithdrawConfirm: 'Retirer cette future grille tarifaire {{label}} ? La modification sera enregistrée.',
+      rateWithdrawConfirm:
+        'Retirer cette future grille tarifaire {{label}} ? La modification sera enregistrée.',
       noRates: 'Aucune grille tarifaire pour l’instant.',
       rateHint: 'Indiquez au moins un tarif.',
       notFound: "Ce site n'appartient pas à votre organisation, ou le lien est incorrect.",
       digitalRequired: 'Complétez les caractéristiques numériques de chaque face réservable.',
       permitExpired: 'Le permis enregistré a expiré. Mettez-le à jour avant de proposer ce site.',
-      bookingSetupNeeded: 'Ce site est publié, mais les agences ne peuvent pas le trouver dans l’inventaire tant que ces éléments manquent :',
+      bookingSetupNeeded:
+        'Ce site est publié, mais les agences ne peuvent pas le trouver dans l’inventaire tant que ces éléments manquent :',
       availability: 'Dates indisponibles',
-      availabilityIntro: 'Bloquez les dates où une face ne peut pas être vendue, par exemple pour maintenance ou engagement hors plateforme.',
+      availabilityIntro:
+        'Bloquez les dates où une face ne peut pas être vendue, par exemple pour maintenance ou engagement hors plateforme.',
       availabilityFace: 'Face',
       availabilityStart: 'Premier jour indisponible',
       availabilityEnd: 'À nouveau disponible le',
@@ -579,8 +600,10 @@ export const sitesCopy = {
       availabilityEmpty: 'Aucune date indisponible enregistrée pour cette face.',
       availabilityRemove: 'Retirer le blocage',
       availabilityRemoveConfirm: 'Rendre ces dates à nouveau disponibles ?',
-      availabilityError: 'Impossible de mettre à jour la disponibilité. Vérifiez les dates et réessayez.',
-      availabilityWindowError: 'La date de retour à la disponibilité doit être après le premier jour indisponible.',
+      availabilityError:
+        'Impossible de mettre à jour la disponibilité. Vérifiez les dates et réessayez.',
+      availabilityWindowError:
+        'La date de retour à la disponibilité doit être après le premier jour indisponible.',
       availabilityBlocked: 'Indisponible',
       availabilityFree: 'Aucun blocage enregistré',
       availabilityLoading: 'Chargement des disponibilités…',
@@ -615,12 +638,15 @@ export const sitesCopy = {
       markerRegistered: 'Position enregistrée',
       markerFacing: 'Orientation (telle que saisie)',
       mapRadiusToggle: 'Rayon 500 m',
-      mapRadiusNote: '500 m autour de l\u2019épingle — contexte habitants/routes, pas des spectateurs.',
+      mapRadiusNote:
+        '500 m autour de l\u2019épingle — contexte habitants/routes, pas des spectateurs.',
       mapFailed: 'La carte n\u2019a pas pu se charger. Copiez plutôt les coordonnées.',
-      mapUnavailable: 'Aucun jeton de carte dans cette version du build. Les coordonnées du site restent disponibles ci-dessous.',
+      mapUnavailable:
+        'Aucun jeton de carte dans cette version du build. Les coordonnées du site restent disponibles ci-dessous.',
       mapCopy: 'Copier',
       mapCopied: 'Copié',
-      mapOrientationNote: 'La flèche d\u2019orientation montre la direction telle que saisie — elle n\u2019est pas vérifiée indépendamment.',
+      mapOrientationNote:
+        'La flèche d\u2019orientation montre la direction telle que saisie — elle n\u2019est pas vérifiée indépendamment.',
       mapAttribution: '© Mapbox © OpenStreetMap contributors',
       typeLabel: 'Type',
       subFormatLabel: 'Sous-format',

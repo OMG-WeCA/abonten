@@ -61,6 +61,15 @@ beforeEach(() => {
   saveSession(staleSession);
 });
 
+test('API requests use the selected French language for server-side validation', async () => {
+  localStorage.setItem('abonten-locale', 'fr');
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(new Headers(init?.headers).get('Accept-Language'), 'fr');
+    return Response.json({ message: 'Vérifiez le champ « latitude ».' }, { status: 400 });
+  };
+  await assert.rejects(apiJson('/api/inventory/sites'), /Vérifiez le champ/);
+});
+
 test('Microsoft callback session retains its issued active organization', () => {
   assert.deepEqual(
     microsoftSessionFromHash(

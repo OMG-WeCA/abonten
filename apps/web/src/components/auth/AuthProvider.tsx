@@ -166,10 +166,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshAccount]);
 
   useEffect(() => {
-    document.documentElement.lang = profile?.locale === 'fr' ? 'fr' : 'en';
-  }, [profile?.locale]);
-
-  useEffect(() => {
     const synchronizeSession = (event: StorageEvent) => {
       if (event.key !== SESSION_STORAGE_KEY) return;
       if (event.newValue) {

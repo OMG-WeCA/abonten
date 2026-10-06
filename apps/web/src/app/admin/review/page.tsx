@@ -6,12 +6,18 @@ import { useRouter } from 'next/navigation';
 import { ApiError } from '../../../lib/api';
 
 /** Fill a single {{label}} placeholder used by confirm-dialog copy. */
-const withLabel = (template: string, label: string): string =>
-  template.replace('{{label}}', label);
+const withLabel = (template: string, label: string): string => template.replace('{{label}}', label);
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { WorkspaceFrame } from '../../../components/account/WorkspaceFrame';
 import { useAuth } from '../../../components/auth/AuthProvider';
-import { AuthAssetThumb, Field, StatusBadge, inputClass, prettyFormat, prettyIllumination } from '../../../components/sites/sites-ui';
+import {
+  AuthAssetThumb,
+  Field,
+  StatusBadge,
+  inputClass,
+  prettyFormat,
+  prettyIllumination,
+} from '../../../components/sites/sites-ui';
 import {
   approveSite,
   getSite,
@@ -23,6 +29,7 @@ import {
   type SiteDetail,
   type SiteSummary,
 } from '../../../lib/sites-api';
+import { marketLabel } from '../../../lib/markets';
 import { getSitesCopy } from '../../../lib/sites-locale';
 
 export default function ReviewQueuePage() {
@@ -131,7 +138,13 @@ export default function ReviewQueuePage() {
           setDetailError(null);
         }
       })
-      .catch((error) => setActionError(error instanceof ApiError && error.message ? copy.admin.actionFailed + error.message : copy.admin.actionFailedGeneric))
+      .catch((error) =>
+        setActionError(
+          error instanceof ApiError && error.message
+            ? copy.admin.actionFailed + error.message
+            : copy.admin.actionFailedGeneric,
+        ),
+      )
       .finally(() => setBusy(''));
   };
 
@@ -154,7 +167,13 @@ export default function ReviewQueuePage() {
           setDetailError(null);
         }
       })
-      .catch((error) => setActionError(error instanceof ApiError && error.message ? copy.admin.actionFailed + error.message : copy.admin.actionFailedGeneric))
+      .catch((error) =>
+        setActionError(
+          error instanceof ApiError && error.message
+            ? copy.admin.actionFailed + error.message
+            : copy.admin.actionFailedGeneric,
+        ),
+      )
       .finally(() => setBusy(''));
   };
 
@@ -164,7 +183,10 @@ export default function ReviewQueuePage() {
       <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{copy.admin.intro}</p>
 
       {loadError && (
-        <p role="alert" className="mt-6 rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error">
+        <p
+          role="alert"
+          className="mt-6 rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error"
+        >
           {loadError}
         </p>
       )}
@@ -172,7 +194,10 @@ export default function ReviewQueuePage() {
       {sites === null && !loadError && (
         <div className="mt-8 space-y-3" aria-hidden>
           {[0, 1].map((row) => (
-            <div key={row} className="h-24 animate-pulse rounded-xl border border-border bg-surface" />
+            <div
+              key={row}
+              className="h-24 animate-pulse rounded-xl border border-border bg-surface"
+            />
           ))}
         </div>
       )}
@@ -192,7 +217,10 @@ export default function ReviewQueuePage() {
       )}
 
       {actionError && (
-        <p role="alert" className="mt-6 rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error">
+        <p
+          role="alert"
+          className="mt-6 rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error"
+        >
           {actionError}
         </p>
       )}
@@ -218,8 +246,13 @@ export default function ReviewQueuePage() {
                   <StatusBadge status={site.status} locale={profile?.locale} />
                 </span>
                 <span className="mt-1 block text-xs text-muted">
-                  {[site.city, site.region, site.country].filter(Boolean).join(', ')} ·{' '}
-                  <span className="font-semibold">{prettyFormat(site.format, profile?.locale)}</span>
+                  {[site.city, site.region, marketLabel(site.country, profile?.locale)]
+                    .filter(Boolean)
+                    .join(', ')}{' '}
+                  ·{' '}
+                  <span className="font-semibold">
+                    {prettyFormat(site.format, profile?.locale)}
+                  </span>
                   {site.width != null && site.height != null
                     ? ` · ${site.width}×${site.height}${site.units ? ` ${site.units}` : ''}`
                     : ''}
@@ -239,7 +272,9 @@ export default function ReviewQueuePage() {
                   aria-expanded={openId === site.id}
                   className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-border px-3 text-xs font-bold transition hover:bg-surface-2"
                 >
-                  <ChevronDown className={`h-3.5 w-3.5 transition ${openId === site.id ? 'rotate-180' : ''}`} />
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 transition ${openId === site.id ? 'rotate-180' : ''}`}
+                  />
                   {openId === site.id ? copy.admin.hideDetails : copy.admin.viewDetails}
                 </button>
                 <button
@@ -276,7 +311,11 @@ export default function ReviewQueuePage() {
                 onSubmit={(event) => onReject(event, site)}
                 className="mt-4 space-y-3 rounded-lg border border-error/30 bg-error/5 p-3"
               >
-                <Field label={copy.admin.rejectReasonLabel} htmlFor={`reason-${site.id}`} error={reasonError}>
+                <Field
+                  label={copy.admin.rejectReasonLabel}
+                  htmlFor={`reason-${site.id}`}
+                  error={reasonError}
+                >
                   <textarea
                     id={`reason-${site.id}`}
                     rows={2}
@@ -309,11 +348,30 @@ export default function ReviewQueuePage() {
                   <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
                     {(
                       [
-                        [copy.detail.addressLabel, [detail.data.address, detail.data.city, detail.data.region].filter(Boolean).join(', ') || '—'],
-                        [copy.detail.dimsLabel, `${detail.data.width ?? '—'} × ${detail.data.height ?? '—'} ${detail.data.units ?? ''}`.trim()],
-                        [copy.detail.areaLabel, detail.data.area != null ? `${detail.data.area} ${detail.data.units ?? ''}`.trim() : '—'],
-                        [copy.detail.coordsLabel, `${detail.data.latitude}, ${detail.data.longitude}`],
-                        [copy.detail.illuminationLabel, `${prettyIllumination(detail.data.illuminationType, profile?.locale)}${detail.data.illuminationHours ? ` · ${detail.data.illuminationHours}` : ''}`],
+                        [
+                          copy.detail.addressLabel,
+                          [detail.data.address, detail.data.city, detail.data.region]
+                            .filter(Boolean)
+                            .join(', ') || '—',
+                        ],
+                        [
+                          copy.detail.dimsLabel,
+                          `${detail.data.width ?? '—'} × ${detail.data.height ?? '—'} ${detail.data.units ?? ''}`.trim(),
+                        ],
+                        [
+                          copy.detail.areaLabel,
+                          detail.data.area != null
+                            ? `${detail.data.area} ${detail.data.units ?? ''}`.trim()
+                            : '—',
+                        ],
+                        [
+                          copy.detail.coordsLabel,
+                          `${detail.data.latitude}, ${detail.data.longitude}`,
+                        ],
+                        [
+                          copy.detail.illuminationLabel,
+                          `${prettyIllumination(detail.data.illuminationType, profile?.locale)}${detail.data.illuminationHours ? ` · ${detail.data.illuminationHours}` : ''}`,
+                        ],
                         [copy.detail.permitLabel, detail.data.permitRef ?? copy.detail.permitNone],
                       ] as Array<[string, string]>
                     ).map(([label, value]) => (
@@ -324,14 +382,21 @@ export default function ReviewQueuePage() {
                     ))}
                     <div className="contents sm:col-span-2">
                       <dt className="text-muted">{copy.register.description}</dt>
-                      <dd className="whitespace-pre-line font-medium">{detail.data.description || '—'}</dd>
+                      <dd className="whitespace-pre-line font-medium">
+                        {detail.data.description || '—'}
+                      </dd>
                     </div>
                     <div className="contents sm:col-span-2">
                       <dt className="text-muted">{copy.detail.faces}</dt>
                       <dd className="font-medium">
                         {detail.data.faces.length === 0
                           ? '—'
-                          : detail.data.faces.map((face) => `${face.faceLabel} (${face.width}×${face.height} ${face.units})`).join(', ')}
+                          : detail.data.faces
+                              .map(
+                                (face) =>
+                                  `${face.faceLabel} (${face.width}×${face.height} ${face.units})`,
+                              )
+                              .join(', ')}
                       </dd>
                     </div>
                     <div className="contents sm:col-span-2">
@@ -340,7 +405,10 @@ export default function ReviewQueuePage() {
                         {detail.data.rateCards.length === 0
                           ? '—'
                           : detail.data.rateCards
-                              .map((card) => `${card.currency} · ${Object.values(card.rates).filter(Boolean).join(' / ')}`)
+                              .map(
+                                (card) =>
+                                  `${card.currency} · ${Object.values(card.rates).filter(Boolean).join(' / ')}`,
+                              )
                               .join(', ')}
                       </dd>
                     </div>

@@ -4,17 +4,19 @@ import { useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
+import { useLocale, LanguageSwitcher } from './LocaleProvider';
+import { marketingCopy } from '../lib/marketing-copy';
 import { Button } from './Button';
-
-const navLinks = [
-  { href: '/for-partners', label: 'For Partners' },
-  { href: '/for-planners', label: 'For Planners' },
-  { href: '/for-clients', label: 'For Clients' },
-];
 
 const ACCOUNT_HREF = '/sign-in';
 
 export function Navbar() {
+  const { locale } = useLocale();
+  const copy = marketingCopy[locale];
+  const navLinks = ['/for-partners', '/for-planners', '/for-clients'].map((href, index) => ({
+    href,
+    label: copy.nav[index],
+  }));
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -47,7 +49,7 @@ export function Navbar() {
   }, [open]);
 
   useEffect(() => {
-    const desktop = window.matchMedia('(min-width: 768px)');
+    const desktop = window.matchMedia('(min-width: 1024px)');
     const closeOnDesktop = () => {
       if (desktop.matches) setOpen(false);
     };
@@ -62,7 +64,7 @@ export function Navbar() {
       className="sticky top-0 z-50 border-b border-foreground/10 bg-background/80 backdrop-blur-md"
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
-        <Link href="/" className="group flex items-center gap-2.5" aria-label="Abonten home">
+        <Link href="/" className="group flex items-center gap-2.5" aria-label={copy.home}>
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-white shadow-lg shadow-primary/30 transition-transform group-hover:scale-105">
             <span className="text-lg font-black leading-none">A</span>
           </span>
@@ -71,7 +73,7 @@ export function Navbar() {
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 lg:flex">
           {navLinks.map((link) => {
             const active = pathname === link.href;
             return (
@@ -88,18 +90,21 @@ export function Navbar() {
           })}
         </nav>
 
-        <div className="hidden md:block">
-          <Button href={ACCOUNT_HREF} size="md">
-            Sign in
-          </Button>
+        <div className="flex items-center gap-3">
+          <LanguageSwitcher />
+          <div className="hidden lg:block">
+            <Button href={ACCOUNT_HREF} size="md">
+              {copy.signIn}
+            </Button>
+          </div>
         </div>
 
         <button
           ref={menuButtonRef}
           type="button"
           onClick={() => setOpen((current) => !current)}
-          className="rounded-xl p-2.5 text-foreground transition-colors hover:bg-foreground/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background md:hidden"
-          aria-label={open ? 'Close navigation menu' : 'Open navigation menu'}
+          className="rounded-xl p-2.5 text-foreground transition-colors hover:bg-foreground/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background lg:hidden"
+          aria-label={open ? copy.closeMenu : copy.openMenu}
           aria-controls={menuId}
           aria-expanded={open}
         >
@@ -110,11 +115,11 @@ export function Navbar() {
       {open && (
         <div
           id={menuId}
-          className="absolute inset-x-0 top-full border-b border-foreground/10 bg-background/95 px-6 py-4 shadow-2xl shadow-black/20 backdrop-blur-xl md:hidden"
+          className="absolute inset-x-0 top-full border-b border-foreground/10 bg-background/95 px-6 py-4 shadow-2xl shadow-black/20 backdrop-blur-xl lg:hidden"
         >
           <nav
             className="mx-auto flex max-w-7xl flex-col gap-1"
-            aria-label="Mobile navigation"
+            aria-label={copy.mobileNav}
             onClick={(event) => {
               if ((event.target as HTMLElement).closest('a')) setOpen(false);
             }}
@@ -138,7 +143,7 @@ export function Navbar() {
               );
             })}
             <Button href={ACCOUNT_HREF} size="md" className="mt-3 min-h-11 w-full">
-              Sign in
+              {copy.signIn}
             </Button>
           </nav>
         </div>

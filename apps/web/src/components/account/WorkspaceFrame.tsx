@@ -17,6 +17,7 @@ import { getAccountCopy, type AccountLocale } from '../../lib/account-locale';
 import { getSitesCopy } from '../../lib/sites-locale';
 import { canSeeSitesArea } from '../../lib/sites-access';
 import { workspaceAccessState } from '../../lib/account-session-recovery';
+import { confirmUnsavedNavigation } from '../../lib/unsaved-navigation';
 import { useAuth } from '../auth/AuthProvider';
 
 export function WorkspaceFrame({
@@ -80,7 +81,7 @@ export function WorkspaceFrame({
   }
 
   const switchTo = async (organizationId: string) => {
-    if (organizationId === activeOrganization.organizationId) return;
+    if (organizationId === activeOrganization.organizationId || !confirmUnsavedNavigation()) return;
     setSwitchError('');
     setSwitching(true);
     try {
@@ -99,7 +100,9 @@ export function WorkspaceFrame({
         <div className="mx-auto flex min-h-16 max-w-7xl items-center gap-3 px-4 sm:px-6">
           <button
             type="button"
-            onClick={() => router.push('/dashboard')}
+            onClick={() => {
+              if (confirmUnsavedNavigation()) router.push('/dashboard');
+            }}
             className="flex shrink-0 items-center gap-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             aria-label={copy.workspace.dashboard}
           >
@@ -132,7 +135,9 @@ export function WorkspaceFrame({
           <nav className="ml-auto flex items-center gap-1" aria-label={copy.workspace.navigation}>
             <button
               type="button"
-              onClick={() => router.push('/dashboard')}
+              onClick={() => {
+                if (confirmUnsavedNavigation()) router.push('/dashboard');
+              }}
               aria-label={copy.workspace.home}
               className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
                 current === 'dashboard'
@@ -146,7 +151,9 @@ export function WorkspaceFrame({
             {canSeeSites && (
               <button
                 type="button"
-                onClick={() => router.push('/sites')}
+                onClick={() => {
+                  if (confirmUnsavedNavigation()) router.push('/sites');
+                }}
                 aria-label={sitesCopy.nav.sites}
                 className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
                   current === 'sites'
@@ -161,7 +168,9 @@ export function WorkspaceFrame({
             {canReview && (
               <button
                 type="button"
-                onClick={() => router.push('/admin/review')}
+                onClick={() => {
+                  if (confirmUnsavedNavigation()) router.push('/admin/review');
+                }}
                 className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
                   current === 'review'
                     ? 'bg-primary/10 text-primary'
@@ -174,7 +183,9 @@ export function WorkspaceFrame({
             )}
             <button
               type="button"
-              onClick={() => router.push('/settings')}
+              onClick={() => {
+                if (confirmUnsavedNavigation()) router.push('/settings');
+              }}
               aria-label={copy.workspace.settings}
               className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
                 current === 'settings'
@@ -187,7 +198,10 @@ export function WorkspaceFrame({
             </button>
             <button
               type="button"
-              onClick={() => void signOut().then(() => router.replace('/sign-in'))}
+              onClick={() => {
+                if (confirmUnsavedNavigation())
+                  void signOut().then(() => router.replace('/sign-in'));
+              }}
               aria-label={copy.workspace.signOut}
               className="ml-1 flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold text-muted transition hover:bg-surface hover:text-foreground sm:px-3"
             >
@@ -210,7 +224,11 @@ export function WorkspaceFrame({
           {switchError}
         </p>
       )}
-      <main className={`mx-auto max-w-7xl px-4 sm:px-6 ${current === 'dashboard' ? 'py-4 lg:py-6' : 'py-8 lg:py-10'}`}>{children}</main>
+      <main
+        className={`mx-auto max-w-7xl px-4 sm:px-6 ${current === 'dashboard' ? 'py-4 lg:py-6' : 'py-8 lg:py-10'}`}
+      >
+        {children}
+      </main>
     </div>
   );
 }

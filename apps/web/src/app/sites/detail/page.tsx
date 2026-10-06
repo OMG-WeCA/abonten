@@ -14,10 +14,27 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useUnsavedNavigation, confirmUnsavedNavigation } from '../../../lib/unsaved-navigation';
 import { ApiError } from '../../../lib/api';
-import { Suspense, useEffect, useCallback, useRef, useState, type FormEvent } from 'react';
+import {
+  Suspense,
+  useEffect,
+  useCallback,
+  useRef,
+  useState,
+  type FormEvent,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { WorkspaceFrame } from '../../../components/account/WorkspaceFrame';
 import { useAuth } from '../../../components/auth/AuthProvider';
+import {
+  MediaCapturePicker,
+  type PendingSiteMedia,
+} from '../../../components/sites/MediaCapturePicker';
+import { AuthBoardVideo, MediaEvidence } from '../../../components/sites/BoardMedia';
+import { LocationVerification } from '../../../components/sites/LocationVerification';
+import { RegistrationMap } from '../../../components/sites/RegistrationMap';
 import { Lightbox, lightboxAlt, type LightboxAsset } from '../../../components/sites/Lightbox';
 import { SiteMapView } from '../../../components/sites/SiteMap';
 import { PartnerAvailability } from '../../../components/sites/PartnerAvailability';
@@ -45,6 +62,7 @@ import {
   updateFace,
   updateSite,
   uploadAsset,
+  uploadBoardVideo,
   withdrawFutureRateCard,
   type Market,
   type RateCard,
@@ -53,11 +71,12 @@ import {
   type SiteDetail,
   type SiteFace,
 } from '../../../lib/sites-api';
+import { SUPPORTED_MARKETS, findMarket } from '../../../lib/markets';
 import { SUPPORTED_CURRENCIES } from '../../../lib/currencies';
 import { metadataFacts, metadataLink } from '../../../lib/site-metadata-display';
 import { formatArea, formatMoney, parseAmount, parseDecimal } from '../../../lib/number-format';
 import { getSitesCopy, type SiteLocale } from '../../../lib/sites-locale';
-import { isOlderThanTwelveMonths, plausibilityErrors } from '../../../lib/sites-plausibility';
+import { plausibilityErrors } from '../../../lib/sites-plausibility';
 
 function DetailInner() {
   const router = useRouter();
@@ -76,6 +95,26 @@ function DetailInner() {
   const [busy, setBusy] = useState('');
   const [actionError, setActionError] = useState('');
   const [mapOpen, setMapOpen] = useState(false);
+  const [pendingMedia, setPendingMedia] = useState<PendingSiteMedia[]>([]);
+  const resourceRef = useRef('');
+  const [unsavedSections, setUnsavedSections] = useState<Record<string, boolean>>({});
+  const markUnsavedSection = useCallback(
+    (section: string, dirty: boolean) =>
+      setUnsavedSections((previous) =>
+        previous[section] === dirty ? previous : { ...previous, [section]: dirty },
+      ),
+    [],
+  );
+  useUnsavedNavigation(
+    pendingMedia.length > 0 || Object.values(unsavedSections).some(Boolean),
+    locale === 'fr'
+      ? 'Quitter cette page ? Les modifications et médias non enregistrés seront perdus. Choisissez Annuler pour continuer.'
+      : 'Leave this page? Unsaved changes and media will be discarded. Choose Cancel to keep editing.',
+  );
+  const goBack = () => {
+    if (confirmUnsavedNavigation()) router.push('/sites');
+  };
+
   // Records the busy key whose in-flight request the user just cancelled, so
   // run() can tell a deliberate cancel apart from a slow-connection timeout.
   const cancelledKeyRef = useRef<string | null>(null);
@@ -109,30 +148,57 @@ function DetailInner() {
   }, [orgId, siteId, copy.detail.notFound, copy.admin.loadError]);
 
   useEffect(() => {
-    setSite(null);
+    const resource = `${orgId ?? ''}:${siteId}`;
+    if (resourceRef.current !== resource) {
+      resourceRef.current = resource;
+      setSite(null);
+      setPendingMedia([]);
+    }
     setLoadError('');
     void reload();
     return () => loadControllerRef.current?.abort();
-  }, [reload]);
+  }, [reload, orgId, siteId]);
 
   const detailsEditable = site !== null && canEdit;
   const canDelete = capabilities.includes('INVENTORY_DELETE');
-  const hasFrontPhoto = site?.assets.some((asset) => asset.kind === 'front') ?? false;
+  const hasFrontPhoto =
+    site?.assets.some((asset) => asset.kind === 'front' && asset.capturedAt) ?? false;
+  const undatedFrontPhoto =
+    !hasFrontPhoto && (site?.assets.some((asset) => asset.kind === 'front') ?? false);
+  const frontPhotoRequirement = undatedFrontPhoto
+    ? locale === 'fr'
+      ? 'La date de la photo de face est inconnue. Importez une photo de remplacement avec une date intégrée ou indiquez sa date de prise de vue réelle.'
+      : 'The front photo capture date is unknown. Upload a replacement with embedded date metadata or declare its actual capture date.'
+    : copy.detail.frontRequired;
   const today = new Date().toISOString().slice(0, 10);
   const bookableFaces = site?.faces.filter((face) => face.bookable) ?? [];
   const hasFace = bookableFaces.length > 0;
-  const digitalReady = site?.format !== 'digital_led' || bookableFaces.every((face) =>
-    Boolean(face.pixelWidth && face.pixelHeight && face.spotLengthSeconds && face.loopLengthSeconds && face.spotsPerLoop)
-  );
-  const hasLiveRate = hasFace && bookableFaces.every((face) => site?.rateCards.some((card) =>
-    (!card.faceId || card.faceId === face.id) &&
-    card.effectiveFrom.slice(0, 10) <= today &&
-    (!card.effectiveTo || card.effectiveTo.slice(0, 10) >= today) &&
-    Object.values(card.rates).some((value) => typeof value === 'number' && value > 0)
-  ));
+  const digitalReady =
+    site?.format !== 'digital_led' ||
+    bookableFaces.every((face) =>
+      Boolean(
+        face.pixelWidth &&
+        face.pixelHeight &&
+        face.spotLengthSeconds &&
+        face.loopLengthSeconds &&
+        face.spotsPerLoop,
+      ),
+    );
+  const hasLiveRate =
+    hasFace &&
+    bookableFaces.every((face) =>
+      site?.rateCards.some(
+        (card) =>
+          (!card.faceId || card.faceId === face.id) &&
+          card.effectiveFrom.slice(0, 10) <= today &&
+          (!card.effectiveTo || card.effectiveTo.slice(0, 10) >= today) &&
+          Object.values(card.rates).some((value) => typeof value === 'number' && value > 0),
+      ),
+    );
   const permitCurrent = !site?.permitExpiresAt || site.permitExpiresAt.slice(0, 10) >= today;
   const canSubmitAll = hasFrontPhoto && hasFace && hasLiveRate && digitalReady && permitCurrent;
-  const rejected = site?.status === 'draft' && Boolean(site?.rejectionReason);
+  const rejected =
+    Boolean(site?.rejectionReason) && (site?.status === 'draft' || site?.status === 'rejected');
 
   const run = async (key: string, action: () => Promise<void>) => {
     if (busy) return;
@@ -141,8 +207,8 @@ function DetailInner() {
     try {
       await action();
     } catch (error) {
-      const abortedUpload =
-        ((error as { name?: string })?.name === 'AbortError' && key.startsWith('upload-')) as boolean;
+      const abortedUpload = ((error as { name?: string })?.name === 'AbortError' &&
+        key.startsWith('upload-')) as boolean;
       if (error instanceof ApiError) {
         setActionError(`${copy.detail.actionFailed}${error.message}`);
       } else if (abortedUpload && cancelledKeyRef.current === key) {
@@ -165,7 +231,14 @@ function DetailInner() {
           <p className="text-sm text-muted">{loadError}</p>
           <button
             type="button"
-            onClick={() => router.push('/sites')}
+            onClick={() => void reload()}
+            className="mt-4 min-h-10 rounded-lg bg-primary px-4 text-sm font-bold text-white"
+          >
+            {locale === 'fr' ? 'Réessayer' : 'Retry'}
+          </button>
+          <button
+            type="button"
+            onClick={goBack}
             className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold transition hover:bg-surface-2"
           >
             {copy.detail.back}
@@ -179,7 +252,7 @@ function DetailInner() {
     <WorkspaceFrame current="sites">
       <button
         type="button"
-        onClick={() => router.push('/sites')}
+        onClick={goBack}
         className="inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-muted transition hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -195,7 +268,9 @@ function DetailInner() {
         <div className="mt-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <h1 className="text-3xl font-extrabold tracking-[-0.045em]">{site.name}</h1>
-            <code className="rounded bg-muted/15 px-2 py-1 text-xs font-semibold text-muted">{site.code}</code>
+            <code className="rounded bg-muted/15 px-2 py-1 text-xs font-semibold text-muted">
+              {site.code}
+            </code>
             <StatusBadge status={displayStatus(site)} locale={profile?.locale} />
           </div>
 
@@ -220,6 +295,15 @@ function DetailInner() {
               <p className="mt-1 pl-6 text-xs text-muted">{copy.detail.rejectedFix}</p>
             </div>
           )}
+          <div className="mt-4">
+            <LocationVerification
+              site={site}
+              orgId={orgId}
+              locale={locale}
+              editable={canEdit}
+              onUpdated={reload}
+            />
+          </div>
           {site.status === 'pending_review' && (
             <p className="mt-4 flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm font-medium text-warning">
               <Clock3 className="h-4 w-4 shrink-0" />
@@ -233,10 +317,13 @@ function DetailInner() {
             </p>
           )}
           {site.status === 'listed' && !canSubmitAll && (
-            <div role="alert" className="mt-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+            <div
+              role="alert"
+              className="mt-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning"
+            >
               <p>{copy.detail.bookingSetupNeeded}</p>
               <ul className="mt-2 list-inside list-disc space-y-1">
-                {!hasFrontPhoto && <li>{copy.detail.frontRequired}</li>}
+                {!hasFrontPhoto && <li>{frontPhotoRequirement}</li>}
                 {!hasFace && <li>{copy.detail.faceRequired}</li>}
                 {hasFace && !hasLiveRate && <li>{copy.detail.rateRequired}</li>}
                 {hasFace && !digitalReady && <li>{copy.detail.digitalRequired}</li>}
@@ -245,7 +332,7 @@ function DetailInner() {
             </div>
           )}
 
-          {site.status === 'draft' && canEdit && (
+          {(site.status === 'draft' || site.status === 'rejected') && canEdit && (
             <div className="mt-5 flex flex-wrap items-center gap-3">
               {!rejected && site.status === 'draft' && (
                 <button
@@ -254,13 +341,17 @@ function DetailInner() {
                   onClick={() => {
                     if (!window.confirm(withLabel(copy.detail.submitConfirm, site.name))) return;
                     void run('submit', async () => {
-                      await submitSite(orgId, site.id);
+                      await submitSite(orgId, site.id, locale);
                       await reload();
                     });
                   }}
                   className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-5 text-sm font-bold text-white transition hover:bg-primary-hover disabled:opacity-60"
                 >
-                  {busy === 'submit' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  {busy === 'submit' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
                   {copy.detail.submitForReview}
                 </button>
               )}
@@ -271,37 +362,53 @@ function DetailInner() {
                   onClick={() => {
                     if (!window.confirm(withLabel(copy.detail.resubmitConfirm, site.name))) return;
                     void run('submit', async () => {
-                      await submitSite(orgId, site.id);
+                      await submitSite(orgId, site.id, locale);
                       await reload();
                     });
                   }}
                   className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-5 text-sm font-bold text-white transition hover:bg-primary-hover disabled:opacity-60"
                 >
-                  {busy === 'submit' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  {busy === 'submit' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
                   {copy.detail.resubmit}
                 </button>
               )}
               {!hasFrontPhoto && (
                 <p className="flex items-center gap-1.5 text-xs font-medium text-warning">
                   <AlertTriangle className="h-3.5 w-3.5" />
-                  {copy.detail.frontRequired}
+                  {frontPhotoRequirement}
                 </p>
               )}
-              {hasFrontPhoto && !hasFace && <p className="text-xs text-warning">{copy.detail.faceRequired}</p>}
-              {hasFrontPhoto && hasFace && !hasLiveRate && <p className="text-xs text-warning">{copy.detail.rateRequired}</p>}
-              {hasFrontPhoto && hasFace && !digitalReady && <p className="text-xs text-warning">{copy.detail.digitalRequired}</p>}
-              {!permitCurrent && <p className="text-xs text-warning">{copy.detail.permitExpired}</p>}
+              {hasFrontPhoto && !hasFace && (
+                <p className="text-xs text-warning">{copy.detail.faceRequired}</p>
+              )}
+              {hasFrontPhoto && hasFace && !hasLiveRate && (
+                <p className="text-xs text-warning">{copy.detail.rateRequired}</p>
+              )}
+              {hasFrontPhoto && hasFace && !digitalReady && (
+                <p className="text-xs text-warning">{copy.detail.digitalRequired}</p>
+              )}
+              {!permitCurrent && (
+                <p className="text-xs text-warning">{copy.detail.permitExpired}</p>
+              )}
             </div>
           )}
 
           {actionError && (
-            <p role="alert" className="mt-4 rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error">
+            <p
+              role="alert"
+              className="mt-4 rounded-lg bg-error/10 px-4 py-3 text-sm font-medium text-error"
+            >
               {actionError}
             </p>
           )}
 
           <div className="mt-6 grid gap-5 lg:grid-cols-2">
             <DetailsSection
+              onUnsavedChange={markUnsavedSection}
               site={site}
               orgId={orgId}
               editable={detailsEditable}
@@ -312,6 +419,8 @@ function DetailInner() {
               run={run}
             />
             <PhotosSection
+              pending={pendingMedia}
+              setPending={setPendingMedia}
               site={site}
               orgId={orgId}
               editable={canEdit}
@@ -326,6 +435,7 @@ function DetailInner() {
               run={run}
             />
             <FacesSection
+              onUnsavedChange={markUnsavedSection}
               locale={locale}
               site={site}
               orgId={orgId}
@@ -337,6 +447,7 @@ function DetailInner() {
               run={run}
             />
             <RatesSection
+              onUnsavedChange={markUnsavedSection}
               site={site}
               orgId={orgId}
               editable={canEdit}
@@ -352,7 +463,13 @@ function DetailInner() {
               editable={canEdit}
               locale={locale}
             />
-            <GeographicContextPanel orgId={orgId} siteId={site.id} revision={site.updatedAt} locale={locale} onViewMap={() => setMapOpen(true)} />
+            <GeographicContextPanel
+              orgId={orgId}
+              siteId={site.id}
+              revision={site.updatedAt}
+              locale={locale}
+              onViewMap={() => setMapOpen(true)}
+            />
             <MetadataSection site={site} locale={locale} copy={copy} />
             <MapSection
               site={site}
@@ -379,7 +496,9 @@ function DetailsSection({
   busy,
   reload,
   run,
+  onUnsavedChange,
 }: {
+  onUnsavedChange: (section: string, dirty: boolean) => void;
   site: SiteDetail;
   orgId: string | undefined;
   editable: boolean;
@@ -390,6 +509,10 @@ function DetailsSection({
   run: (key: string, action: () => Promise<void>) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    onUnsavedChange('details', editing);
+    return () => onUnsavedChange('details', false);
+  }, [editing, onUnsavedChange]);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<string, string>>>({});
   const [markets, setMarkets] = useState<Market[]>([]);
   const [form, setForm] = useState({
@@ -421,12 +544,14 @@ function DetailsSection({
     viewingDistance: site.viewingDistance ?? null,
     elevation: site.elevation ?? null,
   });
-  const changedStructure = (['orientationDeg', 'viewingDistance', 'elevation'] as const).filter((field) => {
-    const current = initialStructure.current[field];
-    const incoming = form[field];
-    if (incoming === '') return false;
-    return Number(incoming) !== Number(current);
-  });
+  const changedStructure = (['orientationDeg', 'viewingDistance', 'elevation'] as const).filter(
+    (field) => {
+      const current = initialStructure.current[field];
+      const incoming = form[field];
+      if (incoming === '') return false;
+      return Number(incoming) !== Number(current);
+    },
+  );
 
   useEffect(() => {
     if (editing && orgId && markets.length === 0) {
@@ -438,16 +563,25 @@ function DetailsSection({
 
   const rows: Array<[string, string]> = [
     [copy.detail.formatLabel, prettyFormat(site.format, locale)],
-    [copy.detail.dimsLabel, `${site.width ?? '—'} × ${site.height ?? '—'} ${site.units ?? ''}`.trim()],
+    [
+      copy.detail.dimsLabel,
+      `${site.width ?? '—'} × ${site.height ?? '—'} ${site.units ?? ''}`.trim(),
+    ],
     [copy.detail.areaLabel, formatArea(site.area, site.units, locale)],
     [copy.detail.coordsLabel, `${site.latitude}, ${site.longitude}`],
-    [copy.detail.addressLabel, [site.address, site.city, site.region].filter(Boolean).join(', ') || '—'],
+    [
+      copy.detail.addressLabel,
+      [site.address, site.city, site.region].filter(Boolean).join(', ') || '—',
+    ],
     [
       copy.detail.illuminationLabel,
       `${prettyIllumination(site.illuminationType, locale)}${site.illuminationHours ? ` · ${site.illuminationHours}` : ''}`,
     ],
     [copy.detail.orientationLabel, site.orientationDeg != null ? `${site.orientationDeg}°` : '—'],
-    [copy.detail.viewingDistanceLabel, site.viewingDistance != null ? `${site.viewingDistance} m` : '—'],
+    [
+      copy.detail.viewingDistanceLabel,
+      site.viewingDistance != null ? `${site.viewingDistance} m` : '—',
+    ],
     [copy.detail.elevationLabel, site.elevation != null ? `${site.elevation} m` : '—'],
     [copy.detail.permitLabel, site.permitRef ?? copy.detail.permitNone],
     [
@@ -493,7 +627,10 @@ function DetailsSection({
     setFieldErrors(next);
     const errored = Object.values(next).filter(Boolean);
     if (errored.length > 1) {
-      setFieldErrors((previous) => ({ ...previous, __summary: `${errored.length} ${copy.register.errorSummarySuffix}` }));
+      setFieldErrors((previous) => ({
+        ...previous,
+        __summary: `${errored.length} ${copy.register.errorSummarySuffix}`,
+      }));
     }
     if (errored.length > 0) {
       const firstId = Object.keys(next)[0];
@@ -529,15 +666,19 @@ function DetailsSection({
       region: form.region.trim() || null,
       description: form.description.trim() || null,
       ...(form.permitRef.trim() ? { permitRef: form.permitRef.trim() } : { permitRef: null }),
-      ...(form.permitExpiresAt ? { permitExpiresAt: form.permitExpiresAt } : { permitExpiresAt: null }),
+      ...(form.permitExpiresAt
+        ? { permitExpiresAt: form.permitExpiresAt }
+        : { permitExpiresAt: null }),
     };
     // Provenance: required only when a structure value actually changes.
-    const changedStructure = (['orientationDeg', 'viewingDistance', 'elevation'] as const).filter((field) => {
-      const current = initialStructure.current[field];
-      const incoming = patch[field] ?? null;
-      if (incoming == null) return false;
-      return Number(incoming) !== Number(current);
-    });
+    const changedStructure = (['orientationDeg', 'viewingDistance', 'elevation'] as const).filter(
+      (field) => {
+        const current = initialStructure.current[field];
+        const incoming = patch[field] ?? null;
+        if (incoming == null) return false;
+        return Number(incoming) !== Number(current);
+      },
+    );
     if (changedStructure.length > 0) {
       if (!prov.source.trim() || !prov.method.trim()) {
         setFieldErrors((previous) => ({
@@ -649,7 +790,55 @@ function DetailsSection({
                 required
               />
             </Field>
-            <Field label={copy.detail.dimsLabel} htmlFor="dWidth" error={fieldErrors.width ?? fieldErrors.height}>
+            <Field label={copy.register.region} htmlFor="dRegion">
+              <input
+                id="dRegion"
+                value={form.region}
+                onChange={(event) => setForm({ ...form, region: event.target.value })}
+                className={inputClass}
+              />
+            </Field>
+            <Field label={copy.register.country} htmlFor="dCountry">
+              <select
+                id="dCountry"
+                value={findMarket(form.country)?.name ?? form.country}
+                onChange={(event) => setForm({ ...form, country: event.target.value })}
+                className={inputClass}
+                required
+              >
+                {!findMarket(form.country) && (
+                  <option value={form.country}>
+                    {form.country || (locale === 'fr' ? 'Choisir le pays' : 'Choose country')}
+                  </option>
+                )}
+                {SUPPORTED_MARKETS.map((market) => (
+                  <option key={market.code} value={market.name}>
+                    {market.labels[locale === 'fr' ? 'fr' : 'en']}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <div className="sm:col-span-2">
+              <RegistrationMap
+                latitude={form.latitude}
+                longitude={form.longitude}
+                country={form.country}
+                locale={locale === 'fr' ? 'fr' : 'en'}
+                onPick={(latitude, longitude) =>
+                  setForm((previous) => ({ ...previous, latitude, longitude }))
+                }
+              />
+              <p className="mt-2 text-xs text-muted">
+                {locale === 'fr'
+                  ? 'Enregistrez vos corrections avant de revérifier l’adresse et le repère.'
+                  : 'Save your corrections before checking the address and pin again.'}
+              </p>
+            </div>
+            <Field
+              label={copy.detail.dimsLabel}
+              htmlFor="dWidth"
+              error={fieldErrors.width ?? fieldErrors.height}
+            >
               <span className="flex gap-2">
                 <input
                   id="dWidth"
@@ -760,7 +949,11 @@ function DetailsSection({
                 />
               </Field>
             )}
-            <Field label={copy.register.permitRef} htmlFor="dPermitRef" hint={copy.register.permitRefHint}>
+            <Field
+              label={copy.register.permitRef}
+              htmlFor="dPermitRef"
+              hint={copy.register.permitRefHint}
+            >
               <input
                 id="dPermitRef"
                 value={form.permitRef}
@@ -846,6 +1039,7 @@ function DetailsSection({
             </button>
             <button
               type="button"
+              disabled={busy === 'details'}
               onClick={() => setEditing(false)}
               className="min-h-10 rounded-lg px-3 text-sm font-semibold text-muted transition hover:text-foreground"
             >
@@ -890,6 +1084,8 @@ function detailFieldId(field: string): string {
 
 // ------------------------------------------------------------------- photos
 function PhotosSection({
+  pending,
+  setPending,
   site,
   orgId,
   editable,
@@ -901,6 +1097,8 @@ function PhotosSection({
   onUploadCancelled,
   onUploadSettled,
 }: {
+  pending: PendingSiteMedia[];
+  setPending: Dispatch<SetStateAction<PendingSiteMedia[]>>;
   site: SiteDetail;
   orgId: string | undefined;
   editable: boolean;
@@ -913,174 +1111,220 @@ function PhotosSection({
   onUploadSettled?: (busyKey: string) => void;
 }) {
   const [uploadError, setUploadError] = useState('');
-  const [capturedAt, setCapturedAt] = useState('');
+  const [mediaErrors, setMediaErrors] = useState<Record<string, string>>({});
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const uploadAbortRef = useRef<AbortController | null>(null);
-  const kinds: Array<keyof typeof copy.register & string> = [
-    'photoFront',
-    'photoContext',
-    'photoNight',
-    'photoDiagram',
-  ];
-  const kindValue = (label: string) => {
-    if (label === copy.register.photoFront) return 'front';
-    if (label === copy.register.photoContext) return 'context';
-    if (label === copy.register.photoNight) return 'night';
-    return 'diagram';
-  };
-
-  const onUpload = (kind: string, files: FileList | null) => {
-    setUploadError('');
-    const file = files?.[0];
-    if (!file || !orgId) return;
-    if (!file.type.startsWith('image/') || file.size > 10 * 1024 * 1024) {
-      setUploadError(copy.register.photoError);
-      return;
-    }
-    if (kind === 'front' && !capturedAt) {
-      setUploadError(copy.register.captureDateRequired);
-      return;
-    }
-    // A cancel flag from a previous attempt must not swallow this upload's
-    // own timeout, so retire it before the new request starts.
-    onUploadSettled?.(`upload-${kind}`);
-    void run(`upload-${kind}`, async () => {
-      const controller = new AbortController();
-      uploadAbortRef.current = controller;
-      try {
-        await uploadAsset(orgId, site.id, kind, file, controller.signal, capturedAt || undefined);
-        setCapturedAt('');
-        await reload();
-        // Settled after reload too: a Cancel clicked while reload was still in
-        // flight sets the flag last, so this clears it at the very end.
-        onUploadSettled?.(`upload-${kind}`);
-      } finally {
-        if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
-      }
-    });
-  };
-
-  const galleryAssets: LightboxAsset[] = site.assets.map((asset) => ({
+  const photos = site.assets.filter(
+    (asset) => asset.mediaType !== 'video' && asset.kind !== 'board_video',
+  );
+  const videos = site.assets.filter(
+    (asset) => asset.mediaType === 'video' || asset.kind === 'board_video',
+  );
+  const galleryAssets: LightboxAsset[] = photos.map((asset) => ({
     id: asset.id,
     display: assetDisplay(asset),
     kind: asset.kind,
     capturedAt: asset.capturedAt ?? null,
     kindLabel: photoKindLabel(asset.kind, copy),
   }));
-
+  const upload = () => {
+    if (!orgId || busy || pending.length === 0) return;
+    if (site.format !== 'digital_led' && pending.some((media) => media.kind === 'board_video')) {
+      setUploadError(
+        locale === 'fr'
+          ? 'Retirez la vidéo sélectionnée ou rétablissez le format LED avant l’enregistrement.'
+          : 'Remove the selected video or restore LED format before saving.',
+      );
+      return;
+    }
+    setUploadError('');
+    setMediaErrors({});
+    onUploadSettled?.('upload-media');
+    void run('upload-media', async () => {
+      const controller = new AbortController();
+      uploadAbortRef.current = controller;
+      try {
+        for (const media of pending) {
+          if (controller.signal.aborted) break;
+          try {
+            if (media.kind === 'board_video')
+              await uploadBoardVideo(
+                orgId,
+                site.id,
+                media.file,
+                controller.signal,
+                media.capturedAt || undefined,
+                media.id,
+              );
+            else
+              await uploadAsset(
+                orgId,
+                site.id,
+                media.kind,
+                media.file,
+                controller.signal,
+                media.capturedAt || undefined,
+                {
+                  captureMethod: media.captureMethod,
+                  deviceLatitude: media.deviceLatitude,
+                  deviceLongitude: media.deviceLongitude,
+                  deviceAccuracyMeters: media.deviceAccuracyMeters,
+                  deviceCapturedAt: media.deviceCapturedAt,
+                  deviceLocationRecordedAt: media.deviceLocationRecordedAt,
+                  missingMetadataReason: media.missingMetadataReason || undefined,
+                  clientRequestId: media.id,
+                },
+              );
+            setPending((previous) => previous.filter((item) => item.id !== media.id));
+          } catch (error) {
+            if (controller.signal.aborted) throw error;
+            setMediaErrors((previous) => ({
+              ...previous,
+              [media.id]:
+                error instanceof ApiError && error.status < 500
+                  ? error.message
+                  : locale === 'fr'
+                    ? 'Le transfert n’a pas abouti. Vérifiez la connexion et réessayez.'
+                    : 'Upload could not finish. Check your connection and retry.',
+            }));
+          }
+        }
+      } catch (error) {
+        if (!controller.signal.aborted)
+          setUploadError(
+            locale === 'fr'
+              ? 'Les fichiers restants sont conservés. Corrigez le fichier signalé ou réessayez.'
+              : 'Remaining files are preserved. Correct the reported file or retry.',
+          );
+        throw error;
+      } finally {
+        uploadAbortRef.current = null;
+        await reload();
+        if (!controller.signal.aborted) onUploadSettled?.('upload-media');
+      }
+    });
+  };
+  const remove = (asset: SiteAsset) => {
+    if (
+      !window.confirm(
+        withLabel(
+          copy.register.photoRemoveConfirm,
+          asset.kind === 'board_video'
+            ? locale === 'fr'
+              ? 'Vidéo du panneau LED'
+              : 'LED board video'
+            : photoKindLabel(asset.kind, copy),
+        ),
+      )
+    )
+      return;
+    void run(`del-${asset.id}`, async () => {
+      await deleteAsset(orgId, site.id, asset.id);
+      await reload();
+    });
+  };
   return (
-    <SectionCard title={copy.detail.photos}>
+    <SectionCard
+      title={locale === 'fr' ? 'Photos et vidéos du panneau' : 'Board photos and videos'}
+    >
       {site.assets.length === 0 && <p className="text-sm text-muted">{copy.detail.noPhotos}</p>}
-      {site.assets.length > 0 && (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {site.assets.map((asset: SiteAsset, index) => (
-            <li key={asset.id} className="group relative">
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {photos.map((asset, index) => (
+          <li key={asset.id} className="relative">
+            <button
+              type="button"
+              data-testid={`gallery-thumb-${asset.kind}`}
+              onClick={() => setLightboxIndex(index)}
+              className="block w-full cursor-zoom-in text-left"
+              aria-label={lightboxAlt(
+                {
+                  kindLabel: photoKindLabel(asset.kind, copy),
+                  capturedAt: asset.capturedAt ?? null,
+                },
+                locale === 'fr' ? 'fr' : 'en',
+              )}
+            >
+              <AssetItem asset={asset} copy={copy} />
+            </button>
+            {editable && (
               <button
                 type="button"
-                data-testid={`gallery-thumb-${asset.kind}`}
-                onClick={() => setLightboxIndex(index)}
-                aria-label={lightboxAlt(
-                  { kindLabel: photoKindLabel(asset.kind, copy), capturedAt: asset.capturedAt ?? null },
-                  locale === 'fr' ? 'fr' : 'en',
-                )}
-                className="block w-full cursor-zoom-in text-left"
+                disabled={Boolean(busy)}
+                aria-label={`${copy.register.photoRemove}: ${photoKindLabel(asset.kind, copy)}`}
+                onClick={() => remove(asset)}
+                className="absolute right-1 top-1 grid min-h-9 min-w-9 place-items-center rounded-full bg-background/95 text-error"
               >
-                <AssetItem asset={asset} copy={copy} />
+                <Trash2 className="h-4 w-4" />
               </button>
+            )}
+            <MediaEvidence asset={asset} locale={locale} />
+          </li>
+        ))}
+      </ul>
+      {videos.length > 0 && (
+        <div className="mt-4 space-y-3">
+          {videos.map((asset) => (
+            <div key={asset.id}>
+              <AuthBoardVideo asset={asset} locale={locale} />
+              <MediaEvidence asset={asset} locale={locale} />
               {editable && (
                 <button
                   type="button"
-                  aria-label={`${copy.register.photoRemove}: ${photoKindLabel(asset.kind, copy)}`}
-                  disabled={busy === `del-${asset.id}`}
-                  onClick={() => {
-                    if (!window.confirm(withLabel(copy.register.photoRemoveConfirm, photoKindLabel(asset.kind, copy))))
-                      return;
-                    void run(`del-${asset.id}`, async () => {
-                      await deleteAsset(orgId, site.id, asset.id);
-                      await reload();
-                    });
-                  }}
-                  className="absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-background/85 text-error transition hover:bg-background/95"
+                  disabled={Boolean(busy)}
+                  onClick={() => remove(asset)}
+                  className="mt-2 min-h-9 text-xs font-semibold text-error"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  {locale === 'fr' ? 'Retirer la vidéo' : 'Remove video'}
                 </button>
               )}
-            </li>
+            </div>
           ))}
-        </ul>
-      )}
-      {(uploadError || busy.startsWith('upload-')) && (
-        <div className="mt-3">
-          {uploadError && (
-            <p role="alert" className="text-xs font-medium text-error">
-              {uploadError}
-            </p>
-          )}
-          {busy.startsWith('upload-') && (
-            <p className="flex items-center gap-2 text-xs text-muted">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              {copy.detail.uploading}
-              <button
-                type="button"
-                aria-label={`${copy.detail.cancel} ${copy.detail.uploading}`}
-                onClick={() => {
-                  onUploadCancelled?.(busy);
-                  uploadAbortRef.current?.abort();
-                }}
-                className="ml-1 font-bold text-error underline underline-offset-2 transition hover:text-error/80"
-              >
-                {copy.detail.cancel}
-              </button>
-            </p>
-          )}
         </div>
       )}
       {editable && (
-        <div className="mt-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <Field
-              label={copy.register.captureDate}
-              htmlFor="uploadCapturedAt"
-              hint={copy.register.captureDateHint}
-              className="min-w-44"
-            >
-              <input
-                id="uploadCapturedAt"
-                type="date"
-                value={capturedAt}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={(event) => setCapturedAt(event.target.value)}
-                className={inputClass}
-              />
-            </Field>
-            {isOlderThanTwelveMonths(capturedAt) && (
-              <p className="pb-2 text-xs font-medium text-warning">{copy.register.oldPhotoWarning}</p>
-            )}
-          </div>
-          <div className="mt-2 flex flex-wrap gap-3">
-            {kinds.map((label) => (
-              <label
-                key={label}
-                className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-bold transition hover:bg-surface-2"
+        <div className="mt-5 border-t border-border pt-4">
+          <MediaCapturePicker
+            value={pending}
+            onChange={setPending}
+            locale={locale}
+            allowVideo={site.format === 'digital_led'}
+            disabled={Boolean(busy)}
+            errors={mediaErrors}
+          />
+          {uploadError && (
+            <p role="alert" className="mt-2 text-sm text-error">
+              {uploadError}
+            </p>
+          )}
+          {pending.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={upload}
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white disabled:opacity-60"
               >
-                {busy === `upload-${kindValue(copy.register[label])}` ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <PlusCircle className="h-3.5 w-3.5 text-primary" />
-                )}
-                {copy.register[label]}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="sr-only"
-                  onChange={(event) => {
-                    onUpload(kindValue(copy.register[label]), event.target.files);
-                    event.target.value = '';
+                {busy === 'upload-media' && <Loader2 className="h-4 w-4 animate-spin" />}
+                {busy === 'upload-media'
+                  ? copy.detail.uploading
+                  : locale === 'fr'
+                    ? 'Enregistrer les médias'
+                    : 'Save media'}
+              </button>
+              {busy === 'upload-media' && (
+                <button
+                  type="button"
+                  className="min-h-10 text-sm font-semibold text-error"
+                  onClick={() => {
+                    onUploadCancelled?.('upload-media');
+                    uploadAbortRef.current?.abort();
                   }}
-                />
-              </label>
-            ))}
-          </div>
+                >
+                  {copy.detail.cancel}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
       {lightboxIndex !== null && galleryAssets[lightboxIndex] && (
@@ -1097,8 +1341,7 @@ function PhotosSection({
 }
 
 /** Replace a single {{label}} placeholder in confirm-dialog copy. */
-const withLabel = (template: string, label: string): string =>
-  template.replace('{{label}}', label);
+const withLabel = (template: string, label: string): string => template.replace('{{label}}', label);
 
 function photoKindLabel(kind: SiteAsset['kind'], copy: ReturnType<typeof getSitesCopy>): string {
   return kind === 'front'
@@ -1138,7 +1381,9 @@ function FacesSection({
   busy,
   reload,
   run,
+  onUnsavedChange,
 }: {
+  onUnsavedChange: (section: string, dirty: boolean) => void;
   locale: SiteLocale | undefined;
   site: SiteDetail;
   orgId: string | undefined;
@@ -1151,6 +1396,10 @@ function FacesSection({
 }) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  useEffect(() => {
+    onUnsavedChange('faces', adding || editingId !== null);
+    return () => onUnsavedChange('faces', false);
+  }, [adding, editingId, onUnsavedChange]);
   const [formError, setFormError] = useState('');
   const emptyForm = {
     faceLabel: '',
@@ -1193,14 +1442,26 @@ function FacesSection({
   };
 
   const validateFace = (): boolean => {
-    if (!form.faceLabel.trim() || faceWidth === null || faceHeight === null || area <= 0) return false;
-    if (form.bleedMm.trim() && (parseDecimal(form.bleedMm) === null || parseDecimal(form.bleedMm)! < 0)) {
+    if (!form.faceLabel.trim() || faceWidth === null || faceHeight === null || area <= 0)
+      return false;
+    if (
+      form.bleedMm.trim() &&
+      (parseDecimal(form.bleedMm) === null || parseDecimal(form.bleedMm)! < 0)
+    ) {
       setFormError(copy.detail.bleedInvalid);
       return false;
     }
     if (isDigital) {
-      const numeric = [form.pixelWidth, form.pixelHeight, form.spotLengthSeconds, form.loopLengthSeconds, form.spotsPerLoop];
-      const bad = numeric.some((raw) => raw.trim() !== '' && (parseDecimal(raw) === null || parseDecimal(raw)! <= 0));
+      const numeric = [
+        form.pixelWidth,
+        form.pixelHeight,
+        form.spotLengthSeconds,
+        form.loopLengthSeconds,
+        form.spotsPerLoop,
+      ];
+      const bad = numeric.some(
+        (raw) => raw.trim() !== '' && (parseDecimal(raw) === null || parseDecimal(raw)! <= 0),
+      );
       if (bad) {
         setFormError(copy.detail.digitalPositive);
         return false;
@@ -1299,10 +1560,7 @@ function FacesSection({
       {site.faces.length > 0 && (
         <ul className="space-y-2">
           {site.faces.map((face: SiteFace) => (
-            <li
-              key={face.id}
-              className="rounded-lg border border-border bg-surface-2 px-3 py-2.5"
-            >
+            <li key={face.id} className="rounded-lg border border-border bg-surface-2 px-3 py-2.5">
               {editingId === face.id ? (
                 <FaceForm
                   form={form}
@@ -1322,12 +1580,15 @@ function FacesSection({
                     <p className="text-sm font-bold">
                       {face.faceLabel}
                       <span className="ml-2 font-medium text-muted">
-                        {face.width} × {face.height} {face.units} · {formatArea(face.area, face.units, locale)}
+                        {face.width} × {face.height} {face.units} ·{' '}
+                        {formatArea(face.area, face.units, locale)}
                       </span>
                     </p>
                     <p className="text-xs text-muted">
                       {copy.detail.faceBookable}: {face.bookable ? '✓' : '—'}
-                      {face.printableArea ? ` · ${copy.detail.facePrintable}: ${face.printableArea}` : ''}
+                      {face.printableArea
+                        ? ` · ${copy.detail.facePrintable}: ${face.printableArea}`
+                        : ''}
                       {isDigital && face.spotLengthSeconds != null
                         ? ` · ${copy.detail.spotLength} ${face.spotLengthSeconds}s / ${copy.detail.loopLength} ${face.loopLengthSeconds ?? '—'}s`
                         : ''}
@@ -1337,8 +1598,12 @@ function FacesSection({
                         {[
                           face.bleedMm != null ? `${copy.detail.bleed} ${face.bleedMm} mm` : '',
                           face.substrate ? `${copy.detail.substrate}: ${face.substrate}` : '',
-                          face.fileRequirements ? `${copy.detail.fileRequirements}: ${face.fileRequirements}` : '',
-                        ].filter(Boolean).join(' · ')}
+                          face.fileRequirements
+                            ? `${copy.detail.fileRequirements}: ${face.fileRequirements}`
+                            : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </p>
                     )}
                   </div>
@@ -1359,7 +1624,12 @@ function FacesSection({
                         aria-label={`${copy.detail.faceRemove}: ${face.faceLabel}`}
                         disabled={busy === `face-del-${face.id}`}
                         onClick={() => {
-                          if (!window.confirm(withLabel(copy.detail.faceRemoveConfirm, face.faceLabel))) return;
+                          if (
+                            !window.confirm(
+                              withLabel(copy.detail.faceRemoveConfirm, face.faceLabel),
+                            )
+                          )
+                            return;
                           void run(`face-del-${face.id}`, async () => {
                             await removeFace(orgId, face.id);
                             await reload();
@@ -1435,7 +1705,10 @@ function FaceForm({
   onCancel: () => void;
 }) {
   return (
-    <form onSubmit={onSubmit} className="mt-4 space-y-3 rounded-lg border border-border bg-surface-2 p-3">
+    <form
+      onSubmit={onSubmit}
+      className="mt-4 space-y-3 rounded-lg border border-border bg-surface-2 p-3"
+    >
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label={copy.detail.faceLabel} htmlFor="faceLabel">
           <input
@@ -1481,7 +1754,11 @@ function FaceForm({
             </select>
           </span>
         </Field>
-        <Field label={copy.detail.facePrintable} htmlFor="facePrintable" hint={copy.detail.facePrintableHint}>
+        <Field
+          label={copy.detail.facePrintable}
+          htmlFor="facePrintable"
+          hint={copy.detail.facePrintableHint}
+        >
           <input
             id="facePrintable"
             value={form.printableArea}
@@ -1493,16 +1770,30 @@ function FaceForm({
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label={copy.detail.bleed} htmlFor="faceBleed" hint={copy.detail.bleedHint}>
-          <input id="faceBleed" type="text" inputMode="decimal" value={form.bleedMm}
-            onChange={(event) => setForm({ ...form, bleedMm: event.target.value })} className={inputClass} />
+          <input
+            id="faceBleed"
+            type="text"
+            inputMode="decimal"
+            value={form.bleedMm}
+            onChange={(event) => setForm({ ...form, bleedMm: event.target.value })}
+            className={inputClass}
+          />
         </Field>
         <Field label={copy.detail.substrate} htmlFor="faceSubstrate">
-          <input id="faceSubstrate" value={form.substrate}
-            onChange={(event) => setForm({ ...form, substrate: event.target.value })} className={inputClass} />
+          <input
+            id="faceSubstrate"
+            value={form.substrate}
+            onChange={(event) => setForm({ ...form, substrate: event.target.value })}
+            className={inputClass}
+          />
         </Field>
         <Field label={copy.detail.fileRequirements} htmlFor="faceFiles">
-          <input id="faceFiles" value={form.fileRequirements}
-            onChange={(event) => setForm({ ...form, fileRequirements: event.target.value })} className={inputClass} />
+          <input
+            id="faceFiles"
+            value={form.fileRequirements}
+            onChange={(event) => setForm({ ...form, fileRequirements: event.target.value })}
+            className={inputClass}
+          />
         </Field>
       </div>
       <label className="inline-flex min-h-8 items-center gap-2 text-sm font-semibold">
@@ -1622,7 +1913,9 @@ function RatesSection({
   busy,
   reload,
   run,
+  onUnsavedChange,
 }: {
+  onUnsavedChange: (section: string, dirty: boolean) => void;
   site: SiteDetail;
   orgId: string | undefined;
   editable: boolean;
@@ -1633,8 +1926,12 @@ function RatesSection({
   run: (key: string, action: () => Promise<void>) => Promise<void>;
 }) {
   const [adding, setAdding] = useState(false);
+  useEffect(() => {
+    onUnsavedChange('rates', adding);
+    return () => onUnsavedChange('rates', false);
+  }, [adding, onUnsavedChange]);
   const [form, setForm] = useState({
-    currency: site.country === 'Ghana' ? 'GHS' : site.country === 'Cameroon' ? 'XAF' : 'NGN',
+    currency: (findMarket(site.country)?.currency ?? 'NGN') as string,
     faceId: '',
     minBookingDays: '1',
     perDay: '',
@@ -1644,7 +1941,9 @@ function RatesSection({
   });
   const [seasonal, setSeasonal] = useState<SeasonalRule[]>([]);
   const [formError, setFormError] = useState('');
-  const [rateErrors, setRateErrors] = useState<Partial<Record<'perDay' | 'perWeek' | 'perMonth', string>>>({});
+  const [rateErrors, setRateErrors] = useState<
+    Partial<Record<'perDay' | 'perWeek' | 'perMonth', string>>
+  >({});
 
   const onAdd = (event: FormEvent) => {
     event.preventDefault();
@@ -1670,7 +1969,13 @@ function RatesSection({
       }
     }
     if (Object.keys(invalid).length > 0) {
-      setRateErrors((previous) => ({ ...previous, perDay: undefined, perWeek: undefined, perMonth: undefined, ...invalid }));
+      setRateErrors((previous) => ({
+        ...previous,
+        perDay: undefined,
+        perWeek: undefined,
+        perMonth: undefined,
+        ...invalid,
+      }));
       return;
     }
     if (Object.keys(parsed).length === 0 || !orgId) {
@@ -1728,41 +2033,55 @@ function RatesSection({
                   <Banknote className="h-4 w-4 text-primary" />
                   {card.currency}
                 </p>
-                {editable && card.effectiveFrom.slice(0, 10) > new Date().toISOString().slice(0, 10) ? (
-                  <button type="button" disabled={busy === `rate-withdraw-${card.id}`}
-                    onClick={() => {
-                      if (!window.confirm(withLabel(copy.detail.rateWithdrawConfirm, card.currency))) return;
-                      void run(`rate-withdraw-${card.id}`, async () => {
-                        await withdrawFutureRateCard(orgId, card.id);
-                        await reload();
-                      });
-                    }}
-                    className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-muted transition hover:text-foreground disabled:opacity-60">
-                    <Ban className="h-3 w-3" />{copy.detail.rateWithdraw}
-                  </button>
-                ) : editable && !card.effectiveTo && (
+                {editable &&
+                card.effectiveFrom.slice(0, 10) > new Date().toISOString().slice(0, 10) ? (
                   <button
                     type="button"
-                    disabled={busy === `rate-end-${card.id}`}
+                    disabled={busy === `rate-withdraw-${card.id}`}
                     onClick={() => {
-                      if (!window.confirm(withLabel(copy.detail.rateEndConfirm, card.currency))) return;
-                      void run(`rate-end-${card.id}`, async () => {
-                        await endRateCard(orgId, card.id, new Date().toISOString().slice(0, 10));
+                      if (
+                        !window.confirm(withLabel(copy.detail.rateWithdrawConfirm, card.currency))
+                      )
+                        return;
+                      void run(`rate-withdraw-${card.id}`, async () => {
+                        await withdrawFutureRateCard(orgId, card.id);
                         await reload();
                       });
                     }}
                     className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-muted transition hover:text-foreground disabled:opacity-60"
                   >
                     <Ban className="h-3 w-3" />
-                    {copy.detail.rateEnd}
+                    {copy.detail.rateWithdraw}
                   </button>
+                ) : (
+                  editable &&
+                  !card.effectiveTo && (
+                    <button
+                      type="button"
+                      disabled={busy === `rate-end-${card.id}`}
+                      onClick={() => {
+                        if (!window.confirm(withLabel(copy.detail.rateEndConfirm, card.currency)))
+                          return;
+                        void run(`rate-end-${card.id}`, async () => {
+                          await endRateCard(orgId, card.id, new Date().toISOString().slice(0, 10));
+                          await reload();
+                        });
+                      }}
+                      className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-bold text-muted transition hover:text-foreground disabled:opacity-60"
+                    >
+                      <Ban className="h-3 w-3" />
+                      {copy.detail.rateEnd}
+                    </button>
+                  )
                 )}
               </div>
               <p className="mt-1 text-xs font-semibold text-muted">
                 {card.faceId
                   ? `${copy.detail.rateScope}: ${site.faces.find((face) => face.id === card.faceId)?.faceLabel ?? '—'}`
                   : copy.detail.rateAllFaces}
-                {card.minBookingDays ? ` · ${copy.detail.minBookingDays}: ${card.minBookingDays}` : ''}
+                {card.minBookingDays
+                  ? ` · ${copy.detail.minBookingDays}: ${card.minBookingDays}`
+                  : ''}
               </p>
               <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
                 {card.rates.perDay != null && (
@@ -1791,20 +2110,33 @@ function RatesSection({
               )}
               <p className="mt-1 text-xs text-muted">
                 {copy.detail.effectiveFrom} {card.effectiveFrom.slice(0, 10)}
-                {card.effectiveTo ? ` · ${copy.detail.effectiveTo} ${card.effectiveTo.slice(0, 10)}` : ''}
+                {card.effectiveTo
+                  ? ` · ${copy.detail.effectiveTo} ${card.effectiveTo.slice(0, 10)}`
+                  : ''}
               </p>
             </li>
           ))}
         </ul>
       )}
       {adding && editable && (
-        <form onSubmit={onAdd} className="mt-4 space-y-3 rounded-lg border border-border bg-surface-2 p-3">
+        <form
+          onSubmit={onAdd}
+          className="mt-4 space-y-3 rounded-lg border border-border bg-surface-2 p-3"
+        >
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={copy.detail.rateScope} htmlFor="rateFace">
-              <select id="rateFace" value={form.faceId}
-                onChange={(event) => setForm({ ...form, faceId: event.target.value })} className={inputClass}>
+              <select
+                id="rateFace"
+                value={form.faceId}
+                onChange={(event) => setForm({ ...form, faceId: event.target.value })}
+                className={inputClass}
+              >
                 <option value="">{copy.detail.rateAllFaces}</option>
-                {site.faces.map((face) => <option key={face.id} value={face.id}>{face.faceLabel}</option>)}
+                {site.faces.map((face) => (
+                  <option key={face.id} value={face.id}>
+                    {face.faceLabel}
+                  </option>
+                ))}
               </select>
             </Field>
             <Field label={copy.detail.currency} htmlFor="rateCurrency">
@@ -1822,9 +2154,15 @@ function RatesSection({
               </select>
             </Field>
             <Field label={copy.detail.minBookingDays} htmlFor="rateMinDays">
-              <input id="rateMinDays" type="number" min="1" step="1"
+              <input
+                id="rateMinDays"
+                type="number"
+                min="1"
+                step="1"
                 value={form.minBookingDays}
-                onChange={(event) => setForm({ ...form, minBookingDays: event.target.value })} className={inputClass} />
+                onChange={(event) => setForm({ ...form, minBookingDays: event.target.value })}
+                className={inputClass}
+              />
             </Field>
             <Field label={copy.detail.effectiveFrom} htmlFor="rateFrom">
               <input
@@ -1873,14 +2211,18 @@ function RatesSection({
           <div className="rounded-lg border border-border bg-surface px-3 py-3">
             <h3 className="text-sm font-bold">{copy.detail.seasonalHeading}</h3>
             <p className="mt-1 text-xs leading-5 text-muted">{copy.detail.seasonalHint}</p>
-            {seasonal.length === 0 && <p className="mt-2 text-xs text-muted">{copy.detail.seasonalEmpty}</p>}
+            {seasonal.length === 0 && (
+              <p className="mt-2 text-xs text-muted">{copy.detail.seasonalEmpty}</p>
+            )}
             {seasonal.map((rule, index) => (
               <div key={index} className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto]">
                 <input
                   aria-label={`${copy.detail.seasonalLabel} ${index + 1}`}
                   value={rule.label}
                   onChange={(event) =>
-                    setSeasonal((rules) => rules.map((r, i) => (i === index ? { ...r, label: event.target.value } : r)))
+                    setSeasonal((rules) =>
+                      rules.map((r, i) => (i === index ? { ...r, label: event.target.value } : r)),
+                    )
                   }
                   placeholder={copy.detail.seasonalLabel}
                   className={inputClass}
@@ -1890,7 +2232,9 @@ function RatesSection({
                   aria-label={`${copy.detail.seasonalFrom} ${index + 1}`}
                   value={rule.from}
                   onChange={(event) =>
-                    setSeasonal((rules) => rules.map((r, i) => (i === index ? { ...r, from: event.target.value } : r)))
+                    setSeasonal((rules) =>
+                      rules.map((r, i) => (i === index ? { ...r, from: event.target.value } : r)),
+                    )
                   }
                   className={inputClass}
                 />
@@ -1899,7 +2243,9 @@ function RatesSection({
                   aria-label={`${copy.detail.seasonalTo} ${index + 1}`}
                   value={rule.to}
                   onChange={(event) =>
-                    setSeasonal((rules) => (rules.map((r, i) => (i === index ? { ...r, to: event.target.value } : r))))
+                    setSeasonal((rules) =>
+                      rules.map((r, i) => (i === index ? { ...r, to: event.target.value } : r)),
+                    )
                   }
                   className={inputClass}
                 />
@@ -1912,7 +2258,9 @@ function RatesSection({
                     onChange={(event) =>
                       setSeasonal((rules) =>
                         rules.map((r, i) =>
-                          i === index ? { ...r, multiplier: parseDecimal(event.target.value) ?? 0 } : r,
+                          i === index
+                            ? { ...r, multiplier: parseDecimal(event.target.value) ?? 0 }
+                            : r,
                         ),
                       )
                     }
@@ -1980,14 +2328,19 @@ function MetadataSection({
 }) {
   return (
     <details className="rounded-xl border border-border bg-surface p-5">
-      <summary className="min-h-11 cursor-pointer text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{copy.detail.metadataHeading}</summary>
+      <summary className="min-h-11 cursor-pointer text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+        {copy.detail.metadataHeading}
+      </summary>
       <p className="text-xs leading-5 text-muted">{copy.detail.metadataIntro}</p>
       {site.metadata.length === 0 ? (
         <p className="mt-3 text-sm text-muted">{copy.detail.metadataEmpty}</p>
       ) : (
         <ul className="mt-3 space-y-2">
           {site.metadata.map((record) => (
-            <li key={record.id} className="rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm">
+            <li
+              key={record.id}
+              className="rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm"
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-bold">{record.dimension}</span>
                 <span className="rounded-full bg-muted/15 px-2 py-0.5 text-[11px] font-semibold text-muted">
@@ -2005,10 +2358,17 @@ function MetadataSection({
                     <dt className="text-muted">{fact.label}</dt>
                     <dd className="min-w-0 whitespace-pre-wrap break-words font-medium">
                       {fact.href ? (
-                        <a href={fact.href} target="_blank" rel="noopener noreferrer" className="text-info underline underline-offset-2">
+                        <a
+                          href={fact.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-info underline underline-offset-2"
+                        >
                           {fact.value}
                         </a>
-                      ) : fact.value}
+                      ) : (
+                        fact.value
+                      )}
                     </dd>
                   </div>
                 ))}
@@ -2016,11 +2376,19 @@ function MetadataSection({
               <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted">
                 {record.source && (
                   <span>
-                    {copy.detail.metadataBy}: {metadataLink(record.source) ? (
-                      <a href={metadataLink(record.source)} target="_blank" rel="noopener noreferrer" className="break-words text-info underline underline-offset-2">
+                    {copy.detail.metadataBy}:{' '}
+                    {metadataLink(record.source) ? (
+                      <a
+                        href={metadataLink(record.source)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="break-words text-info underline underline-offset-2"
+                      >
                         {record.source}
                       </a>
-                    ) : record.source}
+                    ) : (
+                      record.source
+                    )}
                   </span>
                 )}
                 {record.method && (
@@ -2052,7 +2420,10 @@ function MetadataSection({
   );
 }
 
-function verificationLabel(verification: string | null | undefined, copy: ReturnType<typeof getSitesCopy>): string {
+function verificationLabel(
+  verification: string | null | undefined,
+  copy: ReturnType<typeof getSitesCopy>,
+): string {
   switch (verification) {
     case 'partner_declared':
       return copy.detail.verificationPartnerDeclared;

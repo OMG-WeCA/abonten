@@ -12,14 +12,14 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Abonten — Outdoor Advertising, Planned & Verified',
+  title: 'Abonten — Outdoor inventory & location intelligence',
   description:
-    'The planning, booking, and proof-of-performance platform for outdoor advertising across West & Central Africa.',
+    'Discover outdoor inventory, compare locations and prepare campaign shortlists across West & Central Africa.',
   metadataBase: new URL('https://abonten.com'),
   openGraph: {
-    title: 'Abonten — Outdoor Advertising, Planned & Verified',
+    title: 'Abonten — Outdoor inventory & location intelligence',
     description:
-      'List inventory, plan multi-city campaigns with real KPIs, and prove every billboard is live — across 23+ markets in West & Central Africa.',
+      'Present outdoor inventory, inspect reference media and plan campaigns with clear location, cost and source context.',
     type: 'website',
   },
 };

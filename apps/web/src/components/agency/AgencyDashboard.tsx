@@ -24,9 +24,16 @@ import { useAuth } from '../auth/AuthProvider';
 import { useTheme } from '../ThemeProvider';
 import { AccountLoading, AccountRecovery } from '../account/WorkspaceFrame';
 import { workspaceAccessState } from '../../lib/account-session-recovery';
+import { SUPPORTED_MARKETS, findMarket, marketLabel } from '../../lib/markets';
 import { ApiError } from '../../lib/api';
-import { draftFaceEligibility, loadAgencyDraft, saveAgencyDraft, summarizeDraftBudget, MAX_DRAFT_FACES,
-  type AgencyDraftFace } from '../../lib/agency-draft';
+import {
+  draftFaceEligibility,
+  loadAgencyDraft,
+  saveAgencyDraft,
+  summarizeDraftBudget,
+  MAX_DRAFT_FACES,
+  type AgencyDraftFace,
+} from '../../lib/agency-draft';
 import {
   getAgencySite as getBoard,
   searchAgencySites as searchBoards,
@@ -178,9 +185,11 @@ function AgencyWorkspace() {
       setCurrency(stored.currency);
       pendingDraftRef.current = stored.faces;
       setUnrestoredFaces(stored.faces);
-      setDraftNotice(locale === 'fr'
-        ? 'Brouillon de cet onglet restauré. Les données sont revérifiées ; document et conversation sont réinitialisés.'
-        : 'This tab’s draft restored. Board facts are checked again; brief and conversation start fresh.');
+      setDraftNotice(
+        locale === 'fr'
+          ? 'Brouillon de cet onglet restauré. Les données sont revérifiées ; document et conversation sont réinitialisés.'
+          : 'This tab’s draft restored. Board facts are checked again; brief and conversation start fresh.',
+      );
     }
     setDraftReady(true);
   }, [orgId, userId, locale]);
@@ -200,27 +209,33 @@ function AgencyWorkspace() {
       const sites = [...new Set(references.map((item) => item.siteId))];
       for (let start = 0; start < sites.length; start += 4) {
         if (controller.signal.aborted) return;
-        await Promise.all(sites.slice(start, start + 4).map(async (id) => {
-          const refs = references.filter((item) => item.siteId === id);
-          try {
-            // Stored IDs never restore cached rates, availability, names or coordinates.
-            const [site, snapshot] = await Promise.all([
-              getBoard(orgId, id, controller.signal),
-              getSiteOptions(orgId, id, restoreWindow, controller.signal).catch(() => null),
-            ]);
-            if (controller.signal.aborted) return;
-            if (snapshot) snapshots[id] = { ...snapshot, window: restoreWindow };
-            for (const ref of refs) {
-              const face = site.faces.find((item) => item.id === ref.faceId);
-              if (!face || !face.bookable) { removed++; continue; }
-              restored.push({ site, faceId: ref.faceId, pricingCurrency: ref.pricingCurrency });
+        await Promise.all(
+          sites.slice(start, start + 4).map(async (id) => {
+            const refs = references.filter((item) => item.siteId === id);
+            try {
+              // Stored IDs never restore cached rates, availability, names or coordinates.
+              const [site, snapshot] = await Promise.all([
+                getBoard(orgId, id, controller.signal),
+                getSiteOptions(orgId, id, restoreWindow, controller.signal).catch(() => null),
+              ]);
+              if (controller.signal.aborted) return;
+              if (snapshot) snapshots[id] = { ...snapshot, window: restoreWindow };
+              for (const ref of refs) {
+                const face = site.faces.find((item) => item.id === ref.faceId);
+                if (!face || !face.bookable) {
+                  removed++;
+                  continue;
+                }
+                restored.push({ site, faceId: ref.faceId, pricingCurrency: ref.pricingCurrency });
+              }
+            } catch (error) {
+              if (controller.signal.aborted) return;
+              if (error instanceof ApiError && [403, 404].includes(error.status))
+                removed += refs.length;
+              else failed.push(...refs);
             }
-          } catch (error) {
-            if (controller.signal.aborted) return;
-            if (error instanceof ApiError && [403, 404].includes(error.status)) removed += refs.length;
-            else failed.push(...refs);
-          }
-        }));
+          }),
+        );
       }
       if (controller.signal.aborted) return;
       const restoredById = new globalThis.Map(restored.map((item) => [item.faceId, item]));
@@ -228,13 +243,18 @@ function AgencyWorkspace() {
         const item = restoredById.get(ref.faceId);
         return item ? [item] : [];
       });
-      setShortlist((current) => [...new globalThis.Map([...current, ...ordered].map((item) => [item.faceId, item])).values()]);
+      setShortlist((current) => [
+        ...new globalThis.Map([...current, ...ordered].map((item) => [item.faceId, item])).values(),
+      ]);
       setOptions((current) => ({ ...current, ...snapshots }));
       pendingDraftRef.current = failed;
       setUnrestoredFaces(failed);
-      if (failed.length || removed) setDraftNotice(locale === 'fr'
-        ? `${failed.length} faces restent à vérifier ; ${removed} faces supprimées ou inaccessibles retirées. Document et conversation réinitialisés.`
-        : `${failed.length} draft faces still need loading; ${removed} deleted or inaccessible faces removed. Brief and conversation start fresh.`);
+      if (failed.length || removed)
+        setDraftNotice(
+          locale === 'fr'
+            ? `${failed.length} faces restent à vérifier ; ${removed} faces supprimées ou inaccessibles retirées. Document et conversation réinitialisés.`
+            : `${failed.length} draft faces still need loading; ${removed} deleted or inaccessible faces removed. Brief and conversation start fresh.`,
+        );
       setRestoringDraft(false);
     })();
     return () => controller.abort();
@@ -244,12 +264,38 @@ function AgencyWorkspace() {
 
   useEffect(() => {
     if (!draftReady) return;
-    setDraftSaved(saveAgencyDraft(userId, orgId, {
-      version: 1, window, country, query, format, budget, currency,
-      faces: [...shortlist.map((item) => ({ siteId: item.site.id, faceId: item.faceId,
-        ...(item.pricingCurrency ? { pricingCurrency: item.pricingCurrency } : {}) })), ...unrestoredFaces],
-    }));
-  }, [draftReady, userId, orgId, window, country, query, format, budget, currency, shortlist, unrestoredFaces]);
+    setDraftSaved(
+      saveAgencyDraft(userId, orgId, {
+        version: 1,
+        window,
+        country,
+        query,
+        format,
+        budget,
+        currency,
+        faces: [
+          ...shortlist.map((item) => ({
+            siteId: item.site.id,
+            faceId: item.faceId,
+            ...(item.pricingCurrency ? { pricingCurrency: item.pricingCurrency } : {}),
+          })),
+          ...unrestoredFaces,
+        ],
+      }),
+    );
+  }, [
+    draftReady,
+    userId,
+    orgId,
+    window,
+    country,
+    query,
+    format,
+    budget,
+    currency,
+    shortlist,
+    unrestoredFaces,
+  ]);
 
   useEffect(() => {
     if (!validWindow) return;
@@ -435,15 +481,14 @@ function AgencyWorkspace() {
     () => selectionDistances(shortlist.map((item) => item.site)),
     [shortlist],
   );
-  const plannerSelection = useMemo(
-    () => {
-      const selection = buildPlannerSelection(shortlist, selectedId);
-      return { ...selection,
-        selectionTruncated: selection.selectionTruncated || unrestoredFaces.length > 0,
-        omittedFaces: selection.omittedFaces + unrestoredFaces.length };
-    },
-    [shortlist, selectedId, unrestoredFaces],
-  );
+  const plannerSelection = useMemo(() => {
+    const selection = buildPlannerSelection(shortlist, selectedId);
+    return {
+      ...selection,
+      selectionTruncated: selection.selectionTruncated || unrestoredFaces.length > 0,
+      omittedFaces: selection.omittedFaces + unrestoredFaces.length,
+    };
+  }, [shortlist, selectedId, unrestoredFaces]);
   const select = (id: string, preferredFaceId?: string) => {
     preferredFaceRef.current = preferredFaceId ? { siteId: id, faceId: preferredFaceId } : null;
     if (detail?.id === id) {
@@ -467,15 +512,27 @@ function AgencyWorkspace() {
     )
       return;
     if (shortlist.length + unrestoredFaces.length >= MAX_DRAFT_FACES) {
-      setNotice(t('This draft holds up to 100 faces. Remove a face before adding another.',
-        'Ce brouillon contient au maximum 100 faces. Retirez une face avant d’en ajouter une.'));
+      setNotice(
+        t(
+          'This draft holds up to 100 faces. Remove a face before adding another.',
+          'Ce brouillon contient au maximum 100 faces. Retirez une face avant d’en ajouter une.',
+        ),
+      );
       return;
     }
     setShortlist((items) =>
       items.some((item) => item.faceId === faceId)
         ? items
-        : [...items, { site: detail, faceId,
-          ...(selectedEstimate?.status === 'ready' ? { pricingCurrency: selectedEstimate.currency } : {}) }],
+        : [
+            ...items,
+            {
+              site: detail,
+              faceId,
+              ...(selectedEstimate?.status === 'ready'
+                ? { pricingCurrency: selectedEstimate.currency }
+                : {}),
+            },
+          ],
     );
     setNotice(t('Face added to your draft shortlist.', 'Face ajoutée à votre sélection.'));
   };
@@ -657,14 +714,12 @@ function AgencyWorkspace() {
           >
             <option value="">{t('All markets', 'Tous les marchés')}</option>
             {[
-              'Nigeria',
-              'Ghana',
-              'Cameroon',
-              ...(org?.country && !['Nigeria', 'Ghana', 'Cameroon'].includes(org.country)
-                ? [org.country]
-                : []),
+              ...SUPPORTED_MARKETS.map((market) => market.name),
+              ...(org?.country && !findMarket(org.country) ? [org.country] : []),
             ].map((item) => (
-              <option key={item}>{item}</option>
+              <option key={item} value={item}>
+                {marketLabel(item, locale)}
+              </option>
             ))}
           </select>
         </label>
@@ -1032,16 +1087,22 @@ function AgencyWorkspace() {
               : '—'}
           </b>
           <small>
-            {draftSaved ? t('Saved in this tab · ', 'Enregistré dans cet onglet · ') :
-              t('Draft not saved in this tab · ', 'Brouillon non enregistré dans cet onglet · ')}
+            {draftSaved
+              ? t('Saved in this tab · ', 'Enregistré dans cet onglet · ')
+              : t('Draft not saved in this tab · ', 'Brouillon non enregistré dans cet onglet · ')}
             {summary.remaining != null
               ? `${money(Math.abs(summary.remaining), currency, locale)} ${summary.remaining < 0 ? t('over budget', 'de dépassement') : t('remaining', 'restants')}`
               : t('Published media estimates', 'Estimations média publiées')}
           </small>
           {unrestoredFaces.length > 0 && (
-            <button className="agency-secondary-button" disabled={restoringDraft}
-              onClick={() => setRestoreAttempt((attempt) => attempt + 1)}>
-              {restoringDraft ? t('Checking draft…', 'Vérification…') : t('Retry draft loading', 'Recharger le brouillon')}
+            <button
+              className="agency-secondary-button"
+              disabled={restoringDraft}
+              onClick={() => setRestoreAttempt((attempt) => attempt + 1)}
+            >
+              {restoringDraft
+                ? t('Checking draft…', 'Vérification…')
+                : t('Retry draft loading', 'Recharger le brouillon')}
             </button>
           )}
           <button

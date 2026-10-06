@@ -71,6 +71,21 @@ interface RequestOptions extends RequestInit {
   timeoutMs?: number;
 }
 
+/** Locale follows the currently rendered UI, with a guest preference fallback. */
+export function requestLocale(): 'en' | 'fr' {
+  if (typeof document !== 'undefined' && document.documentElement.lang) {
+    return document.documentElement.lang.toLowerCase().startsWith('fr') ? 'fr' : 'en';
+  }
+  if (typeof localStorage !== 'undefined') {
+    try {
+      return localStorage.getItem('abonten-locale') === 'fr' ? 'fr' : 'en';
+    } catch {
+      /* Storage may be disabled. */
+    }
+  }
+  return 'en';
+}
+
 export async function apiFetch(path: string, options: RequestOptions = {}): Promise<Response> {
   const { auth = true, retryOnExpiredAccess = true, headers, ...request } = options;
   const session = auth ? loadSession() : null;
@@ -78,6 +93,7 @@ export async function apiFetch(path: string, options: RequestOptions = {}): Prom
     ...request,
     headers: {
       ...(request.body instanceof FormData ? {} : { Accept: 'application/json' }),
+      'Accept-Language': requestLocale(),
       ...(session ? { Authorization: `Bearer ${session.accessToken}` } : {}),
       ...headers,
     },
@@ -163,7 +179,11 @@ async function redeemRefreshToken(
 ): Promise<boolean> {
   const response = await fetchWithTimeout(apiUrl('/api/auth/refresh'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'Accept-Language': requestLocale(),
+    },
     body: JSON.stringify({
       refreshToken: staleSession.refreshToken,
       activeOrgId: staleSession.activeOrgId,
@@ -179,9 +199,19 @@ async function redeemRefreshToken(
       return redeemRefreshToken({ ...staleSession, activeOrgId: undefined }, false);
     }
     if (response.status === 403) {
-      throw new ApiError('Your organization access needs to be refreshed.', 403);
+      throw new ApiError(
+        requestLocale() === 'fr'
+          ? 'Actualisez votre accès à l’organisation.'
+          : 'Your organization access needs to be refreshed.',
+        403,
+      );
     }
-    throw new ApiError('Session refresh is temporarily unavailable.', response.status);
+    throw new ApiError(
+      requestLocale() === 'fr'
+        ? 'Le renouvellement de la session est temporairement indisponible.'
+        : 'Session refresh is temporarily unavailable.',
+      response.status,
+    );
   }
 
   const result = (await response.json()) as Partial<StoredSession>;
@@ -233,11 +263,18 @@ async function fetchWithTimeout(
 }
 
 async function responseError(response: Response): Promise<ApiError> {
-  let message = 'Something went wrong. Please try again.';
+  let message =
+    requestLocale() === 'fr'
+      ? 'Une erreur est survenue. Veuillez réessayer.'
+      : 'Something went wrong. Please try again.';
   try {
     const body = (await response.json()) as { message?: string | string[] };
     if (Array.isArray(body.message)) message = body.message[0] ?? message;
-    else if (body.message) message = body.message;
+    else if (
+      body.message &&
+      !(requestLocale() === 'fr' && body.message === 'Internal server error')
+    )
+      message = body.message;
   } catch {
     // Keep the safe generic message for malformed/non-JSON responses.
   }

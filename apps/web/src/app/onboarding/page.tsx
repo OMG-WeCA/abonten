@@ -1,7 +1,10 @@
 'use client';
 
+import { SUPPORTED_MARKETS, findMarket } from '../../lib/markets';
+import { PartnerTermsDialog } from '../../components/terms/PartnerTermsDialog';
+import { getTermsCopy, loadPartnerTerms, type PartnerTermsDocument } from '../../lib/partner-terms';
 import { ArrowRight, Building2, Check, Globe2, UserRound } from 'lucide-react';
-import { FormEvent, useEffect, useState, type ReactNode } from 'react';
+import { FormEvent, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { AccountLoading, AccountRecovery } from '../../components/account/WorkspaceFrame';
 import { useAuth } from '../../components/auth/AuthProvider';
@@ -14,12 +17,6 @@ import {
   resumeOnboardingOrganization,
   saveOnboardingProgress,
 } from '../../lib/onboarding-progress';
-
-const COUNTRY_CURRENCIES: Record<string, string> = {
-  Nigeria: 'NGN',
-  Ghana: 'GHS',
-  Cameroon: 'XAF',
-};
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -44,7 +41,17 @@ export default function OnboardingPage() {
   const [country, setCountry] = useState('Nigeria');
   const [currency, setCurrency] = useState('NGN');
   const [loading, setLoading] = useState(false);
+  const submissionInFlight = useRef(false);
   const [error, setError] = useState('');
+  const [terms, setTerms] = useState<PartnerTermsDocument | null>(null);
+  const [termsFailed, setTermsFailed] = useState(false);
+  const [termsRetry, setTermsRetry] = useState(0);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
+  const termsCopy = getTermsCopy(locale);
+  const currencyNames = new Intl.DisplayNames([locale === 'fr' ? 'fr-FR' : 'en-GB'], {
+    type: 'currency',
+  });
   const copy = getAccountCopy(locale).onboarding;
   const accessState = workspaceAccessState({
     ready,
@@ -70,13 +77,33 @@ export default function OnboardingPage() {
     setTimezone(profile.timezone);
   }, [profile]);
 
+  useEffect(() => {
+    if (organizationType !== 'media_partner') return;
+    const controller = new AbortController();
+    setTerms(null);
+    setTermsFailed(false);
+    setTermsAccepted(false);
+    setTermsOpen(false);
+    loadPartnerTerms(locale, controller.signal)
+      .then((document) => {
+        if (!controller.signal.aborted) setTerms(document);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setTermsFailed(true);
+      });
+    return () => controller.abort();
+  }, [locale, organizationType, termsRetry]);
+
   const chooseCountry = (nextCountry: string) => {
     setCountry(nextCountry);
-    setCurrency(COUNTRY_CURRENCIES[nextCountry] ?? 'NGN');
+    const market = findMarket(nextCountry);
+    setCurrency(market?.currency ?? 'NGN');
+    if (market) setTimezone(market.timezone);
   };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (submissionInFlight.current) return;
     const profileName = name.trim();
     const orgName = organizationName.trim();
     if (!profile || !profileName || !orgName) {
@@ -84,13 +111,22 @@ export default function OnboardingPage() {
       return;
     }
 
+    if (
+      organizationType === 'media_partner' &&
+      (!terms || terms.locale !== locale || (terms.acceptanceRequired && !termsAccepted))
+    ) {
+      setError(termsFailed ? termsCopy.loadError : termsCopy.required);
+      return;
+    }
+
     const progress = loadOrCreateOnboardingProgress(localStorage, profile.id);
+    submissionInFlight.current = true;
     setLoading(true);
     setError('');
     try {
       await apiJson('/api/me', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept-Language': locale },
         body: JSON.stringify({ name: profileName, phone: phone.trim(), locale, timezone }),
       });
       await resumeOnboardingOrganization({
@@ -98,7 +134,7 @@ export default function OnboardingPage() {
         createOrganization: (onboardingKey) =>
           apiJson<{ id: string }>('/api/orgs', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Accept-Language': locale },
             body: JSON.stringify({
               onboardingKey,
               name: orgName,
@@ -106,6 +142,17 @@ export default function OnboardingPage() {
               country: country.trim(),
               defaultCurrency: currency,
               defaultLocale: locale,
+              ...(organizationType === 'media_partner' && terms?.acceptanceRequired
+                ? {
+                    partnerTerms: {
+                      version: terms.version,
+                      locale: terms.locale,
+                      expectedDigest: terms.digest,
+                      accepted: true,
+                      authorityConfirmed: true,
+                    },
+                  }
+                : {}),
             }),
           }),
         saveProgress: (nextProgress) =>
@@ -115,8 +162,15 @@ export default function OnboardingPage() {
       clearOnboardingProgress(localStorage, profile.id);
       router.replace('/dashboard');
     } catch (caught) {
+      if (
+        caught instanceof ApiError &&
+        caught.status === 409 &&
+        organizationType === 'media_partner'
+      )
+        setTermsRetry((value) => value + 1);
       setError(caught instanceof ApiError ? caught.message : copy.saveError);
     } finally {
+      submissionInFlight.current = false;
       setLoading(false);
     }
   };
@@ -138,7 +192,10 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background px-4 py-7 text-foreground sm:px-6 sm:py-10">
+    <div
+      lang={locale}
+      className="min-h-screen bg-background px-4 py-7 text-foreground sm:px-6 sm:py-10"
+    >
       <div className="mx-auto max-w-4xl">
         <div className="mb-8 flex items-center justify-between sm:mb-12">
           <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.16em]">
@@ -230,6 +287,8 @@ export default function OnboardingPage() {
                     <option value="Africa/Lagos">Lagos (WAT)</option>
                     <option value="Africa/Accra">Accra (GMT)</option>
                     <option value="Africa/Douala">Douala (WAT)</option>
+                    <option value="Africa/Porto-Novo">Porto-Novo (WAT)</option>
+                    <option value="Africa/Abidjan">Abidjan (GMT)</option>
                   </select>
                 </Field>
               </div>
@@ -244,7 +303,13 @@ export default function OnboardingPage() {
               </legend>
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <Field
-                  label={copy.organizationName}
+                  label={
+                    organizationType === 'media_partner'
+                      ? locale === 'fr'
+                        ? 'Dénomination légale de l’organisation'
+                        : 'Organization legal name'
+                      : copy.organizationName
+                  }
                   htmlFor="organizationName"
                   className="sm:col-span-2"
                 >
@@ -279,9 +344,11 @@ export default function OnboardingPage() {
                     onChange={(event) => chooseCountry(event.target.value)}
                     className={inputClass}
                   >
-                    <option>Nigeria</option>
-                    <option>Ghana</option>
-                    <option>Cameroon</option>
+                    {SUPPORTED_MARKETS.map((market) => (
+                      <option key={market.code} value={market.name}>
+                        {market.labels[locale]}
+                      </option>
+                    ))}
                   </select>
                 </Field>
                 <Field label={copy.defaultCurrency} htmlFor="currency">
@@ -291,12 +358,11 @@ export default function OnboardingPage() {
                     onChange={(event) => setCurrency(event.target.value)}
                     className={inputClass}
                   >
-                    <option value="NGN">NGN — Nigerian naira</option>
-                    <option value="GHS">GHS — Ghanaian cedi</option>
-                    <option value="XAF">XAF — Central African CFA franc</option>
-                    <option value="XOF">XOF — West African CFA franc</option>
-                    <option value="USD">USD — US dollar</option>
-                    <option value="EUR">EUR — Euro</option>
+                    {['NGN', 'GHS', 'XAF', 'XOF', 'USD', 'EUR'].map((code) => (
+                      <option key={code} value={code}>
+                        {code} — {currencyNames.of(code)}
+                      </option>
+                    ))}
                   </select>
                 </Field>
                 <div className="flex items-end pb-1 text-sm leading-5 text-muted">
@@ -305,6 +371,77 @@ export default function OnboardingPage() {
                 </div>
               </div>
             </fieldset>
+
+            {organizationType === 'media_partner' && (
+              <section aria-label={termsCopy.heading} className="mt-7 border-t border-border pt-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-bold">{termsCopy.heading}</p>
+                  {terms && (
+                    <button
+                      type="button"
+                      onClick={() => setTermsOpen(true)}
+                      className="min-h-10 rounded-lg px-2 text-sm font-semibold text-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-primary"
+                    >
+                      {termsCopy.read}
+                    </button>
+                  )}
+                </div>
+                {!terms && !termsFailed && (
+                  <p role="status" className="mt-2 text-sm text-muted">
+                    {termsCopy.loading}
+                  </p>
+                )}
+                {termsFailed && (
+                  <div role="alert" className="mt-2 text-sm text-error">
+                    <p>{termsCopy.loadError}</p>
+                    <button
+                      type="button"
+                      onClick={() => setTermsRetry((value) => value + 1)}
+                      className="mt-2 min-h-10 rounded-lg border border-border px-3 font-semibold text-foreground"
+                    >
+                      {termsCopy.retry}
+                    </button>
+                  </div>
+                )}
+                {terms && (
+                  <>
+                    {terms.status === 'review_draft' && (
+                      <p className="mt-2 text-xs font-semibold text-warning">
+                        {termsCopy.draft} · {termsCopy.version} {terms.version}
+                      </p>
+                    )}
+                    <p className="mt-2 text-sm leading-6 text-muted">
+                      {terms.status === 'review_draft'
+                        ? termsCopy.draftNotice
+                        : `${termsCopy.version} ${terms.version}`}
+                    </p>
+                    {terms.translationStatus === 'translation_for_review' && (
+                      <p className="mt-2 text-xs leading-5 text-muted">
+                        {termsCopy.translationNotice}
+                      </p>
+                    )}
+                    {terms.acceptanceRequired ? (
+                      <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-background p-3 text-sm leading-6">
+                        <input
+                          type="checkbox"
+                          checked={termsAccepted}
+                          onChange={(event) => setTermsAccepted(event.target.checked)}
+                          required
+                          className="mt-1 h-4 w-4 shrink-0 accent-primary"
+                        />
+                        <span>
+                          {terms.acceptanceMode === 'preview'
+                            ? termsCopy.previewAccept
+                            : termsCopy.accept}
+                        </span>
+                      </label>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted">{termsCopy.disabled}</p>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
 
             {error && (
               <p
@@ -316,7 +453,7 @@ export default function OnboardingPage() {
             )}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (organizationType === 'media_partner' && !terms)}
               className="mt-8 flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white transition hover:bg-primary-hover disabled:cursor-wait disabled:opacity-65 sm:w-auto sm:min-w-52"
             >
               {loading ? copy.saving : copy.enterWorkspace} <ArrowRight className="h-4 w-4" />
@@ -324,6 +461,9 @@ export default function OnboardingPage() {
           </form>
         </div>
       </div>
+      {terms && (
+        <PartnerTermsDialog open={termsOpen} document={terms} onClose={() => setTermsOpen(false)} />
+      )}
     </div>
   );
 }

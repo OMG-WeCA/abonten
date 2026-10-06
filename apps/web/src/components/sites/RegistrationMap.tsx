@@ -3,16 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Map as LeafletMap, Marker as LeafletMarker } from 'leaflet';
 import { MapPin } from 'lucide-react';
+import { findMarket } from '../../lib/markets';
 import { parseDecimal } from '../../lib/number-format';
 import { getSitesCopy, type SiteLocale } from '../../lib/sites-locale';
 import { SITE_MAP_ENABLED, SITE_MAP_TILES_URL, SITE_MAP_TILE_OPTIONS } from './mapbox-tiles';
 
 const DEFAULT_CENTER: [number, number] = [7.9, 2.8];
-const COUNTRY_CENTERS: Record<string, [number, number]> = {
-  ghana: [7.95, -1.02],
-  nigeria: [9.08, 8.68],
-  cameroon: [5.96, 12.35],
-};
 
 export function RegistrationMap({
   latitude,
@@ -56,7 +52,9 @@ export function RegistrationMap({
         const tiles = L.tileLayer(SITE_MAP_TILES_URL, SITE_MAP_TILE_OPTIONS).addTo(map);
         let loadedTile = false;
         let tileErrors = 0;
-        tiles.on('tileload', () => { loadedTile = true; });
+        tiles.on('tileload', () => {
+          loadedTile = true;
+        });
         tiles.on('tileerror', () => {
           tileErrors += 1;
           if (!cancelled && !loadedTile && tileErrors >= 3) setFailed(true);
@@ -94,8 +92,10 @@ export function RegistrationMap({
           if (!markerRef.current) {
             markerRef.current = L.marker(point, {
               icon: L.divIcon({
-                html: '<span style="display:block;width:20px;height:20px;border:3px solid white;border-radius:50%;background:#E4002B;box-shadow:0 2px 8px rgba(10,14,39,.5)"></span>',
-                className: '', iconSize: [20, 20], iconAnchor: [10, 10],
+                html: '<span class="block h-5 w-5 rounded-full border-[3px] border-background bg-primary shadow-lg"></span>',
+                className: '',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10],
               }),
             }).addTo(map);
           } else {
@@ -105,7 +105,10 @@ export function RegistrationMap({
         } else {
           markerRef.current?.remove();
           markerRef.current = null;
-          const center = COUNTRY_CENTERS[country.trim().toLowerCase()] ?? DEFAULT_CENTER;
+          const market = findMarket(country);
+          const center: [number, number] = market
+            ? [market.center[1], market.center[0]]
+            : DEFAULT_CENTER;
           map.flyTo(center, country ? 6 : 4, { duration: 0.7 });
         }
       })();
@@ -115,14 +118,22 @@ export function RegistrationMap({
 
   return (
     <div className="relative min-h-72 overflow-hidden rounded-xl border border-border bg-surface-2 lg:min-h-[440px]">
-      <div ref={containerRef} className="absolute inset-0" role="img" aria-label={copy.register.mapTitle} data-testid="registration-map" />
+      <div
+        ref={containerRef}
+        className="absolute inset-0"
+        role="img"
+        aria-label={copy.register.mapTitle}
+        data-testid="registration-map"
+      />
       {(!ready || failed || !SITE_MAP_ENABLED) && (
         <div className="absolute inset-0 grid place-items-center bg-surface-2 px-6 text-center">
           <div>
             <MapPin className="mx-auto h-7 w-7 text-primary" />
             <p className="mt-2 text-sm font-semibold text-foreground">{copy.register.mapTitle}</p>
             <p className="mt-1 text-xs leading-5 text-muted">
-              {failed || !SITE_MAP_ENABLED ? copy.register.mapUnavailable : copy.register.mapLoading}
+              {failed || !SITE_MAP_ENABLED
+                ? copy.register.mapUnavailable
+                : copy.register.mapLoading}
             </p>
           </div>
         </div>

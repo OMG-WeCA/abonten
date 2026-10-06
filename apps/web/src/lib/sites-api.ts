@@ -3,13 +3,7 @@
 import { apiJson, apiUrl, ApiError } from './api';
 
 export type SiteStatus =
-  | 'draft'
-  | 'pending_review'
-  | 'approved'
-  | 'listed'
-  | 'rejected'
-  | 'suspended'
-  | 'decommissioned';
+  'draft' | 'pending_review' | 'approved' | 'listed' | 'rejected' | 'suspended' | 'decommissioned';
 
 export interface GeoPoint {
   longitude: number;
@@ -42,13 +36,14 @@ export interface SiteSummary {
   description?: string | null;
   status: SiteStatus;
   rejectionReason?: string | null;
+  locationVerification?: SiteLocationVerification | null;
   permitRef?: string | null;
   permitExpiresAt?: string | null;
   createdAt: string;
   updatedAt: string;
   /** Present on list responses: newest front photo, for thumbnails. Seeded
-  * placeholders store an external URL (render directly); uploads store a local
-  * ref served through the authenticated /file endpoint. */
+   * placeholders store an external URL (render directly); uploads store a local
+   * ref served through the authenticated /file endpoint. */
   frontAssetId?: string | null;
   frontAssetRef?: string | null;
 }
@@ -99,6 +94,67 @@ export interface SiteAsset {
   storageRef: string;
   capturedAt?: string | null;
   createdAt: string;
+  mediaType?: 'image' | 'video';
+  contentType?: string | null;
+  byteSize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  durationSeconds?: number | null;
+  metadata?: SiteMediaEvidence | null;
+}
+
+export interface SiteLocationVerification {
+  status: 'matched' | 'mismatch' | 'unable_to_verify';
+  reasonCode: string;
+  distanceMeters: number | null;
+  toleranceMeters: number;
+  policyVersion: string;
+  checkedAt: string;
+  inputFingerprint: string;
+  provider: 'mapbox' | null;
+  message: string;
+  lastAttempt?: {
+    status: 'unable_to_verify';
+    reasonCode: string;
+    checkedAt: string;
+    provider: 'mapbox' | null;
+    message: string;
+  };
+}
+
+export interface SiteMediaEvidence {
+  verification: 'unverified';
+  captureMethod: 'uploaded' | 'device_camera';
+  location?: {
+    source: 'exif' | 'device_gps' | 'missing';
+    latitude?: number;
+    longitude?: number;
+    accuracyMeters?: number;
+    recordedAt?: string;
+  };
+  time?: {
+    source: 'exif' | 'device_capture' | 'partner_declared' | 'missing';
+    value?: string;
+    localValue?: string;
+    precision?: 'day' | 'second' | 'unknown';
+    declaredDate?: string;
+  };
+  evidenceDistanceMeters?: number | null;
+  comparisonScope?: 'current_site_pin';
+  missingMetadataReason?: string;
+  warnings?: string[];
+  warningCodes?: string[];
+}
+
+export interface MediaUploadOptions {
+  captureMethod?: 'uploaded' | 'device_camera';
+  deviceLatitude?: number;
+  deviceLongitude?: number;
+  deviceAccuracyMeters?: number;
+  deviceCapturedAt?: string;
+  deviceLocationRecordedAt?: string;
+  missingMetadataReason?: string;
+  clientRequestId?: string;
 }
 
 export interface SiteMetadata {
@@ -185,7 +241,11 @@ function path(p: string): string {
   return `/api/inventory${p}`;
 }
 
-async function request<T>(p: string, init: Parameters<typeof apiJson<T>>[1], orgId?: string): Promise<T> {
+async function request<T>(
+  p: string,
+  init: Parameters<typeof apiJson<T>>[1],
+  orgId?: string,
+): Promise<T> {
   const jsonBody = typeof init?.body === 'string';
   return apiJson<T>(path(p), {
     ...init,
@@ -202,7 +262,9 @@ export function assetFileUrl(asset: Pick<SiteAsset, 'siteId' | 'id'>): string {
 }
 
 /** Thumbnail source for a list row's front photo (see frontAssetId/frontAssetRef). */
-export function siteThumbUrl(site: Pick<SiteSummary, 'id' | 'frontAssetId' | 'frontAssetRef'>): AssetDisplay {
+export function siteThumbUrl(
+  site: Pick<SiteSummary, 'id' | 'frontAssetId' | 'frontAssetRef'>,
+): AssetDisplay {
   if (site.frontAssetRef && /^https?:\/\//i.test(site.frontAssetRef)) {
     return { plain: site.frontAssetRef, authUrl: null };
   }
@@ -230,7 +292,11 @@ export function listSites(
   return request(`/sites?${qs}`, { method: 'GET' }, orgId);
 }
 
-export function getSite(orgId: string | undefined, siteId: string, signal?: AbortSignal): Promise<SiteDetail> {
+export function getSite(
+  orgId: string | undefined,
+  siteId: string,
+  signal?: AbortSignal,
+): Promise<SiteDetail> {
   return request(`/sites/${siteId}`, { method: 'GET', signal }, orgId);
 }
 
@@ -275,12 +341,35 @@ export function updateSite(
   return request(`/sites/${siteId}`, { method: 'PATCH', body: JSON.stringify(patch) }, orgId);
 }
 
-export function submitSite(orgId: string | undefined, siteId: string): Promise<{ status: string }> {
-  return request(`/sites/${siteId}/submit`, { method: 'POST' }, orgId);
+export function submitSite(
+  orgId: string | undefined,
+  siteId: string,
+  locale: 'en' | 'fr' = 'en',
+): Promise<{ status: string; locationVerification?: SiteLocationVerification }> {
+  return request(
+    `/sites/${siteId}/submit`,
+    { method: 'POST', body: JSON.stringify({ locale }) },
+    orgId,
+  );
+}
+
+export function verifySiteLocation(
+  orgId: string | undefined,
+  siteId: string,
+  locale: 'en' | 'fr' = 'en',
+): Promise<SiteLocationVerification> {
+  return request(
+    `/sites/${siteId}/verify-location`,
+    { method: 'POST', body: JSON.stringify({ locale }), timeoutMs: 15_000 },
+    orgId,
+  );
 }
 
 // ------------------------------------------------- platform review actions
-export function approveSite(orgId: string | undefined, siteId: string): Promise<{ status: string }> {
+export function approveSite(
+  orgId: string | undefined,
+  siteId: string,
+): Promise<{ status: string }> {
   return request(`/sites/${siteId}/approve`, { method: 'POST' }, orgId);
 }
 
@@ -289,7 +378,11 @@ export function rejectSite(
   siteId: string,
   reason: string,
 ): Promise<{ status: string }> {
-  return request(`/sites/${siteId}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }, orgId);
+  return request(
+    `/sites/${siteId}/reject`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+    orgId,
+  );
 }
 
 // ------------------------------------------------------------------- faces
@@ -326,7 +419,8 @@ export function updateFace(
     substrate: string | null;
     fileRequirements: string | null;
     bookable: boolean;
-  }> & DigitalFaceAttrs,
+  }> &
+    DigitalFaceAttrs,
 ): Promise<SiteFace> {
   return request(`/faces/${faceId}`, { method: 'PATCH', body: JSON.stringify(patch) }, orgId);
 }
@@ -344,7 +438,10 @@ export interface FaceBlackout {
   reason: string;
 }
 
-export function listFaceBlackouts(orgId: string | undefined, faceId: string): Promise<FaceBlackout[]> {
+export function listFaceBlackouts(
+  orgId: string | undefined,
+  faceId: string,
+): Promise<FaceBlackout[]> {
   return request(`/faces/${encodeURIComponent(faceId)}/blackouts`, { method: 'GET' }, orgId);
 }
 
@@ -353,7 +450,11 @@ export function addFaceBlackout(
   faceId: string,
   blackout: { startDate: string; endDate: string; reason: string },
 ): Promise<FaceBlackout> {
-  return request(`/faces/${encodeURIComponent(faceId)}/blackouts`, { method: 'POST', body: JSON.stringify(blackout) }, orgId);
+  return request(
+    `/faces/${encodeURIComponent(faceId)}/blackouts`,
+    { method: 'POST', body: JSON.stringify(blackout) },
+    orgId,
+  );
 }
 
 export function removeFaceBlackout(orgId: string | undefined, blackoutId: string): Promise<void> {
@@ -368,20 +469,47 @@ export function uploadAsset(
   file: File,
   signal?: AbortSignal,
   capturedAt?: string,
+  options?: MediaUploadOptions,
 ): Promise<SiteAsset> {
   const form = new FormData();
   form.append('file', file);
   form.append('kind', kind);
   if (capturedAt) form.append('capturedAt', capturedAt);
+  for (const [key, value] of Object.entries(options ?? {})) {
+    if (value !== undefined && value !== '') form.append(key, String(value));
+  }
   // Photos up to PHOTO_MAX_BYTES ride on mobile uplinks; give them a long budget.
   return request(
     `/sites/${siteId}/assets`,
-    { method: 'POST', body: form, timeoutMs: 120_000, signal },
+    { method: 'POST', body: form, timeoutMs: 180_000, signal },
     orgId,
   );
 }
 
-export function deleteAsset(orgId: string | undefined, siteId: string, assetId: string): Promise<void> {
+export function uploadBoardVideo(
+  orgId: string | undefined,
+  siteId: string,
+  file: File,
+  signal?: AbortSignal,
+  capturedAt?: string,
+  clientRequestId?: string,
+): Promise<SiteAsset> {
+  const form = new FormData();
+  form.append('file', file);
+  if (capturedAt) form.append('capturedAt', capturedAt);
+  if (clientRequestId) form.append('clientRequestId', clientRequestId);
+  return request(
+    `/sites/${siteId}/board-videos`,
+    { method: 'POST', body: form, timeoutMs: 180_000, signal },
+    orgId,
+  );
+}
+
+export function deleteAsset(
+  orgId: string | undefined,
+  siteId: string,
+  assetId: string,
+): Promise<void> {
   return request(`/sites/${siteId}/assets/${assetId}`, { method: 'DELETE' }, orgId);
 }
 
@@ -398,7 +526,11 @@ export function addRateCard(
     seasonalRules?: { rules: SeasonalRule[] };
   },
 ): Promise<RateCard> {
-  return request(`/sites/${siteId}/rate-cards`, { method: 'POST', body: JSON.stringify(card) }, orgId);
+  return request(
+    `/sites/${siteId}/rate-cards`,
+    { method: 'POST', body: JSON.stringify(card) },
+    orgId,
+  );
 }
 
 export function endRateCard(
@@ -406,10 +538,17 @@ export function endRateCard(
   rateCardId: string,
   effectiveTo: string,
 ): Promise<RateCard> {
-  return request(`/rate-cards/${rateCardId}`, { method: 'PATCH', body: JSON.stringify({ effectiveTo }) }, orgId);
+  return request(
+    `/rate-cards/${rateCardId}`,
+    { method: 'PATCH', body: JSON.stringify({ effectiveTo }) },
+    orgId,
+  );
 }
 
-export function withdrawFutureRateCard(orgId: string | undefined, rateCardId: string): Promise<void> {
+export function withdrawFutureRateCard(
+  orgId: string | undefined,
+  rateCardId: string,
+): Promise<void> {
   return request(`/rate-cards/${rateCardId}/future`, { method: 'DELETE' }, orgId);
 }
 
@@ -433,7 +572,11 @@ export function listMarkets(orgId: string | undefined): Promise<{ items: Market[
   });
 }
 
-export interface ExchangeSnapshot { source: string; asOf: string; rates: Record<string, number> }
+export interface ExchangeSnapshot {
+  source: string;
+  asOf: string;
+  rates: Record<string, number>;
+}
 export function getExchangeRates(orgId: string): Promise<ExchangeSnapshot> {
   return request('/exchange-rates', { method: 'GET' }, orgId);
 }

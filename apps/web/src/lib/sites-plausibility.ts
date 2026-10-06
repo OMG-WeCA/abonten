@@ -3,14 +3,18 @@
 // The server enforces the same checks — the client catches them early so the
 // partner can fix a typo before it ever posts.
 
-export const COUNTRY_BOUNDS: Record<
-  string,
-  { minLat: number; maxLat: number; minLng: number; maxLng: number }
-> = {
-  nigeria: { minLat: 3.6, maxLat: 14.0, minLng: 2.2, maxLng: 15.0 },
-  ghana: { minLat: 4.2, maxLat: 11.3, minLng: -3.6, maxLng: 1.5 },
-  cameroon: { minLat: 1.2, maxLat: 13.3, minLng: 7.9, maxLng: 16.5 },
-};
+import { SUPPORTED_MARKETS, findMarket, normalizeMarketName } from './markets';
+export const COUNTRY_BOUNDS = Object.fromEntries(
+  SUPPORTED_MARKETS.map((market) => [
+    normalizeMarketName(market.name),
+    {
+      minLat: market.bounds.south,
+      maxLat: market.bounds.north,
+      minLng: market.bounds.west,
+      maxLng: market.bounds.east,
+    },
+  ]),
+);
 
 export const ILLUMINATION_HOURS_PATTERN =
   /^\s*24\s*\/\s*7\s*$|^\s*([01]?\d|2[0-3]):[0-5]\d\s*[-\u2013\u2014]\s*([01]?\d|2[0-3]):[0-5]\d\s*$/;
@@ -32,11 +36,18 @@ export interface PlausibilityInput {
 export function plausibilityErrors(input: PlausibilityInput): Partial<Record<string, string>> {
   const errors: Partial<Record<string, string>> = {};
   if (input.orientationDeg !== undefined) {
-    if (!Number.isFinite(input.orientationDeg) || input.orientationDeg < 0 || input.orientationDeg > 359) {
+    if (
+      !Number.isFinite(input.orientationDeg) ||
+      input.orientationDeg < 0 ||
+      input.orientationDeg > 359
+    ) {
       errors.orientationDeg = 'errorOrientation';
     }
   }
-  if (input.viewingDistance !== undefined && (!Number.isFinite(input.viewingDistance) || input.viewingDistance <= 0)) {
+  if (
+    input.viewingDistance !== undefined &&
+    (!Number.isFinite(input.viewingDistance) || input.viewingDistance <= 0)
+  ) {
     errors.viewingDistance = 'errorViewingDistance';
   }
   if (input.elevation !== undefined && (!Number.isFinite(input.elevation) || input.elevation < 0)) {
@@ -49,8 +60,8 @@ export function plausibilityErrors(input: PlausibilityInput): Partial<Record<str
   ) {
     errors.illuminationHours = 'errorIlluminationHours';
   }
-  const country = (input.country ?? '').trim().toLowerCase();
-  const box = COUNTRY_BOUNDS[country];
+  const market = findMarket(input.country);
+  const box = market ? COUNTRY_BOUNDS[normalizeMarketName(market.name)] : undefined;
   if (
     box &&
     input.latitude !== undefined &&
@@ -71,9 +82,11 @@ export function plausibilityErrors(input: PlausibilityInput): Partial<Record<str
 export const STRUCTURE_FIELDS = ['orientationDeg', 'viewingDistance', 'elevation'] as const;
 export type StructureField = (typeof STRUCTURE_FIELDS)[number];
 
-export function structureValuesEntered(
-  values: { orientationDeg?: unknown; viewingDistance?: unknown; elevation?: unknown },
-): boolean {
+export function structureValuesEntered(values: {
+  orientationDeg?: unknown;
+  viewingDistance?: unknown;
+  elevation?: unknown;
+}): boolean {
   return STRUCTURE_FIELDS.some((field) => {
     const raw = values[field];
     return raw !== undefined && String(raw).trim() !== '';
@@ -81,7 +94,10 @@ export function structureValuesEntered(
 }
 
 /** Photos older than 12 months draw a replace suggestion (SPEC §5.1 item 4). */
-export function isOlderThanTwelveMonths(dateIso: string | null | undefined, now = new Date()): boolean {
+export function isOlderThanTwelveMonths(
+  dateIso: string | null | undefined,
+  now = new Date(),
+): boolean {
   if (!dateIso) return false;
   const when = new Date(dateIso);
   if (Number.isNaN(when.getTime())) return false;

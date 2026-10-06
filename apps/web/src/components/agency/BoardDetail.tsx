@@ -6,9 +6,14 @@ import type { SiteGeographicContext } from '@abonten/contracts/enrichment';
 import { apiFetch } from '../../lib/api';
 import { assetDisplay, type SiteDetail, type SiteFace } from '../../lib/sites-api';
 import { getGeographicContext, sourceWebUrl } from '../../lib/geographic-context';
-import type { FaceCostEstimate, PlanningAvailability, PlanningWindow } from '../../lib/agency-planning';
+import type {
+  FaceCostEstimate,
+  PlanningAvailability,
+  PlanningWindow,
+} from '../../lib/agency-planning';
 import { draftFaceEligibility } from '../../lib/agency-draft';
 import { projectPlanningEnrichment } from '../../lib/agency-enrichment';
+import { AuthBoardVideo, MediaEvidence } from '../sites/BoardMedia';
 import { GeographicContextContent } from '../sites/GeographicContextPanel';
 import { prettyFormat, prettyIllumination } from '../sites/sites-ui';
 
@@ -67,8 +72,10 @@ export function BoardDetail({
   const score = visibility.value;
   const angle = enrichment.structure.viewingAngle.value;
   const eligibility = draftFaceEligibility(site, face, window, availability);
-  const availabilityKnown = availability.window?.startDate === window.startDate &&
-    availability.window.endDate === window.endDate && availability.status !== 'unknown';
+  const availabilityKnown =
+    availability.window?.startDate === window.startDate &&
+    availability.window.endDate === window.endDate &&
+    availability.status !== 'unknown';
   const population = context?.catchments.find((item) => item.radiusMetres === 1000)?.population;
   const people = population?.status !== 'unavailable' ? population?.value?.people : null;
   const observation =
@@ -101,6 +108,28 @@ export function BoardDetail({
       </header>
       <div className="agency-board-scroll">
         <BoardPhoto site={site} locale={locale} />
+        {site.format === 'digital_led' &&
+          site.assets.some(
+            (asset) => asset.kind === 'board_video' || asset.mediaType === 'video',
+          ) && (
+            <div className="px-4 py-3">
+              <details className="agency-evidence">
+                <summary>
+                  {t('See the installed LED board', 'Voir le panneau LED installé')}
+                </summary>
+                <div className="mt-3 space-y-3">
+                  {site.assets
+                    .filter((asset) => asset.kind === 'board_video' || asset.mediaType === 'video')
+                    .map((asset) => (
+                      <div key={asset.id}>
+                        <AuthBoardVideo asset={asset} locale={locale} />
+                        <MediaEvidence asset={asset} locale={locale} />
+                      </div>
+                    ))}
+                </div>
+              </details>
+            </div>
+          )}
         <div className="agency-board-body">
           <p className="agency-spec-line">
             {prettyFormat(site.format, locale)} ·{' '}
@@ -150,8 +179,10 @@ export function BoardDetail({
           )}
           {!availabilityKnown && (
             <p role="status" className="text-warning">
-              {t('Availability could not be checked for this flight. Your draft can continue.',
-                'La disponibilité n’a pas pu être vérifiée pour ces dates. Le brouillon peut continuer.')} {' '}
+              {t(
+                'Availability could not be checked for this flight. Your draft can continue.',
+                'La disponibilité n’a pas pu être vérifiée pour ces dates. Le brouillon peut continuer.',
+              )}{' '}
               <button className="agency-text-button" onClick={onRetryAvailability}>
                 {t('Retry availability check', 'Revérifier la disponibilité')}
               </button>
@@ -159,22 +190,54 @@ export function BoardDetail({
           )}
           {estimate?.status !== 'ready' && (
             <details className="agency-evidence">
-              <summary>{t('Published rate records · not a flight quote', 'Tarifs publiés · pas un devis de campagne')}</summary>
-              {site.rateCards.filter((card) => !card.faceId || card.faceId === faceId).map((card) => (
-                <div className="agency-source" key={card.id}>
-                  <strong>{card.faceId ? t('Face rate', 'Tarif de face') : t('Site default', 'Tarif du site')} · {card.currency}</strong>
-                  {(['perDay', 'perWeek', 'perMonth'] as const).flatMap((basis) => {
-                    const amount = card.rates[basis];
-                    return typeof amount === 'number' && Number.isFinite(amount) && amount > 0 ? [[basis, amount] as const] : [];
-                  }).map(([basis, amount]) => (
-                    <p key={basis}>{n(amount!)} {card.currency} / {basis === 'perDay' ? t('day', 'jour') : basis === 'perWeek' ? t('week', 'semaine') : t('month', 'mois')}</p>
-                  ))}
-                  <p>{t('Effective', 'Applicable')} : {card.effectiveFrom.slice(0, 10)} – {card.effectiveTo?.slice(0, 10) || t('no recorded end', 'fin non renseignée')}</p>
-                  <p>{t('Source rate card', 'Grille tarifaire source')} : {card.id}</p>
-                </div>
-              ))}
-              <p>{t('These records may not cover the entire flight. No monthly proration, rate combination or currency conversion is inferred.',
-                'Ces tarifs peuvent ne pas couvrir toute la campagne. Aucun prorata mensuel, combinaison de tarifs ou conversion de devises n’est déduit.')}</p>
+              <summary>
+                {t(
+                  'Published rate records · not a flight quote',
+                  'Tarifs publiés · pas un devis de campagne',
+                )}
+              </summary>
+              {site.rateCards
+                .filter((card) => !card.faceId || card.faceId === faceId)
+                .map((card) => (
+                  <div className="agency-source" key={card.id}>
+                    <strong>
+                      {card.faceId
+                        ? t('Face rate', 'Tarif de face')
+                        : t('Site default', 'Tarif du site')}{' '}
+                      · {card.currency}
+                    </strong>
+                    {(['perDay', 'perWeek', 'perMonth'] as const)
+                      .flatMap((basis) => {
+                        const amount = card.rates[basis];
+                        return typeof amount === 'number' && Number.isFinite(amount) && amount > 0
+                          ? [[basis, amount] as const]
+                          : [];
+                      })
+                      .map(([basis, amount]) => (
+                        <p key={basis}>
+                          {n(amount!)} {card.currency} /{' '}
+                          {basis === 'perDay'
+                            ? t('day', 'jour')
+                            : basis === 'perWeek'
+                              ? t('week', 'semaine')
+                              : t('month', 'mois')}
+                        </p>
+                      ))}
+                    <p>
+                      {t('Effective', 'Applicable')} : {card.effectiveFrom.slice(0, 10)} –{' '}
+                      {card.effectiveTo?.slice(0, 10) || t('no recorded end', 'fin non renseignée')}
+                    </p>
+                    <p>
+                      {t('Source rate card', 'Grille tarifaire source')} : {card.id}
+                    </p>
+                  </div>
+                ))}
+              <p>
+                {t(
+                  'These records may not cover the entire flight. No monthly proration, rate combination or currency conversion is inferred.',
+                  'Ces tarifs peuvent ne pas couvrir toute la campagne. Aucun prorata mensuel, combinaison de tarifs ou conversion de devises n’est déduit.',
+                )}
+              </p>
             </details>
           )}
           <dl className="agency-facts">
@@ -230,7 +293,10 @@ export function BoardDetail({
                     ? t('Loading…', 'Chargement…')
                     : contextState === 'error'
                       ? t('Population context not loaded', 'Contexte de population non chargé')
-                      : t('No production layer available', 'Aucune couche de production disponible')}
+                      : t(
+                          'No production layer available',
+                          'Aucune couche de production disponible',
+                        )}
               </strong>
             </div>
             <p>
@@ -241,7 +307,6 @@ export function BoardDetail({
                     'La population est un contexte géographique, pas une audience.',
                   )}
             </p>
-
           </div>
           <details className="agency-evidence">
             <summary>
@@ -257,10 +322,16 @@ export function BoardDetail({
             <div className="agency-source">
               <strong>{t('Visibility evidence', 'Preuves de visibilité')}</strong>
               {visibility.reason && <p>{visibility.reason}</p>}
-              {visibility.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+              {visibility.warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
               {visibility.provenance && 'recordId' in visibility.provenance && (
-                <p>{visibility.provenance.source || unknown} · {visibility.provenance.method || unknown} ·{' '}
-                  {visibility.provenance.verification || unknown} · {visibility.freshness.collectedAt?.slice(0, 10) || unknown}</p>
+                <p>
+                  {visibility.provenance.source || unknown} ·{' '}
+                  {visibility.provenance.method || unknown} ·{' '}
+                  {visibility.provenance.verification || unknown} ·{' '}
+                  {visibility.freshness.collectedAt?.slice(0, 10) || unknown}
+                </p>
               )}
               <p>{enrichment.structure.viewingAngle.reason}</p>
             </div>
@@ -304,11 +375,18 @@ export function BoardDetail({
                 ))}
               </div>
             )}
-            {visibility.provenance && 'recordId' in visibility.provenance && visibility.provenance.source && sourceWebUrl(visibility.provenance.source) && (
-              <a href={sourceWebUrl(visibility.provenance.source)} target="_blank" rel="noreferrer">
-                {t('Visibility source', 'Source de visibilité')}
-              </a>
-            )}
+            {visibility.provenance &&
+              'recordId' in visibility.provenance &&
+              visibility.provenance.source &&
+              sourceWebUrl(visibility.provenance.source) && (
+                <a
+                  href={sourceWebUrl(visibility.provenance.source)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t('Visibility source', 'Source de visibilité')}
+                </a>
+              )}
             {context && <GeographicContextContent context={context} locale={locale} />}
             {contextState === 'loading' && (
               <p role="status">
@@ -334,22 +412,22 @@ export function BoardDetail({
         </div>
       </div>
       <footer className="agency-board-footer">
-        {canPlan && eligibility.eligible && !selected &&
+        {canPlan &&
+          eligibility.eligible &&
+          !selected &&
           (estimate?.status !== 'ready' || estimate.availability !== 'available') && (
-          <p role="status" className="text-warning">
-            {t('Draft interest only. Price and availability need confirmation; budget fit is unconfirmed.',
-              'Intérêt provisoire uniquement. Tarif et disponibilité à confirmer ; budget non confirmé.')}
-          </p>
-        )}
+            <p role="status" className="text-warning">
+              {t(
+                'Draft interest only. Price and availability need confirmation; budget fit is unconfirmed.',
+                'Intérêt provisoire uniquement. Tarif et disponibilité à confirmer ; budget non confirmé.',
+              )}
+            </p>
+          )}
         {canPlan && !eligibility.eligible && <p role="status">{eligibility.reason}</p>}
         <button
           className="agency-primary-button"
           onClick={onAdd}
-          disabled={
-            !canPlan ||
-            !eligibility.eligible ||
-            selected
-          }
+          disabled={!canPlan || !eligibility.eligible || selected}
         >
           <Plus size={17} />
           {selected

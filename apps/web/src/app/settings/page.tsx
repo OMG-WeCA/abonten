@@ -11,10 +11,13 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { ChangeEvent, FormEvent, useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { WorkspaceFrame } from '../../components/account/WorkspaceFrame';
 import { useAuth } from '../../components/auth/AuthProvider';
 import { formatAccountDate, getAccountCopy } from '../../lib/account-locale';
+import { SUPPORTED_MARKETS, findMarket } from '../../lib/markets';
+import { useLocale } from '../../components/LocaleProvider';
 import { ApiError, apiJson } from '../../lib/api';
 
 type Tab = 'profile' | 'preferences' | 'organization' | 'security';
@@ -64,7 +67,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!activeOrganization) return;
     setOrganizationName(activeOrganization.name);
-    setCountry(activeOrganization.country);
+    setCountry(findMarket(activeOrganization.country)?.name ?? activeOrganization.country);
     setCurrency(activeOrganization.defaultCurrency);
     setOrganizationLocale(activeOrganization.defaultLocale);
   }, [activeOrganization]);
@@ -218,6 +221,16 @@ export default function SettingsPage() {
       <div className="max-w-5xl">
         <h1 className="text-3xl font-extrabold tracking-[-0.045em] sm:text-4xl">{copy.heading}</h1>
         <p className="mt-3 max-w-2xl leading-7 text-muted">{copy.intro}</p>
+        {activeOrganization?.type === 'media_partner' && (
+          <Link
+            href="/partner-terms/accepted"
+            className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-sm font-semibold hover:bg-surface focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            {profile?.locale === 'fr'
+              ? 'Conditions partenaires et acceptations'
+              : 'Partner terms and acceptance records'}
+          </Link>
+        )}
 
         <div className="mt-8 border-b border-border" role="tablist" aria-label={copy.tabLabel}>
           <div className="grid grid-cols-2 gap-1 sm:flex sm:overflow-x-auto">
@@ -420,6 +433,8 @@ function PreferencesPanel(props: {
           <option value="Africa/Lagos">Lagos (WAT)</option>
           <option value="Africa/Accra">Accra (GMT)</option>
           <option value="Africa/Douala">Douala (WAT)</option>
+          <option value="Africa/Porto-Novo">Porto-Novo (WAT)</option>
+          <option value="Africa/Abidjan">Abidjan (GMT)</option>
         </select>
       </Field>
       <SaveButton copy={props.copy} saving={props.saving} label={props.copy.savePreferences} />
@@ -440,6 +455,7 @@ function OrganizationPanel(props: {
   onLocale: (value: 'en' | 'fr') => void;
   onSubmit: (event: FormEvent) => void;
 }) {
+  const { locale: uiLocale } = useLocale();
   return (
     <form onSubmit={props.onSubmit} className="space-y-6">
       <section className="border-b border-border pb-7">
@@ -464,12 +480,19 @@ function OrganizationPanel(props: {
           <select
             id="settingsCountry"
             value={props.country}
-            onChange={(event) => props.onCountry(event.target.value)}
+            onChange={(event) => {
+              props.onCountry(event.target.value);
+              const market = findMarket(event.target.value);
+              if (market) props.onCurrency(market.currency);
+            }}
             className={inputClass}
           >
-            <option>Nigeria</option>
-            <option>Ghana</option>
-            <option>Cameroon</option>
+            {SUPPORTED_MARKETS.map((market) => (
+              <option key={market.code} value={market.name}>
+                {market.labels[uiLocale]}
+              </option>
+            ))}
+            {!findMarket(props.country) && <option value={props.country}>{props.country}</option>}
           </select>
         </Field>
         <Field label={props.copy.defaultCurrency} htmlFor="settingsCurrency">
@@ -479,11 +502,23 @@ function OrganizationPanel(props: {
             onChange={(event) => props.onCurrency(event.target.value)}
             className={inputClass}
           >
-            <option value="NGN">NGN — Nigerian naira</option>
-            <option value="GHS">GHS — Ghanaian cedi</option>
-            <option value="XAF">XAF — Central African CFA franc</option>
-            <option value="XOF">XOF — West African CFA franc</option>
-            <option value="USD">USD — US dollar</option>
+            <option value="NGN">
+              NGN — {uiLocale === 'fr' ? 'naira nigérian' : 'Nigerian naira'}
+            </option>
+            <option value="GHS">
+              GHS — {uiLocale === 'fr' ? 'cedi ghanéen' : 'Ghanaian cedi'}
+            </option>
+            <option value="XAF">
+              XAF —{' '}
+              {uiLocale === 'fr' ? 'franc CFA d’Afrique centrale' : 'Central African CFA franc'}
+            </option>
+            <option value="XOF">
+              XOF —{' '}
+              {uiLocale === 'fr' ? 'franc CFA d’Afrique de l’Ouest' : 'West African CFA franc'}
+            </option>
+            <option value="USD">
+              USD — {uiLocale === 'fr' ? 'dollar américain' : 'US dollar'}
+            </option>
             <option value="EUR">EUR — Euro</option>
           </select>
         </Field>
