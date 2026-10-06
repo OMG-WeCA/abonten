@@ -7,13 +7,18 @@ export type Locale = 'en' | 'fr';
 export const LOCALE_STORAGE_KEY = 'abonten-locale';
 const LocaleContext = createContext<{
   locale: Locale;
+  saveError: boolean;
   setLocale: (locale: Locale) => Promise<void>;
-}>({ locale: 'en', setLocale: async () => undefined });
+}>({ locale: 'en', saveError: false, setLocale: async () => undefined });
 /** Guests choose a persistent language. Signed-in workspace language follows the profile. */
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const { profile, refreshAccount } = useAuth();
   const [guestLocale, setGuestLocale] = useState<Locale>('en');
   const [selectedLocale, setSelectedLocale] = useState<Locale | null>(null);
+  const [saveError, setSaveError] = useState(false);
+  useEffect(() => {
+    setSaveError(false);
+  }, [profile?.id]);
   useEffect(() => {
     try {
       setGuestLocale(localStorage.getItem(LOCALE_STORAGE_KEY) === 'fr' ? 'fr' : 'en');
@@ -48,6 +53,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
       document.querySelector(selector)?.setAttribute('content', content);
   }, [locale]);
   const setLocale = async (value: Locale) => {
+    setSaveError(false);
     setSelectedLocale(value);
     setGuestLocale(value);
     try {
@@ -56,28 +62,35 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
       /* Language remains usable for this visit. */
     }
     if (profile) {
-      await apiJson('/api/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locale: value }),
-      });
-      await refreshAccount();
+      try {
+        await apiJson('/api/me', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locale: value }),
+        });
+        await refreshAccount();
+      } catch (error) {
+        setSaveError(true);
+        throw error;
+      }
     }
   };
-  return <LocaleContext.Provider value={{ locale, setLocale }}>{children}</LocaleContext.Provider>;
+  return (
+    <LocaleContext.Provider value={{ locale, saveError, setLocale }}>
+      {children}
+    </LocaleContext.Provider>
+  );
 }
 export const useLocale = () => useContext(LocaleContext);
 export function LanguageSwitcher() {
-  const { locale, setLocale } = useLocale();
+  const { locale, setLocale, saveError: error } = useLocale();
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(false);
   const change = async (value: Locale) => {
     setSaving(true);
-    setError(false);
     try {
       await setLocale(value);
     } catch {
-      setError(true);
+      // The provider retains failure state across interrupted menus/navigation.
     } finally {
       setSaving(false);
     }
@@ -99,21 +112,21 @@ export function LanguageSwitcher() {
         </select>
       </label>
       {error && (
-        <span role="alert" className="max-w-48 text-xs text-error">
-          {locale === 'fr'
-            ? 'Langue changée ici, mais non enregistrée dans le compte. Sélectionnez à nouveau pour réessayer.'
-            : 'Language changed here, but not saved to your account. Select it again to retry.'}
-        </span>
-      )}
-      {error && (
-        <button
-          type="button"
-          onClick={() => void change(locale)}
-          disabled={saving}
-          className="min-h-9 text-xs font-semibold text-primary"
-        >
-          {locale === 'fr' ? 'Réessayer' : 'Retry'}
-        </button>
+        <div className="language-switcher-error flex flex-col items-end gap-1">
+          <span role="alert" className="max-w-48 text-xs text-error">
+            {locale === 'fr'
+              ? 'Langue changée ici, mais non enregistrée dans le compte. Sélectionnez à nouveau pour réessayer.'
+              : 'Language changed here, but not saved to your account. Select it again to retry.'}
+          </span>
+          <button
+            type="button"
+            onClick={() => void change(locale)}
+            disabled={saving}
+            className="min-h-9 text-xs font-semibold text-primary"
+          >
+            {locale === 'fr' ? 'Réessayer' : 'Retry'}
+          </button>
+        </div>
       )}
     </div>
   );

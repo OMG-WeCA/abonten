@@ -14,6 +14,9 @@ test('calendar-only dates format by locale with no invented time and invalid day
   assert.equal(displayDateOnly('2026-10-05T23:59:00-11:00', 'en'), '05 Oct 2026');
   assert.equal(displayDateOnly('2026-02-30', 'fr'), '2026-02-30');
   assert.equal(displayDateOnly('source date unknown', 'fr'), 'source date unknown');
+  const caveat = '2026-10-05 (estimated from catalogue)';
+  assert.equal(displayDateOnly(caveat, 'fr'), caveat);
+  assert.equal(displayDateOnly('2026-10-05T99:59:00Z', 'fr'), '2026-10-05T99:59:00Z');
 });
 test('UTC timestamp display converts only explicit offset instants and retains unknown EXIF time', () => {
   assert.match(
