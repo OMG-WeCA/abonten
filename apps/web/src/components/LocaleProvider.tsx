@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { apiJson } from '../lib/api';
 import { useAuth } from './auth/AuthProvider';
 export type Locale = 'en' | 'fr';
@@ -8,14 +8,17 @@ export const LOCALE_STORAGE_KEY = 'abonten-locale';
 const LocaleContext = createContext<{
   locale: Locale;
   saveError: boolean;
+  saving: boolean;
   setLocale: (locale: Locale) => Promise<void>;
-}>({ locale: 'en', saveError: false, setLocale: async () => undefined });
+}>({ locale: 'en', saveError: false, saving: false, setLocale: async () => undefined });
 /** Guests choose a persistent language. Signed-in workspace language follows the profile. */
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const { profile, refreshAccount } = useAuth();
   const [guestLocale, setGuestLocale] = useState<Locale>('en');
   const [selectedLocale, setSelectedLocale] = useState<Locale | null>(null);
   const [saveError, setSaveError] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savePending = useRef(false);
   useEffect(() => {
     setSaveError(false);
   }, [profile?.id]);
@@ -53,46 +56,50 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
       document.querySelector(selector)?.setAttribute('content', content);
   }, [locale]);
   const setLocale = async (value: Locale) => {
-    setSaveError(false);
-    setSelectedLocale(value);
-    setGuestLocale(value);
+    if (savePending.current) return;
+    savePending.current = true;
+    setSaving(true);
     try {
-      localStorage.setItem(LOCALE_STORAGE_KEY, value);
-    } catch {
-      /* Language remains usable for this visit. */
-    }
-    if (profile) {
+      setSaveError(false);
+      setSelectedLocale(value);
+      setGuestLocale(value);
       try {
-        await apiJson('/api/me', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ locale: value }),
-        });
-        await refreshAccount();
-      } catch (error) {
-        setSaveError(true);
-        throw error;
+        localStorage.setItem(LOCALE_STORAGE_KEY, value);
+      } catch {
+        /* Language remains usable for this visit. */
       }
+      if (profile) {
+        try {
+          await apiJson('/api/me', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ locale: value }),
+          });
+          await refreshAccount();
+        } catch (error) {
+          setSaveError(true);
+          throw error;
+        }
+      }
+    } finally {
+      savePending.current = false;
+      setSaving(false);
     }
   };
   return (
-    <LocaleContext.Provider value={{ locale, saveError, setLocale }}>
+    <LocaleContext.Provider value={{ locale, saveError, saving, setLocale }}>
       {children}
     </LocaleContext.Provider>
   );
 }
 export const useLocale = () => useContext(LocaleContext);
 export function LanguageSwitcher() {
-  const { locale, setLocale, saveError: error } = useLocale();
-  const [saving, setSaving] = useState(false);
+  const { locale, setLocale, saveError: error, saving } = useLocale();
   const change = async (value: Locale) => {
-    setSaving(true);
     try {
       await setLocale(value);
     } catch {
       // The provider retains failure state across interrupted menus/navigation.
-    } finally {
-      setSaving(false);
     }
   };
   return (
