@@ -82,7 +82,7 @@ export const accountCopy = {
       requiredFields: 'Enter your name and organization name.',
     },
     settings: {
-      heading: 'Your account, in one place.',
+      heading: 'Settings',
       intro:
         'Change your personal defaults, organization context, and passwordless sign-in sessions.',
       tabLabel: 'Settings sections',
@@ -101,6 +101,7 @@ export const accountCopy = {
       changePhoto: 'Change photo',
       photoFormat: 'PNG, JPEG, or WebP · up to 5 MB',
       name: 'Name',
+      email: 'Email address',
       phone: 'Phone',
       saveProfile: 'Save profile',
       preferencesDetail:
@@ -212,7 +213,7 @@ export const accountCopy = {
       requiredFields: 'Saisissez votre nom et le nom de votre organisation.',
     },
     settings: {
-      heading: 'Votre compte, au même endroit.',
+      heading: 'Paramètres',
       intro:
         'Modifiez vos préférences, le contexte de votre organisation et vos sessions sans mot de passe.',
       tabLabel: 'Sections des paramètres',
@@ -233,6 +234,7 @@ export const accountCopy = {
       changePhoto: 'Modifier la photo',
       photoFormat: 'PNG, JPEG ou WebP · jusqu’à 5 Mo',
       name: 'Nom',
+      email: 'Adresse email',
       phone: 'Téléphone',
       saveProfile: 'Enregistrer le profil',
       preferencesDetail:

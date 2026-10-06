@@ -25,6 +25,7 @@ import { Capability } from '../capabilities/capability.enum';
 import { MembershipEntity } from '../auth/entities/membership.entity';
 import { UserCapabilityOverrideEntity } from '../auth/entities/user-capability-override.entity';
 import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
+import { demoVisibilitySql, demoDisclosure } from '../common/demo-inventory';
 import { OrganizationEntity } from '../common/entities/organization.entity';
 import { SiteFaceEntity } from '../common/entities/site-face.entity';
 import { SiteAssetEntity } from '../common/entities/site-asset.entity';
@@ -57,7 +58,7 @@ import type {
 } from './dto/inventory.dto';
 
 const SITE_DETAIL_COLUMNS =
-  'id, organization_id AS "organizationId", code, name, type, format, sub_format AS "subFormat", ' +
+  'id, organization_id AS "organizationId", (demo_agency_id IS NOT NULL) AS "isDemo", code, name, type, format, sub_format AS "subFormat", ' +
   'latitude, longitude, geo_polygon AS "geoPolygon", ' +
   'address, city, region, country, market_id AS "marketId", orientation_deg AS "orientationDeg", ' +
   'viewing_distance AS "viewingDistance", elevation, width, height, area, units, ' +
@@ -68,7 +69,7 @@ const SITE_DETAIL_COLUMNS =
 // Same columns as SITE_DETAIL_COLUMNS but table-qualified with `s.` for the list
 // query, which lateral-joins the newest front photo for list thumbnails.
 const LIST_SITE_COLUMNS =
-  's.id, s.organization_id AS "organizationId", s.code, s.name, s.type, s.format, s.sub_format AS "subFormat", ' +
+  's.id, s.organization_id AS "organizationId", (s.demo_agency_id IS NOT NULL) AS "isDemo", s.code, s.name, s.type, s.format, s.sub_format AS "subFormat", ' +
   's.latitude, s.longitude, s.geo_polygon AS "geoPolygon", ' +
   's.address, s.city, s.region, s.country, s.market_id AS "marketId", s.orientation_deg AS "orientationDeg", ' +
   's.viewing_distance AS "viewingDistance", s.elevation, s.width, s.height, s.area, s.units, ' +
@@ -331,6 +332,8 @@ export class InventoryService {
     } else {
       throw new ForbiddenException('No inventory or marketplace access');
     }
+    params.push(orgId ?? null);
+    where.push(demoVisibilitySql('s', `$${params.length}`));
     if (q.format) push('format = ?', q.format);
     if (q.city) push('city ILIKE ?', `%${q.city}%`);
     if (q.country) push('country = ?', findMarket(q.country)?.name ?? q.country);
@@ -359,7 +362,15 @@ export class InventoryService {
       // Private automated-review evidence is for the owner and moderation team.
       for (const row of rows) delete row.locationVerification;
     }
-    return { items: rows, total, page, limit };
+    return {
+      items: rows.map((row: Record<string, unknown>) => ({
+        ...row,
+        ...demoDisclosure(row.isDemo === true),
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 
   async getSite(user: AuthenticatedUser, orgId: string | undefined, siteId: string) {
@@ -391,9 +402,16 @@ export class InventoryService {
       const rest = { ...(site as Record<string, unknown>) };
       delete rest.organizationId;
       delete rest.locationVerification;
-      return { ...rest, faces, assets, metadata, rateCards };
+      return {
+        ...rest,
+        ...demoDisclosure(site.isDemo === true),
+        faces,
+        assets,
+        metadata,
+        rateCards,
+      };
     }
-    return { ...site, faces, assets, metadata, rateCards };
+    return { ...site, ...demoDisclosure(site.isDemo === true), faces, assets, metadata, rateCards };
   }
 
   async updateSite(user: AuthenticatedUser, orgId: string, siteId: string, dto: UpdateSiteDto) {
@@ -1550,22 +1568,27 @@ export class InventoryService {
     const repo = await this.db.repo(BillboardSiteEntity);
     let status = knownStatus;
     let organizationId: string | undefined;
+    let demoAgencyId: string | null | undefined;
     if (status === undefined || orgId === undefined) {
       const rows = await repo.query(
-        `SELECT organization_id AS "organizationId", status FROM billboard_sites WHERE id = $1`,
+        `SELECT organization_id AS "organizationId", demo_agency_id AS "demoAgencyId", status FROM billboard_sites WHERE id = $1`,
         [siteId],
       );
       if (!rows[0]) throw new NotFoundException('Site not found');
       organizationId = rows[0].organizationId;
+      demoAgencyId = rows[0].demoAgencyId;
       status = rows[0].status;
     } else {
       const rows = await repo.query(
-        `SELECT organization_id AS "organizationId" FROM billboard_sites WHERE id = $1`,
+        `SELECT organization_id AS "organizationId", demo_agency_id AS "demoAgencyId" FROM billboard_sites WHERE id = $1`,
         [siteId],
       );
       if (!rows[0]) throw new NotFoundException('Site not found');
       organizationId = rows[0].organizationId;
+      demoAgencyId = rows[0].demoAgencyId;
     }
+    if (demoAgencyId && orgId !== demoAgencyId && orgId !== organizationId)
+      throw new NotFoundException('Site not found');
     const caps = await this.effectiveCapabilities(user.userId, orgId);
     const isOwner = organizationId === orgId && caps.has(Capability.INVENTORY_VIEW);
     const isPlatformAdmin = caps.has(Capability.PLATFORM_ADMIN);

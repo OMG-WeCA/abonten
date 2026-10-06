@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useAgencyDialog } from './useAgencyDialog';
 import { Loader2, X } from 'lucide-react';
 import { displayUiText } from '../../lib/display-ui-text';
 
@@ -29,15 +29,8 @@ export function PlanningDraftDialog({
   locale: 'en' | 'fr';
   replayPending: boolean;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useAgencyDialog();
   const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
-  useEffect(() => {
-    const previous = document.activeElement;
-    dialog.current?.showModal();
-    return () => {
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
-    };
-  }, []);
   return (
     <dialog
       ref={dialog}
@@ -82,21 +75,15 @@ export function PlanningDraftDialog({
         {replayPending && (
           <p role="status">
             {t(
-              'The last save may have completed. Retry that same save first; your current edits stay in this tab.',
-              'Le dernier enregistrement a peut-être abouti. Réessayez d’abord ce même enregistrement ; vos changements actuels restent dans cet onglet.',
+              'Save unconfirmed. Retry the same save; your edits are kept.',
+              'Enregistrement non confirmé. Réessayez le même enregistrement ; vos changements sont conservés.',
             )}
           </p>
         )}
         <p>
           {t(
-            'Save dates, budget, filters and selected faces for your own use in this agency. Documents, chat and sharing permissions are not saved.',
-            'Enregistrez les dates, le budget, les filtres et les faces pour les retrouver dans cette agence. Ce brouillon vous est personnel et ne contient ni document, ni conversation, ni autorisation de partage.',
-          )}
-        </p>
-        <p>
-          {t(
-            'Prices and availability are checked again when you resume. Saving does not reserve boards.',
-            'Les prix et la disponibilité sont revérifiés à la reprise. L’enregistrement ne réserve aucun panneau.',
+            'Personal draft · no reservation. Rates and availability are rechecked on resume.',
+            'Brouillon personnel · aucune réservation. Tarifs et disponibilités revérifiés à la reprise.',
           )}
         </p>
         {error && (

@@ -10,9 +10,10 @@ import { METADATA_COLUMNS, PRODUCTION_METADATA_WHERE } from '../common/metadata-
 import { findMarket } from '../common/supported-markets';
 import { projectMediaAssetEvidence } from '../inventory/inventory-media-projection';
 import type { MarketplaceQueryDto } from './dto/marketplace.dto';
+import { demoVisibilitySql, demoDisclosure } from '../common/demo-inventory';
 
 const SITE_COLUMNS =
-  'id, code, name, type, format, sub_format AS "subFormat", address, city, region, country, ' +
+  'id, (demo_agency_id IS NOT NULL) AS "isDemo", code, name, type, format, sub_format AS "subFormat", address, city, region, country, ' +
   'market_id AS "marketId", orientation_deg AS "orientationDeg", viewing_distance AS "viewingDistance", ' +
   'elevation, width, height, area, units, illumination_type AS "illuminationType", illumination_hours AS "illuminationHours", ' +
   'description, status, permit_ref AS "permitRef", permit_expires_at AS "permitExpiresAt", ' +
@@ -39,7 +40,7 @@ export class MarketplaceService {
   }
 
   /** Search listed sites available for booking, with filters + spatial radius. */
-  async search(q: MarketplaceQueryDto, signal?: AbortSignal) {
+  async search(q: MarketplaceQueryDto, signal?: AbortSignal, orgId?: string) {
     checkDetailCancelled(signal);
     if (q.startDate && q.endDate && q.startDate >= q.endDate) {
       throw new BadRequestException('End date must be after start date.');
@@ -97,7 +98,7 @@ export class MarketplaceService {
     const where: string[] = [
       "s.status = 'listed'",
       `(s.permit_expires_at IS NULL OR (s.permit_expires_at::date >= CURRENT_DATE AND s.permit_expires_at::date >= ${periodEnd}))`,
-      "EXISTS (SELECT 1 FROM site_assets a WHERE a.site_id = s.id::text AND a.kind = 'front' AND a.captured_at IS NOT NULL)",
+      "(s.demo_agency_id IS NOT NULL OR EXISTS (SELECT 1 FROM site_assets a WHERE a.site_id = s.id::text AND a.kind = 'front' AND a.captured_at IS NOT NULL))",
       'NOT EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = s.id::text AND f.bookable ' +
         `AND ((${bookableFace}) IS NOT TRUE OR NOT EXISTS (SELECT 1 FROM rate_cards r WHERE ${currentRateForFace})))`,
       'EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = s.id::text AND ' +
@@ -114,6 +115,9 @@ export class MarketplaceService {
       let n = start;
       where.push(clause.replace(/\?/g, () => `$${n++}`));
     };
+
+    params.push(orgId ?? null);
+    where.push(demoVisibilitySql('s', `$${params.length}`));
 
     if (q.country) push('s.country = ?', findMarket(q.country)?.name ?? q.country);
     if (q.city) push('s.city ILIKE ?', `%${q.city}%`);
@@ -169,7 +173,7 @@ export class MarketplaceService {
     // the aggregate physically cannot include one.
     checkDetailCancelled(signal);
     const rows = await repo.query(
-      `SELECT s.id, s.code, s.name, s.format, s.city, s.country, s.illumination_type AS "illuminationType",
+      `SELECT s.id, (s.demo_agency_id IS NOT NULL) AS "isDemo", s.code, s.name, s.format, s.city, s.country, s.illumination_type AS "illuminationType",
         s.width, s.height, s.area, s.latitude, s.longitude,
         (SELECT count(*) FROM site_faces WHERE site_id = s.id::text) AS "faceCount",
         ${priceSql} AS "startingPrice",
@@ -184,18 +188,27 @@ export class MarketplaceService {
       params,
     );
     checkDetailCancelled(signal);
-    return { items: rows, total: totalRows[0]?.c ?? 0, page, limit };
+    return {
+      items: rows.map((row: Record<string, unknown>) => ({
+        ...row,
+        ...demoDisclosure(row.isDemo === true),
+      })),
+      total: totalRows[0]?.c ?? 0,
+      page,
+      limit,
+    };
   }
 
   /** Authenticated buyer detail of a listed site (faces, assets, metadata, rate cards). */
-  async getMarketplaceSite(siteId: string, signal?: AbortSignal) {
+  async getMarketplaceSite(siteId: string, signal?: AbortSignal, orgId?: string) {
     siteId = siteId.toLowerCase();
     checkDetailCancelled(signal);
     const repo = await this.db.repo(BillboardSiteEntity);
     checkDetailCancelled(signal);
-    const rows = await repo.query(`SELECT ${SITE_COLUMNS} FROM billboard_sites WHERE id = $1`, [
-      siteId,
-    ]);
+    const rows = await repo.query(
+      `SELECT ${SITE_COLUMNS} FROM billboard_sites WHERE id = $1 AND ${demoVisibilitySql('', '$2')}`,
+      [siteId, orgId ?? null],
+    );
     checkDetailCancelled(signal);
     const site = rows[0];
     if (!site) throw new NotFoundException('Site not found');
@@ -229,7 +242,8 @@ export class MarketplaceService {
     const ready =
       (!site.permitExpiresAt ||
         new Date(site.permitExpiresAt).toISOString().slice(0, 10) >= today) &&
-      assets.some((asset) => asset.kind === 'front' && asset.capturedAt) &&
+      (site.isDemo === true ||
+        assets.some((asset) => asset.kind === 'front' && asset.capturedAt)) &&
       bookable.length > 0 &&
       bookable.every(
         (face) =>
@@ -253,6 +267,7 @@ export class MarketplaceService {
     if (!ready) throw new NotFoundException('Site is not ready for the marketplace');
     return {
       ...site,
+      ...demoDisclosure(site.isDemo === true),
       faces,
       assets: assets.map((asset) => projectMediaAssetEvidence(asset, site)),
       metadata,

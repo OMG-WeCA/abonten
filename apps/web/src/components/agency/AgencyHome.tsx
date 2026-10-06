@@ -104,37 +104,21 @@ export function AgencyHome() {
       : []),
     ...plans.map((plan) => ({ name: plan.name, draft: plan.draft, id: plan.id })),
   ].flatMap((plan) => planningAttention(plan.draft, todayUtc).map((item) => ({ ...plan, item })));
-  const attentionCopy: Record<PlanAttention, { title: string; detail: string; action: string }> = {
+  const attentionCopy: Record<PlanAttention, { title: string; action: string }> = {
     budget: {
       title: t('Set a media budget', 'Définir un budget média'),
-      detail: t(
-        'Add a valid amount and confirm its currency.',
-        'Ajoutez un montant valide et confirmez sa devise.',
-      ),
       action: t('Set budget', 'Définir le budget'),
     },
     flight: {
       title: t('Choose campaign dates', 'Choisir les dates'),
-      detail: t(
-        'A start and an exclusive end date are needed.',
-        'Une date de début et une date de fin exclusive sont nécessaires.',
-      ),
       action: t('Set dates', 'Définir les dates'),
     },
     expired: {
       title: t('Review past flight dates', 'Revoir les dates passées'),
-      detail: t(
-        'These planned dates have passed. Confirm new dates before planning.',
-        'Cette période prévue est passée. Confirmez de nouvelles dates avant de planifier.',
-      ),
       action: t('Review dates', 'Revoir les dates'),
     },
     selection: {
       title: t('Find your first boards', 'Trouver les premiers panneaux'),
-      detail: t(
-        'No faces are selected in this draft yet.',
-        'Aucune face n’est encore sélectionnée dans ce brouillon.',
-      ),
       action: t('Browse boards', 'Voir les panneaux'),
     },
   };
@@ -144,12 +128,6 @@ export function AgencyHome() {
       <section className="agency-home-hero" aria-labelledby="agency-home-heading">
         <div className="agency-home-hero-copy">
           <h1 id="agency-home-heading">{t('Plan your campaign', 'Planifier une campagne')}</h1>
-          <p className="agency-home-lead">
-            {t(
-              'Browse billboards, set dates and a budget, and compare your selection.',
-              'Trouvez des panneaux, définissez les dates et le budget, puis comparez votre sélection.',
-            )}
-          </p>
           <div className="agency-home-actions">
             <button
               type="button"
@@ -201,12 +179,12 @@ export function AgencyHome() {
             <p>
               {pendingSave
                 ? t(
-                    'The last save has not been confirmed. Your latest controls are kept here. Reopen this draft to resolve the save and retry.',
-                    'Le dernier enregistrement n’a pas été confirmé. Vos derniers réglages sont conservés ici. Rouvrez ce brouillon pour résoudre l’enregistrement et réessayer.',
+                    'Save unconfirmed. Reopen to check and retry; your edits are kept.',
+                    'Enregistrement non confirmé. Rouvrez pour vérifier et réessayer ; vos changements sont conservés.',
                   )
                 : t(
-                    'These controls are kept in this tab. Saved copies appear below. Reopen to check current boards and rates.',
-                    'Ces réglages sont conservés dans cet onglet. Les copies enregistrées apparaissent ci-dessous. Rouvrez-le pour vérifier les panneaux et tarifs actuels.',
+                    'Reopening checks current boards and rates.',
+                    'La reprise vérifie les panneaux et tarifs actuels.',
                   )}
             </p>
             <DraftControls draft={local} locale={locale} />
@@ -227,12 +205,6 @@ export function AgencyHome() {
           <header className="agency-home-section-heading">
             <div>
               <h2 id="agency-saved-heading">{t('Your saved plans', 'Vos plans enregistrés')}</h2>
-              <p>
-                {t(
-                  'Your personal drafts, most recently updated first.',
-                  'Vos brouillons personnels, du plus récent au plus ancien.',
-                )}
-              </p>
             </div>
             <Bookmark size={22} aria-hidden />
           </header>
@@ -368,12 +340,6 @@ export function AgencyHome() {
               )}
             </>
           )}
-          <p className="agency-home-evidence-note">
-            {t(
-              'Drafts keep your dates, budget and selected faces. Prices, availability and location evidence are checked again when you open a plan.',
-              'Les brouillons conservent vos dates, budget et faces sélectionnées. Les tarifs, disponibilités et données géographiques sont revérifiés à l’ouverture.',
-            )}
-          </p>
         </section>
 
         <aside className="agency-home-attention" aria-labelledby="agency-attention-heading">
@@ -390,7 +356,6 @@ export function AgencyHome() {
                   <div>
                     <p className="agency-home-attention-plan">{name}</p>
                     <h3>{attentionCopy[item].title}</h3>
-                    <p>{attentionCopy[item].detail}</p>
                     <button
                       type="button"
                       onClick={() => open(attentionDestination(item, id))}
@@ -420,19 +385,14 @@ export function AgencyHome() {
               <h3>{t('Draft controls are complete', 'Réglages des brouillons complets')}</h3>
               <p>
                 {t(
-                  'Budget, dates and selections are present. Reopen a plan to check its current commercial facts.',
-                  'Budget, dates et sélections sont présents. Rouvrez un plan pour vérifier ses données commerciales actuelles.',
+                  'Reopen to check rates and availability.',
+                  'Rouvrez pour vérifier les tarifs et disponibilités.',
                 )}
               </p>
             </div>
           ) : (
             <div className="agency-home-attention-note">
-              <p>
-                {t(
-                  'Missing budget, dates or selected boards will appear here once you save a plan.',
-                  'Les budgets, dates ou sélections manquants apparaîtront ici lorsque vous enregistrerez un plan.',
-                )}
-              </p>
+              <p>{t('No draft checks yet.', 'Aucune vérification de brouillon pour le moment.')}</p>
             </div>
           )}
           {attention.length > 5 && (

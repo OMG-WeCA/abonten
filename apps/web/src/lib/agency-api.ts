@@ -80,6 +80,9 @@ export interface PlannerFacts {
   filters?: NonNullable<PlannerContext['filters']>;
   selectionTruncated?: boolean;
   sites: {
+    isDemo?: boolean;
+    commerciallyBookable?: boolean;
+    demoProvenance?: string;
     siteId: string;
     name: string;
     city: string;
@@ -102,6 +105,10 @@ export interface PlannerFacts {
 }
 
 export interface SiteOptions {
+  isDemo?: boolean;
+  commerciallyBookable?: boolean;
+  demoProvenance?: string;
+  availabilityKind?: 'synthetic_planning_sample';
   siteId: string;
   startDate: string;
   endDate: string;
@@ -174,6 +181,9 @@ export interface AgencyMarketplaceQuery {
 }
 
 export interface AgencyMarketplaceSite {
+  isDemo?: boolean;
+  commerciallyBookable?: boolean;
+  demoProvenance?: string;
   id: string;
   code: string;
   name: string;

@@ -7,13 +7,7 @@ import {
 } from 'typeorm';
 
 export type SiteStatus =
-  | 'draft'
-  | 'pending_review'
-  | 'approved'
-  | 'listed'
-  | 'rejected'
-  | 'suspended'
-  | 'decommissioned';
+  'draft' | 'pending_review' | 'approved' | 'listed' | 'rejected' | 'suspended' | 'decommissioned';
 
 /**
  * BillboardSite — a physical outdoor advertising structure (SPEC.md §5.1 / §6.2).
@@ -29,6 +23,8 @@ export class BillboardSiteEntity {
   id!: string;
 
   @Column({ name: 'organization_id' }) organizationId!: string;
+  /** Operator-only synthetic catalog scope; never writable via registration DTOs. */
+  @Column({ name: 'demo_agency_id', type: 'uuid', nullable: true }) demoAgencyId?: string | null;
   @Column() code!: string;
   @Column() name!: string;
   @Column({ default: 'billboard' }) type!: string;
@@ -46,8 +42,10 @@ export class BillboardSiteEntity {
   @Column() country!: string;
   @Column({ name: 'market_id', nullable: true }) marketId?: string;
 
-  @Column({ name: 'orientation_deg', type: 'double precision', nullable: true }) orientationDeg?: number;
-  @Column({ name: 'viewing_distance', type: 'double precision', nullable: true }) viewingDistance?: number;
+  @Column({ name: 'orientation_deg', type: 'double precision', nullable: true })
+  orientationDeg?: number;
+  @Column({ name: 'viewing_distance', type: 'double precision', nullable: true })
+  viewingDistance?: number;
   @Column({ type: 'double precision', nullable: true }) elevation?: number;
   @Column({ type: 'double precision', nullable: true }) width?: number;
   @Column({ type: 'double precision', nullable: true }) height?: number;
@@ -58,12 +56,14 @@ export class BillboardSiteEntity {
   @Column({ name: 'illumination_hours', nullable: true }) illuminationHours?: string;
   @Column({ type: 'text', nullable: true }) description?: string;
   @Column({ default: 'draft' }) status!: string;
-  @Column({ name: 'rejection_reason', type: 'text', nullable: true }) rejectionReason?: string | null;
+  @Column({ name: 'rejection_reason', type: 'text', nullable: true }) rejectionReason?:
+    string | null;
   /** Idempotent-create operation id (SPEC §7.1): unique per organization. */
   @Column({ name: 'client_request_id', nullable: true }) clientRequestId?: string;
 
   @Column({ name: 'permit_ref', nullable: true }) permitRef?: string;
-  @Column({ name: 'permit_expires_at', type: 'timestamptz', nullable: true }) permitExpiresAt?: Date;
+  @Column({ name: 'permit_expires_at', type: 'timestamptz', nullable: true })
+  permitExpiresAt?: Date;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' }) updatedAt!: Date;

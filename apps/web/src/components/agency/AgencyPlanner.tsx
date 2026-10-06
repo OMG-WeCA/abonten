@@ -31,6 +31,7 @@ import { agencyEvidenceText } from '../../lib/agency-evidence-locale';
 import { parseAmount } from '../../lib/number-format';
 import { displayDateOnly, displayNumber, displayUtcTimestamp } from '../../lib/locale-format';
 import { money } from './BoardDetail';
+import { PlannerDataUseDialog } from './PlannerDataUseDialog';
 
 interface PlannerProps {
   open: boolean;
@@ -79,6 +80,7 @@ export function AgencyPlanner(props: PlannerProps) {
     distances,
   } = props;
   const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
+  const [dataUseOpen, setDataUseOpen] = useState(false);
   const [status, setStatus] = useState<AssistantStatus | null>(null);
   const [statusError, setStatusError] = useState(false);
   const [statusRetry, setStatusRetry] = useState(0);
@@ -324,6 +326,7 @@ export function AgencyPlanner(props: PlannerProps) {
       if (!controller.signal.aborted) setChatting(false);
     }
   };
+  const hasDemo = shortlist.some(({ site }) => site.isDemo);
   const subtotal = summary.totals[currency] ?? 0;
   const budgetAmount = parseAmount(budget) ?? NaN;
   const hasBudget =
@@ -343,15 +346,15 @@ export function AgencyPlanner(props: PlannerProps) {
           <Sparkles size={20} className="text-primary" />
           <div>
             <h2 id="planner-heading">{t('Planning assistant', 'Assistant de planification')}</h2>
-            <p>
-              {statusError || (status !== null && !assistantUsable)
-                ? t('Planner connection unavailable', 'Connexion à l’assistant indisponible')
-                : external
-                  ? t('Chat uses OpenAI', 'Conversation avec OpenAI')
+            {(statusError || !external) && (
+              <p>
+                {statusError || (status !== null && !assistantUsable)
+                  ? t('Connection unavailable', 'Connexion indisponible')
                   : status === null
-                    ? t('Checking planner connection…', 'Vérification de la connexion…')
+                    ? t('Connecting…', 'Connexion…')
                     : t('AI chat is not connected', 'La conversation IA n’est pas connectée')}
-            </p>
+              </p>
+            )}
           </div>
         </div>
         <button
@@ -367,8 +370,8 @@ export function AgencyPlanner(props: PlannerProps) {
           <div className="agency-form-error" role="alert">
             <p>
               {t(
-                'Check the planner connection before sending. Your draft is preserved.',
-                'Vérifiez la connexion avant l’envoi. Votre brouillon est conservé.',
+                'Connection unavailable. Your draft is kept.',
+                'Connexion indisponible. Votre brouillon est conservé.',
               )}
             </p>
             <button
@@ -378,14 +381,6 @@ export function AgencyPlanner(props: PlannerProps) {
               {t('Retry connection', 'Réessayer la connexion')}
             </button>
           </div>
-        )}
-        {external && (
-          <p className="agency-assistant-disclosure">
-            {t(
-              'When you send a message, OpenAI receives your messages and current plan. Sharing brief text needs your permission below.',
-              'À chaque envoi, OpenAI reçoit vos messages et le plan en cours. Le partage du texte du document nécessite votre autorisation ci-dessous.',
-            )}
-          </p>
         )}
         {Boolean(props.plannerSelectionOmittedFaces && props.plannerSelectionOmittedFaces > 0) && (
           <p className="agency-assistant-disclosure" role="status">
@@ -473,15 +468,12 @@ export function AgencyPlanner(props: PlannerProps) {
               <summary>{t('Review extracted text', 'Vérifier le texte extrait')}</summary>
               <label className="agency-field">
                 <span>
-                  {t(
-                    'Extracted document text · original document language',
-                    'Texte extrait du document · langue du document original',
-                  )}
+                  {t('Extracted text · original language', 'Texte extrait · langue originale')}
                 </span>
                 <textarea
                   aria-label={t(
-                    'Extracted document text · original document language',
-                    'Texte extrait du document · langue du document original',
+                    'Extracted text · original language',
+                    'Texte extrait · langue originale',
                   )}
                   value={briefText}
                   maxLength={60000}
@@ -499,8 +491,8 @@ export function AgencyPlanner(props: PlannerProps) {
               ))}
               <p>
                 {t(
-                  'Check budget and currency below. Confirm dates and locations in the map filters.',
-                  'Vérifiez le budget et la devise ci-dessous. Confirmez les dates et lieux dans les filtres.',
+                  'Check budget, currency, dates and locations.',
+                  'Vérifiez le budget, la devise, les dates et les lieux.',
                 )}
               </p>
               {briefText === brief.text && brief.constraints.budget != null && (
@@ -521,8 +513,8 @@ export function AgencyPlanner(props: PlannerProps) {
               {briefText !== brief.text && (
                 <p>
                   {t(
-                    'Edited text will be confirmed. Set the media budget and currency manually; original detected values are not applied.',
-                    'Le texte modifié sera confirmé. Définissez manuellement le budget et la devise ; les valeurs détectées d’origine ne seront pas appliquées.',
+                    'Text edited. Set budget and currency manually.',
+                    'Texte modifié. Saisissez le budget et la devise.',
                   )}
                 </p>
               )}
@@ -554,22 +546,21 @@ export function AgencyPlanner(props: PlannerProps) {
                   />
                   <span>
                     {t(
-                      'Include this confirmed brief in OpenAI chat',
-                      'Inclure ce document confirmé dans le chat OpenAI',
+                      'Send confirmed brief text to OpenAI with my messages',
+                      'Envoyer le texte confirmé à OpenAI avec mes messages',
                     )}
                   </span>
                 </label>
-                <p>
-                  {briefConfirmed
-                    ? t(
-                        'OpenAI receives only the confirmed text when you send a message. The file is not sent to OpenAI. Editing or removing the brief clears permission and chat.',
-                        'OpenAI reçoit uniquement le texte confirmé à l’envoi d’un message, jamais le fichier. Modifier ou retirer le document efface l’autorisation et la conversation.',
-                      )
-                    : t(
-                        'Confirm the extracted text before allowing sharing with OpenAI.',
-                        'Confirmez le texte extrait avant d’autoriser le partage avec OpenAI.',
-                      )}
-                </p>
+                {!briefConfirmed && (
+                  <p>{t('Confirm text first.', 'Confirmez d’abord le texte.')}</p>
+                )}
+                <button
+                  type="button"
+                  className="agency-text-button"
+                  onClick={() => setDataUseOpen(true)}
+                >
+                  {t('Data use', 'Utilisation des données')}
+                </button>
               </div>
             )}
           </div>
@@ -594,6 +585,11 @@ export function AgencyPlanner(props: PlannerProps) {
                     <span>
                       <strong>{item.site.name}</strong>
                       <small>
+                        {item.site.isDemo && (
+                          <>
+                            <span className="agency-data-badge">DEMO</span>{' '}
+                          </>
+                        )}
                         {item.site.faces.find((face) => face.id === item.faceId)?.faceLabel} ·{' '}
                         {item.site.city}
                       </small>
@@ -626,6 +622,7 @@ export function AgencyPlanner(props: PlannerProps) {
                   .join(' + ') || '—'}
               </strong>
               <span>
+                {hasDemo && <>{t('Includes DEMO costs', 'Comprend des coûts DEMO')} · </>}
                 {hasBudget
                   ? `${t('of', 'sur')} ${money(budgetAmount, currency, locale)}`
                   : t('media estimate', 'estimation média')}
@@ -681,8 +678,8 @@ export function AgencyPlanner(props: PlannerProps) {
         )}
         <p className="agency-assumption-note">
           {t(
-            'Uses your filters and published rates to select one available face per board, starting with the lowest media cost. Replaces your shortlist without reserving boards.',
-            'Selon vos filtres et les tarifs publiés, retient une face disponible par panneau, en commençant par le coût média le plus bas. Remplace votre sélection sans réserver les panneaux.',
+            'Replaces shortlist · one face per board, lowest media cost first · no reservation.',
+            'Remplace la sélection · une face par panneau, coût média croissant · aucune réservation.',
           )}
         </p>
         {props.notice && (
@@ -697,8 +694,8 @@ export function AgencyPlanner(props: PlannerProps) {
           </div>
           <p>
             {t(
-              'Exposure estimates need suitable traffic data and an approved model. You can still compare locations and media costs.',
-              'L’estimation de l’exposition nécessite des données de trafic adaptées et un modèle approuvé. Vous pouvez comparer les emplacements et les coûts média.',
+              'Suitable traffic data and an exposure model are required.',
+              'Des données de trafic adaptées et un modèle d’exposition sont nécessaires.',
             )}
           </p>
           <details>
@@ -722,8 +719,8 @@ export function AgencyPlanner(props: PlannerProps) {
             <summary>{t('Board spacing', 'Distances entre panneaux')} · km</summary>
             <p>
               {t(
-                'Straight-line distances from registered WGS84 coordinates, using Haversine. These are not road distances or travel times.',
-                'Distances à vol d’oiseau selon les coordonnées WGS84 et Haversine. Elles ne représentent pas des trajets ou temps de déplacement.',
+                'Straight-line distance · WGS84 / Haversine, not road distance.',
+                'Distance à vol d’oiseau · WGS84 / Haversine, hors trajet routier.',
               )}
             </p>
             {distances.slice(0, 50).map((pair) => (
@@ -810,7 +807,7 @@ export function AgencyPlanner(props: PlannerProps) {
               {item.reply && (
                 <small className="agency-chat-source">
                   {item.reply.mode === 'openai'
-                    ? `OpenAI · ${item.reply.model}`
+                    ? t('AI reply', 'Réponse IA')
                     : t('Local planning help', 'Aide locale')}
                   {item.reply.briefShared ? ` · ${t('brief shared', 'document partagé')}` : ''}
                 </small>
@@ -862,8 +859,8 @@ export function AgencyPlanner(props: PlannerProps) {
               <>
                 <p>
                   {t(
-                    'Your message is preserved. Retrying uses the current flight, filters, shortlist and brief-sharing choice.',
-                    'Votre message est conservé. La nouvelle tentative utilise les dates, filtres, sélection et choix de partage actuels.',
+                    'Message kept. Retry with the current plan and sharing choice.',
+                    'Message conservé. Réessayez avec le plan et le choix de partage actuels.',
                   )}
                 </p>
                 <button
@@ -940,17 +937,13 @@ export function AgencyPlanner(props: PlannerProps) {
             <Send size={18} />
           </button>
         </form>
-        <p>
-          {external
-            ? t(
-                'Messages and planning context sent to OpenAI · briefs require permission',
-                'Messages et contexte envoyés à OpenAI · documents avec autorisation',
-              )
-            : t(
-                'Briefs: PDF, PPTX, XLSX, DOCX and text · processed by Abonten',
-                'Documents : PDF, PPTX, XLSX, DOCX et texte · traités par Abonten',
-              )}
-        </p>
+        <button
+          type="button"
+          className="agency-text-button agency-data-use"
+          onClick={() => setDataUseOpen(true)}
+        >
+          {t('Data use', 'Utilisation des données')}
+        </button>
         {!props.canPlan && (
           <p>
             {t(
@@ -960,6 +953,13 @@ export function AgencyPlanner(props: PlannerProps) {
           </p>
         )}
       </footer>
+      {dataUseOpen && (
+        <PlannerDataUseDialog
+          locale={locale}
+          connected={external}
+          onClose={() => setDataUseOpen(false)}
+        />
+      )}
     </section>
   );
 }
@@ -980,15 +980,27 @@ function ReplyFacts({
     const face = site?.faces.find((candidate) => candidate.faceId === reference.faceId);
     return site && face ? [{ reference, site, face }] : [];
   });
-  const availabilityLabel = (value: 'available' | 'unavailable' | 'unknown') =>
-    value === 'available'
-      ? t(
-          'Available at the check time · no reservation',
-          'Disponible lors du contrôle · sans réservation',
-        )
-      : value === 'unavailable'
-        ? t('Unavailable for this flight', 'Indisponible pour ces dates')
-        : t('Availability needs checking', 'Disponibilité à vérifier');
+  const availabilityLabel = (value: 'available' | 'unavailable' | 'unknown', demo = false) =>
+    demo
+      ? value === 'available'
+        ? t('Available in sample · no booking', 'Disponible dans l’exemple · aucune réservation')
+        : value === 'unavailable'
+          ? t(
+              'Unavailable in sample · no booking',
+              'Indisponible dans l’exemple · aucune réservation',
+            )
+          : t(
+              'Sample availability unconfirmed · no booking',
+              'Disponibilité fictive non confirmée · aucune réservation',
+            )
+      : value === 'available'
+        ? t(
+            'Available at the check time · no reservation',
+            'Disponible lors du contrôle · sans réservation',
+          )
+        : value === 'unavailable'
+          ? t('Unavailable for this flight', 'Indisponible pour ces dates')
+          : t('Availability needs checking', 'Disponibilité à vérifier');
   const faceSources =
     facts?.sites.flatMap((site) =>
       site.faces
@@ -1014,7 +1026,9 @@ function ReplyFacts({
                 onClick={() => onSelect(site.siteId, face.faceId)}
                 aria-label={`${t('View board', 'Voir le panneau')} ${site.name}${face.faceLabel ? ` · ${t('Face', 'Face')} ${face.faceLabel}` : ''}`}
               >
-                <strong>{site.name}</strong>
+                <strong>
+                  {site.name} {site.isDemo && <span className="agency-data-badge">DEMO</span>}
+                </strong>
               </button>
               <p>
                 {reply.mode === 'local'
@@ -1035,7 +1049,7 @@ function ReplyFacts({
                       : 'text-muted'
                 }
               >
-                {availabilityLabel(face.availability)}
+                {availabilityLabel(face.availability, site.isDemo)}
               </p>
               {face.estimate.status === 'ready' && (
                 <small>
@@ -1087,7 +1101,10 @@ function ReplyFacts({
             </p>
           )}
           <p>
-            {t('Published media cost', 'Coût média publié')} :{' '}
+            {facts.sites.some((site) => site.isDemo)
+              ? t('Includes DEMO costs', 'Comprend des coûts DEMO')
+              : t('Published media cost', 'Coût média publié')}{' '}
+            :{' '}
             {Object.entries(facts.budget.totals)
               .map(([code, amount]) => money(amount, code, locale))
               .join(' + ') || '—'}
@@ -1103,11 +1120,14 @@ function ReplyFacts({
             <div key={`${site.siteId}:${face.faceId}`}>
               <p>
                 <strong>
-                  {site.name}
+                  {site.name} {site.isDemo && <span className="agency-data-badge">DEMO</span>}
                   {face.faceLabel ? ` · ${t('Face', 'Face')} ${face.faceLabel}` : ''}
                 </strong>
               </p>
-              <p>{availabilityLabel(face.availability)}</p>
+              <p>{availabilityLabel(face.availability, site.isDemo)}</p>
+              {site.isDemo && site.demoProvenance && (
+                <p>{agencyEvidenceText(site.demoProvenance, locale)}</p>
+              )}
               {face.estimate.status === 'ready' ? (
                 <>
                   <p>

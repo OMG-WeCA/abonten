@@ -11,6 +11,9 @@ export interface GeoPoint {
 }
 
 export interface SiteSummary {
+  isDemo?: boolean;
+  commerciallyBookable?: boolean;
+  demoProvenance?: string;
   id: string;
   organizationId: string;
   code: string;

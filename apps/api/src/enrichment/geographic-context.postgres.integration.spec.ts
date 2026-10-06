@@ -34,7 +34,7 @@ async function withSchema(test: (db: DataSource) => Promise<void>) {
     await new GeographicContext1720000000009().up(runner);
     await runner.release();
     await db.query(
-      'CREATE TABLE billboard_sites (id uuid PRIMARY KEY, latitude double precision, longitude double precision, country text)',
+      'CREATE TABLE billboard_sites (id uuid PRIMARY KEY, demo_agency_id uuid, latitude double precision, longitude double precision, country text)',
     );
     await db.query(
       'CREATE TABLE audit_logs (id uuid DEFAULT gen_random_uuid(), action text, entity_type text, entity_id text, after json, at timestamptz DEFAULT now())',

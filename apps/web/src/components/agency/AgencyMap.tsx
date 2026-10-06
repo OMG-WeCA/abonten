@@ -16,6 +16,7 @@ import './agency-map.css';
 export interface AgencyMapSite {
   id: string;
   name: string;
+  isDemo?: boolean;
   latitude: number;
   longitude: number;
 }
@@ -87,7 +88,7 @@ export function AgencyMap({
     .map((site) => `${site.id}:${site.latitude}:${site.longitude}`)
     .join('|');
   const labels = {
-    registered: fr ? 'Répertorié' : 'Registered',
+    registered: fr ? 'Panneaux' : 'Boards',
     shortlisted: fr ? 'Présélection' : 'Shortlisted',
     selected: fr ? 'Sélectionné' : 'Selected',
     straightLine: fr ? 'à vol d’oiseau' : 'straight-line',
@@ -311,9 +312,14 @@ export function AgencyMap({
     if (first && second) {
       const label = document.createElement('span');
       label.textContent = `1 → 2 · ${displayNumber(straightLineDistanceKm(first, second)!, locale, { maximumFractionDigits: 2 })} km ${labels.straightLine}`;
-      label.title = fr
-        ? 'Calcul géodésique à partir des coordonnées enregistrées'
-        : 'Geodesic calculation from registered coordinates';
+      label.title =
+        first.isDemo || second.isDemo
+          ? fr
+            ? 'Calcul à vol d’oiseau à partir de coordonnées fictives'
+            : 'Straight-line calculation from sample coordinates'
+          : fr
+            ? 'Calcul géodésique à partir des coordonnées enregistrées'
+            : 'Geodesic calculation from registered coordinates';
       const line = L.polyline(
         [
           [first.latitude, first.longitude],

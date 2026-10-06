@@ -42,6 +42,7 @@ interface ImportRow {
   raster_path: string | null;
 }
 interface SiteLocation {
+  isDemo?: boolean;
   latitude: number;
   longitude: number;
   country: string;
@@ -133,7 +134,7 @@ export class GeographicContextService {
         return result;
       };
       const sites: SiteLocation[] = await manager.query(
-        'SELECT latitude, longitude, country FROM billboard_sites WHERE id = $1',
+        'SELECT latitude, longitude, country, (demo_agency_id IS NOT NULL) AS "isDemo" FROM billboard_sites WHERE id = $1',
         [siteId],
       );
       const site = sites[0];
@@ -163,6 +164,11 @@ export class GeographicContextService {
           'No licensed production traffic observations have been imported. Missing traffic is not zero.',
         ),
       };
+      if (site.isDemo) {
+        result.disclaimer =
+          'DEMO: synthetic location, not a verified physical board. Geographic and audience enrichment is unavailable for this sample.';
+        return { ...result, isDemo: true } as SiteGeographicContext;
+      }
       if (!country) return result;
       // Hold exact immutable import IDs throughout the read, even if an operator
       // activates a newer version concurrently. Production never reads demo imports.

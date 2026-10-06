@@ -1086,7 +1086,6 @@ function AgencyWorkspace() {
     return (
       <div className="agency-work-loading">
         <h1>{t('Open planning workspace', 'Ouvrir le planificateur')}</h1>
-        <p>{t('Choose which draft to continue.', 'Choisissez le brouillon à poursuivre.')}</p>
         <PlanningReplacementDialog
           locale={locale}
           onContinue={() => {
@@ -1384,7 +1383,6 @@ function AgencyWorkspace() {
           locale={locale}
         />
         <div className="agency-map-heading">
-          <p>{t('Explore billboard locations', 'Trouver des panneaux')}</p>
           <span>
             {loadState === 'loading'
               ? t('Loading listed boards…', 'Chargement des panneaux…')
@@ -1448,8 +1446,8 @@ function AgencyWorkspace() {
               </label>
               <p>
                 {t(
-                  'The final date is the first day outside the flight. Availability checks do not hold boards.',
-                  'La date de fin est le premier jour hors campagne. Les contrôles ne réservent pas les panneaux.',
+                  'End date excluded · no reservation.',
+                  'Date de fin exclue · aucune réservation.',
                 )}
               </p>
             </div>
@@ -1518,7 +1516,9 @@ function AgencyWorkspace() {
                     <MapPin size={19} />
                   </span>
                   <span>
-                    <strong>{board.name}</strong>
+                    <strong>
+                      {board.name} {board.isDemo && <span className="agency-data-badge">DEMO</span>}
+                    </strong>
                     <small>
                       {board.code} · {board.city} ·{' '}
                       {displayNumber(Number(board.faceCount), locale, { maximumFractionDigits: 0 })}{' '}
@@ -1720,6 +1720,9 @@ function AgencyWorkspace() {
               : '—'}
           </b>
           <small>
+            {shortlist.some(({ site }) => site.isDemo) && (
+              <>{t('Includes DEMO costs', 'Comprend des coûts DEMO')} · </>
+            )}
             {hasAccountSave
               ? hasSavedChanges
                 ? t('Changes kept in this tab · ', 'Changements conservés dans cet onglet · ')

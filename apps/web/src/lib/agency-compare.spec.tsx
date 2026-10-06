@@ -136,7 +136,6 @@ test('two faces on one board retain distinct canonical costs, units, sources and
   assert.ok(html.includes('Original provider-authored method'));
   assert.ok(html.includes('Viewing angle is not recorded'));
   assert.ok(html.includes('No source-backed metadata is available.'));
-  assert.ok(html.includes('no audience or reach total is inferred'));
   assert.equal(
     JSON.stringify(input),
     original,
@@ -260,5 +259,56 @@ test('expired and synthetic metadata never become comparison audience/visibility
           : 'Metadata is expired or has a future collection date.',
       ),
     );
+  }
+});
+
+test('synthetic inventory keeps its name and sample calculations but never claims commercial availability', () => {
+  const sample = {
+    ...site,
+    isDemo: true,
+    commerciallyBookable: false,
+    demoProvenance:
+      'Synthetic agency demonstration sample; dimensions, location and NGN prices are illustrative. No verified media, commercial booking, permit or audience claim.',
+  };
+  for (const locale of ['en', 'fr'] as const) {
+    const html = render(props({ locale, shortlist: [{ site: sample, faceId: 'face-A' }] }));
+    assert.ok(html.includes(site.name));
+    assert.ok(html.includes('DEMO'));
+    assert.ok(html.includes(locale === 'fr' ? 'Coût média fictif' : 'Sample media cost'));
+    assert.ok(html.includes(locale === 'fr' ? 'Disponible dans l’exemple' : 'Available in sample'));
+    assert.ok(
+      html.includes(locale === 'fr' ? 'Dimensions illustratives' : 'Illustrative dimensions'),
+    );
+    assert.ok(
+      html.includes(locale === 'fr' ? 'sans inventaire' : 'No verified media') ||
+        html.includes('Aucun média vérifié'),
+    );
+    assert.ok(
+      !html.includes(
+        locale === 'fr' ? 'Disponible au dernier contrôle' : 'Available at last check',
+      ),
+    );
+    assert.ok(
+      !html.includes(
+        locale === 'fr'
+          ? 'Déclaration enregistrée de l’inventaire'
+          : 'Registered inventory declaration',
+      ),
+    );
+  }
+});
+
+test('sample unavailable and unknown checks stay distinct', () => {
+  const sample = { ...site, isDemo: true, commerciallyBookable: false };
+  for (const status of ['unavailable', 'unknown'] as const) {
+    const html = render(
+      props({
+        shortlist: [{ site: sample, faceId: 'face-A' }],
+        availabilityFor: () => ({ ...available, status }),
+      }),
+    );
+    assert.ok(html.includes('Sample availability'));
+    assert.ok(html.includes(status === 'unavailable' ? 'Unavailable in sample' : 'Not confirmed'));
+    assert.ok(!html.includes('Available in sample'));
   }
 });

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { BoardDetail } from '../components/agency/BoardDetail';
+import { PlannerDataUseDialog } from '../components/agency/PlannerDataUseDialog';
 import { AgencyPlanner } from '../components/agency/AgencyPlanner';
 import { prettyFormat } from '../components/sites/sites-ui';
 import { GeographicContextSnapshot } from '../components/sites/GeographicContextPanel';
@@ -246,4 +247,77 @@ test('geographic evidence translates controlled method/warning text and keeps or
   assert.ok(html.includes('Original English provider attribution'));
   assert.ok(html.includes('11:20:30 UTC'));
   assert.ok(html.includes('01 oct. 2026'));
+});
+
+test('on-demand data-use information names the provider and text scope without acting as sharing consent', () => {
+  for (const locale of ['en', 'fr'] as const) {
+    const html = renderToStaticMarkup(
+      <PlannerDataUseDialog locale={locale} connected onClose={noop} />,
+    );
+    assert.ok(html.includes('<dialog'));
+    assert.ok(html.includes('aria-labelledby="planner-data-use-title"'));
+    assert.ok(html.includes('OpenAI'));
+    assert.ok(
+      html.includes(
+        locale === 'fr' ? 'fichier original n’est pas envoyé' : 'original file is not sent',
+      ),
+    );
+    assert.ok(
+      html.includes(
+        locale === 'fr'
+          ? 'après votre confirmation et votre autorisation'
+          : 'after you confirm and authorize it',
+      ),
+    );
+    assert.ok(!html.includes('type="checkbox"'));
+    assert.ok(!html.includes('accept'));
+  }
+});
+
+test('demo popup distinguishes sample cost and unknown availability without changing its sample name', () => {
+  const sample = { ...site, isDemo: true, commerciallyBookable: false, metadata: [] };
+  const price = estimateFaceCost(sample, sample.faces[0], window, 'NGN', availability);
+  assert.equal(price.status, 'ready');
+  if (price.status !== 'ready') return;
+  for (const locale of ['en', 'fr'] as const) {
+    for (const status of ['available', 'unknown'] as const) {
+      const html = renderToStaticMarkup(
+        <BoardDetail
+          site={sample}
+          orgId="synthetic-org"
+          locale={locale}
+          faceId="face-test"
+          onFace={noop}
+          estimate={{ ...price, availability: status }}
+          selected={false}
+          canPlan
+          window={window}
+          availability={{ ...availability, status }}
+          onRetryAvailability={noop}
+          onAdd={noop}
+          onClose={noop}
+        />,
+      );
+      assert.ok(html.includes(site.name));
+      assert.ok(html.includes('DEMO'));
+      assert.ok(html.includes(locale === 'fr' ? 'Face fictive' : 'Sample face'));
+      assert.ok(html.includes(locale === 'fr' ? 'coût média fictif' : 'sample media cost'));
+      assert.ok(
+        html.includes(
+          status === 'available'
+            ? locale === 'fr'
+              ? 'Disponible dans l’exemple'
+              : 'Available in sample'
+            : locale === 'fr'
+              ? 'Disponibilité fictive non confirmée'
+              : 'Sample availability unconfirmed',
+        ),
+      );
+      assert.ok(
+        !html.includes(
+          locale === 'fr' ? 'Disponible au dernier contrôle' : 'Available at last check',
+        ),
+      );
+    }
+  }
 });

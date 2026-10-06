@@ -322,3 +322,20 @@ test('Office and isolated PDF parser warnings have reversible display translatio
   );
   warnings.forEach(translated);
 });
+
+test('controlled synthetic inventory disclosures localize exactly while preserving arbitrary provider prose', () => {
+  for (const value of [
+    'Synthetic agency demonstration sample; dimensions, location and NGN prices are illustrative. No verified media, commercial booking, permit or audience claim.',
+    'DEMO: synthetic location, not a verified physical board. Geographic and audience enrichment is unavailable for this sample.',
+    'DEMO boards, dimensions, prices and availability are synthetic planning samples, not verified physical inventory or commercially bookable supply. No audience/enrichment is inferred from synthetic pins.',
+  ]) {
+    assert.equal(agencyEvidenceText(value, 'en'), value);
+    const fr = agencyEvidenceText(value, 'fr');
+    assert.notEqual(fr, value);
+    assert.equal(agencyEvidenceText(fr, 'en'), value);
+    assert.equal(
+      agencyEvidenceText('Provider comment: ' + value, 'fr'),
+      'Provider comment: ' + value,
+    );
+  }
+});

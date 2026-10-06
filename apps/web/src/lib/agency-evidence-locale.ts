@@ -5,6 +5,19 @@ import { displayUiText } from './display-ui-text';
 
 const frenchText = new Map<string, string>([
   [
+    'Synthetic agency demonstration sample; dimensions, location and NGN prices are illustrative. No verified media, commercial booking, permit or audience claim.',
+    'Exemple fictif pour l’agence ; dimensions, emplacement et prix en NGN sont illustratifs. Aucun média vérifié, réservation commerciale, permis ou audience attestée.',
+  ],
+  [
+    'DEMO: synthetic location, not a verified physical board. Geographic and audience enrichment is unavailable for this sample.',
+    'DEMO : emplacement fictif, aucun panneau physique vérifié. Les données géographiques et d’audience sont indisponibles pour cet exemple.',
+  ],
+  [
+    'DEMO boards, dimensions, prices and availability are synthetic planning samples, not verified physical inventory or commercially bookable supply. No audience/enrichment is inferred from synthetic pins.',
+    'Les panneaux DEMO, dimensions, prix et disponibilités sont des exemples fictifs de planification, sans inventaire physique vérifié ni réservation commerciale. Aucune donnée d’audience ou donnée enrichie n’est déduite des repères fictifs.',
+  ],
+
+  [
     'Draft restored. Board details are checked again; documents and chat are not saved.',
     'Brouillon restauré. Les données des panneaux sont revérifiées ; les documents et la conversation ne sont pas enregistrés.',
   ],

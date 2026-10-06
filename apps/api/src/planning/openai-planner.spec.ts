@@ -369,7 +369,9 @@ describe('server-grounded agency planning and brief consent', () => {
     assert.equal(reply.facts.ots, null);
     assert.equal(reply.facts.reach, null);
     assert.deepEqual(calls.details, [siteA, siteB]);
-    assert.deepEqual(calls.queries[0][1], [[faceA, faceB]]);
+    assert.deepEqual(calls.queries[0][1], [[faceA, faceB], scope.orgId]);
+    assert.match(String(calls.queries[0][0]), /JOIN billboard_sites s/);
+    assert.match(String(calls.queries[0][0]), /s.demo_agency_id IS NULL/);
     assert.match(String(calls.queries[1][0]), /start_date < \$3::date/);
     assert.deepEqual(calls.queries[1][1], [siteA, '2026-10-10', '2026-10-24']);
     assert.doesNotMatch(JSON.stringify(calls.input), /999999999|organizationId/);
@@ -720,7 +722,8 @@ describe('server-grounded agency planning and brief consent', () => {
     });
     assert.deepEqual(await validate(dto), []);
     const reply = await service.plan(dto, scope);
-    assert.deepEqual(calls.queries[0][1], [[faceA, faceB]]);
+    assert.deepEqual(calls.queries[0][1], [[faceA, faceB], scope.orgId]);
+    assert.match(String(calls.queries[0][0]), /s.demo_agency_id::text = \$2::text/);
     assert.deepEqual(calls.details, [siteA, siteB]);
     assert.deepEqual(reply.facts.budget.totals, { NGN: 1400, GHS: 1400 });
     assert.equal(reply.facts.sites[0].faces[0].selected, true);

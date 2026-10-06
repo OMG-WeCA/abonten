@@ -24,11 +24,7 @@
   font-weight: 750;
   letter-spacing: -0.035em;
 }
-.agency-compare-intro,
-.agency-compare-disclaimer {
-  color: var(--color-muted);
-  line-height: 1.65;
-}
+
 .agency-compare-flight {
   margin: 22px 0;
   padding: 13px 16px;
@@ -204,10 +200,7 @@
 .agency-compare-remove:hover {
   color: var(--color-error);
 }
-.agency-compare-disclaimer {
-  margin: 20px 0 0;
-  font-size: 12px;
-}
+
 .agency-compare-single {
   justify-content: space-between;
   margin-bottom: 18px;

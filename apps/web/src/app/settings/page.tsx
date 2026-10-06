@@ -240,7 +240,6 @@ export default function SettingsPage() {
     <WorkspaceFrame current="settings">
       <div className="max-w-5xl">
         <h1 className="text-3xl font-extrabold tracking-[-0.045em] sm:text-4xl">{copy.heading}</h1>
-        <p className="mt-3 max-w-2xl leading-7 text-muted">{copy.intro}</p>
         {activeOrganization?.type === 'media_partner' && (
           <Link
             href="/partner-terms/accepted"
@@ -288,6 +287,7 @@ export default function SettingsPage() {
           {tab === 'profile' && (
             <ProfilePanel
               copy={copy}
+              email={profile?.email ?? ''}
               name={name}
               phone={phone}
               avatarUrl={avatarUrl}
@@ -344,6 +344,7 @@ export default function SettingsPage() {
 
 function ProfilePanel(props: {
   copy: SettingsCopy;
+  email: string;
   name: string;
   phone: string;
   avatarUrl: string | null;
@@ -357,7 +358,6 @@ function ProfilePanel(props: {
     <form onSubmit={props.onSubmit} className="space-y-6">
       <section className="border-b border-border pb-7">
         <h2 className="text-xl font-bold">{props.copy.profile}</h2>
-        <p className="mt-1.5 text-sm leading-6 text-muted">{props.copy.profileDetail}</p>
         <div className="mt-6 flex items-center gap-4">
           <span className="grid h-16 w-16 place-items-center overflow-hidden rounded-2xl bg-primary/10 text-primary">
             {props.avatarUrl ? (
@@ -389,6 +389,15 @@ function ProfilePanel(props: {
           </div>
         </div>
       </section>
+      <Field label={props.copy.email} htmlFor="settingsEmail">
+        <input
+          id="settingsEmail"
+          type="email"
+          value={props.email}
+          readOnly
+          className={inputClass}
+        />
+      </Field>
       <Field label={props.copy.name} htmlFor="settingsName">
         <input
           id="settingsName"
@@ -430,7 +439,6 @@ function PreferencesPanel(props: {
           <Globe2 className="h-5 w-5 text-primary" />
           {props.copy.preferences}
         </h2>
-        <p className="mt-1.5 text-sm leading-6 text-muted">{props.copy.preferencesDetail}</p>
       </section>
       <Field label={props.copy.language} htmlFor="settingsLocale">
         <select
@@ -483,7 +491,6 @@ function OrganizationPanel(props: {
           <Landmark className="h-5 w-5 text-primary" />
           {props.copy.organizationDefaults}
         </h2>
-        <p className="mt-1.5 text-sm leading-6 text-muted">{props.copy.organizationDetail}</p>
       </section>
       <Field label={props.copy.organizationName} htmlFor="settingsOrganization">
         <input

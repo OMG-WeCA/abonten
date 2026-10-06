@@ -8,6 +8,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { demoVisibilitySql, demoDisclosure } from '../common/demo-inventory';
 import { GeographicContextService } from '../enrichment/geographic-context.service';
 import { compactPlanningSnapshot } from './planning-snapshot';
 import { derivePlanningRetrieval } from './planning-retrieval';
@@ -327,8 +328,8 @@ export class PlanningService {
       const repo = await this.db.repo(SiteFaceEntity);
       checkCancelled(signal);
       const rows = (await repo.query(
-        'SELECT id, site_id AS "siteId" FROM site_faces WHERE id::text = ANY($1::text[])',
-        [[...selectedFaces]],
+        `SELECT f.id, f.site_id AS "siteId" FROM site_faces f JOIN billboard_sites s ON s.id::text = f.site_id::text WHERE f.id::text = ANY($1::text[]) AND ${demoVisibilitySql('s', '$2')}`,
+        [[...selectedFaces], scope.orgId],
       )) as { id: string; siteId: string }[];
       if (rows.length !== selectedFaces.size)
         throw new BadRequestException('A selected face is unavailable to this planner.');
@@ -350,6 +351,7 @@ export class PlanningService {
         const search = await this.marketplace.search(
           { ...next.filters, ...window, limit: intent.pageSize, page: next.page },
           signal,
+          scope.orgId,
         );
         checkCancelled(signal);
         pagesRead++;
@@ -372,6 +374,7 @@ export class PlanningService {
       const detail = (await this.marketplace.getMarketplaceSite(
         id,
         signal,
+        scope.orgId,
       )) as MarketplacePlanningSite;
       checkCancelled(signal);
       details.set(id, detail);
@@ -448,6 +451,7 @@ export class PlanningService {
       const evaluatedAllFaces = grounded.length === detail.faces.length;
       const budgetMatch = candidateBudgetMatch(grounded, intent.budget);
       sites.push({
+        ...demoDisclosure(detail.isDemo === true),
         siteId: detail.id,
         name: String(detail.name ?? '').slice(0, 160),
         city: String(detail.city ?? '').slice(0, 80),
@@ -469,7 +473,10 @@ export class PlanningService {
         facesOmitted: detail.faces.length - includedFaces.length,
         faceCoverageComplete: evaluatedAllFaces,
         budgetMatch: budgetMatch === 'over' && !evaluatedAllFaces ? 'unknown' : budgetMatch,
-        enrichment: projectPlanningEnrichment(detail, null),
+        enrichment: projectPlanningEnrichment(
+          detail.isDemo ? { ...detail, metadata: [] } : detail,
+          null,
+        ),
         geographicContextState: 'unavailable',
       });
     }
@@ -486,7 +493,7 @@ export class PlanningService {
     // All included boards retain production metadata even when this budget is exhausted.
     for (const site of sites) {
       checkCancelled(signal);
-      if (!this.geographic || !scope.user) continue;
+      if (!this.geographic || !scope.user || site.isDemo) continue;
       if (enrichmentReads >= 6) {
         site.geographicContextState = 'read_budget_exhausted';
         continue;
@@ -555,6 +562,11 @@ export class PlanningService {
         'Production enrichment is descriptive, with exact units, periods, provenance and freshness. Stale, future, unverified or unknown-freshness inputs cannot establish current audience performance.',
         'UTC start inclusive, end exclusive. Published media estimates exclude tax, production and FX conversion.',
         'Availability is indicative; this request never reserves or books inventory.',
+        ...(sites.some((site) => site.isDemo)
+          ? [
+              'DEMO boards, dimensions, prices and availability are synthetic planning samples, not verified physical inventory or commercially bookable supply. No audience/enrichment is inferred from synthetic pins.',
+            ]
+          : []),
         'Distances are straight-line kilometres from registered WGS84 coordinates. Elevation is metres; orientation is degrees. Width/height use each site’s recorded units; null units are unknown.',
         'Validated OTS and deduplicated reach models are unavailable; population and traffic are not summed.',
       ],
@@ -576,12 +588,12 @@ export class PlanningService {
     )) as { faceId: string; available: boolean }[];
   }
 
-  async siteOptions(siteId: string, query: SiteOptionsQueryDto) {
+  async siteOptions(siteId: string, query: SiteOptionsQueryDto, orgId?: string) {
     if (!query.startDate || !query.endDate || query.startDate >= query.endDate)
       throw new BadRequestException('Choose a valid start date and a later exclusive end date.');
     // Reuse marketplace readiness and listing policy before exposing any faces.
     siteId = siteId.toLowerCase();
-    const site = await this.marketplace.getMarketplaceSite(siteId);
+    const site = await this.marketplace.getMarketplaceSite(siteId, undefined, orgId);
     const rows = await this.availability(site.id, query);
     const detail = site as MarketplacePlanningSite;
     const eligibleRows = rows.map((row) => {
@@ -601,6 +613,8 @@ export class PlanningService {
       checkedAt: new Date().toISOString(),
       faces: eligibleRows,
       reservation: false as const,
+      ...demoDisclosure(detail.isDemo === true),
+      ...(detail.isDemo ? { availabilityKind: 'synthetic_planning_sample' } : {}),
     };
   }
 }
@@ -612,6 +626,7 @@ function finite(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 interface MarketplacePlanningSite {
+  isDemo?: boolean;
   id: string;
   name: string;
   city: string;
@@ -639,6 +654,9 @@ interface MarketplacePlanningSite {
   >;
 }
 interface GroundedSite {
+  isDemo: boolean;
+  commerciallyBookable?: boolean;
+  demoProvenance?: string;
   facesEvaluated: number;
   facesOmitted: number;
   faceCoverageComplete: boolean;

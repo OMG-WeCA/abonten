@@ -545,6 +545,28 @@ Dashboard attention items state the precise underlying missing control, stale
 flight or failed recheck and open the relevant correction journey. Empty saved
 work is an invitation to make a real plan, never invented campaigns or metrics.
 
+**Agency-scoped demonstration amendment (2026-10-06).** An explicitly authorized
+operator may add clearly labelled synthetic Lagos inventory and personal demo
+planning scenarios to a verified existing mediaReach OMD agency. A nullable
+inventory demo-agency scope is enforced by every discovery, detail, child-resource,
+planning and enrichment read; ordinary inventory with no scope remains shared.
+Scoped demo inventory is visible only to its designated agency and owning
+organization, subject to their existing capabilities. It is not verified physical
+inventory or commercially bookable supply. Synthetic dimensions, NGN sample prices
+and sample planning availability carry an explicit demo discriminator/provenance.
+The scoped catalog may be listed for demonstration without a reference photo;
+ordinary publication readiness is unchanged. No fabricated photos, video, permits,
+location verification, audience enrichment, measurement, bookings or terms are
+created. Enrichment for synthetic pins remains unavailable rather than implying
+measured board performance. A dedicated insert-only, idempotent helper verifies
+the exact target organization and active member capabilities, adds at least six
+connected sample boards, and creates private budget-fit, over-budget and incomplete
+constraint scenarios per already authorized planner. It never grants roles,
+creates users, merges identities, rewrites existing drafts or runs generic seeds.
+Demo contacts use reserved `.example` addresses. Existing personal draft isolation
+and revision/audit rules remain unchanged; rollback must not expose scoped samples
+as ordinary shared listings.
+
 **Key user stories.**
 
 - As a planner, I can draw a polygon over Lagos and see all bookable billboards inside it with KPI

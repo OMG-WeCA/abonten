@@ -43,16 +43,7 @@ export function AgencyCompare(props: AgencyCompareProps) {
     <section className="agency-compare" aria-labelledby={headingId} data-testid="agency-compare">
       <header className="agency-compare-heading">
         <div>
-          <p className="agency-eyebrow">
-            {t('Your draft shortlist', 'Votre sélection provisoire')}
-          </p>
           <h1 id={headingId}>{t('Compare selected faces', 'Comparer les faces sélectionnées')}</h1>
-          <p className="agency-compare-intro">
-            {t(
-              'Review published media costs and recorded board facts side by side.',
-              'Comparez les coûts média publiés et les données enregistrées des panneaux.',
-            )}
-          </p>
         </div>
         <div className="agency-compare-actions">
           <button type="button" className="agency-secondary-button" onClick={props.onBack}>
@@ -104,8 +95,8 @@ export function AgencyCompare(props: AgencyCompareProps) {
           <h2>{t('Choose the faces you want to compare', 'Choisissez les faces à comparer')}</h2>
           <p>
             {t(
-              'Add at least two faces from the map or inventory. Each face keeps its own currency, availability and evidence.',
-              'Ajoutez au moins deux faces depuis la carte ou l’inventaire. Chaque face conserve sa devise, sa disponibilité et ses sources.',
+              'Add two faces from the map or inventory.',
+              'Ajoutez deux faces depuis la carte ou l’inventaire.',
             )}
           </p>
           <button type="button" className="agency-primary-button" onClick={props.onBrowse}>
@@ -145,12 +136,6 @@ export function AgencyCompare(props: AgencyCompareProps) {
               />
             ))}
           </div>
-          <p className="agency-compare-disclaimer">
-            {t(
-              'These are draft comparisons, not reservations. Currencies are shown separately without conversion. Population and traffic are not added together; no audience or reach total is inferred.',
-              'Ces comparaisons sont provisoires et ne constituent pas des réservations. Les devises sont affichées séparément, sans conversion. La population et le trafic ne sont pas additionnés ; aucun total d’audience ou de couverture n’est déduit.',
-            )}
-          </p>
         </>
       )}
     </section>
@@ -219,17 +204,21 @@ function CompareFace({
     <article className="agency-compare-card" aria-labelledby={headingId} data-face-id={faceId}>
       <header className="agency-compare-card-heading">
         <span className="agency-compare-face-tag">
-          {t('Face', 'Face')} {face?.faceLabel ?? faceId}
+          {!site.isDemo && <>{t('Face', 'Face')} </>}
+          {face?.faceLabel ?? faceId}
         </span>
         <h2 id={headingId}>{site.name}</h2>
         <p>
           {[site.code, site.city, marketLabel(site.country, locale)].filter(Boolean).join(' · ')}
         </p>
-        <span className="agency-compare-format">{prettyFormat(site.format, locale)}</span>
+        <span className="agency-compare-format">{prettyFormat(site.format, locale)}</span>{' '}
+        {site.isDemo && <span className="agency-data-badge">DEMO</span>}
       </header>
       <div className="agency-compare-price">
         <span className="agency-compare-label">
-          {t('Media cost for this flight', 'Coût média pour cette diffusion')}
+          {site.isDemo
+            ? t('Sample media cost', 'Coût média fictif')
+            : t('Media cost for this flight', 'Coût média pour cette diffusion')}
         </span>
         <strong>
           {price
@@ -246,8 +235,13 @@ function CompareFace({
             </p>
             <details className="agency-compare-evidence">
               <summary>
-                {t('Rate source and assumptions', 'Source tarifaire et hypothèses')}
+                {site.isDemo
+                  ? t('Sample rate and assumptions', 'Tarif fictif et hypothèses')
+                  : t('Rate source and assumptions', 'Source tarifaire et hypothèses')}
               </summary>
+              {site.isDemo && site.demoProvenance && (
+                <p>{agencyEvidenceText(site.demoProvenance, locale)}</p>
+              )}
               <p>{agencyEvidenceText(price.provenance, locale)}</p>
               <p>
                 {t('Rate record', 'Grille tarifaire')} <code>{price.rateCardId}</code>
@@ -270,13 +264,21 @@ function CompareFace({
       </div>
       <dl className="agency-compare-facts">
         <div className="agency-compare-fact">
-          <dt>{t('Availability for this flight', 'Disponibilité pour cette diffusion')}</dt>
+          <dt>
+            {site.isDemo
+              ? t('Sample availability', 'Disponibilité fictive')
+              : t('Availability for this flight', 'Disponibilité pour cette diffusion')}
+          </dt>
           <dd>
             <span className={`agency-compare-availability is-${availabilityStatus}`}>
               {availabilityStatus === 'available'
-                ? t('Available at last check', 'Disponible au dernier contrôle')
+                ? site.isDemo
+                  ? t('Available in sample', 'Disponible dans l’exemple')
+                  : t('Available at last check', 'Disponible au dernier contrôle')
                 : availabilityStatus === 'unavailable'
-                  ? t('Unavailable at last check', 'Indisponible au dernier contrôle')
+                  ? site.isDemo
+                    ? t('Unavailable in sample', 'Indisponible dans l’exemple')
+                    : t('Unavailable at last check', 'Indisponible au dernier contrôle')
                   : t('Not confirmed', 'Non confirmée')}
             </span>
             <small>
@@ -288,7 +290,9 @@ function CompareFace({
                   )}
             </small>
             <small>
-              {t('Indicative only · no reservation', 'Indicative uniquement · sans réservation')}
+              {site.isDemo
+                ? t('Synthetic · no booking', 'Fictive · aucune réservation')
+                : t('Indicative only · no reservation', 'Indicative uniquement · sans réservation')}
             </small>
           </dd>
         </div>
@@ -299,35 +303,42 @@ function CompareFace({
               ? `${dimension(face.width)} × ${dimension(face.height)} ${face.units ? agencyEvidenceUnit(face.units, locale) : t('units unknown', 'unités inconnues')}`
               : unknown}
             <small>
-              {t('Registered inventory declaration', 'Déclaration enregistrée de l’inventaire')}
+              {site.isDemo
+                ? t('Illustrative dimensions', 'Dimensions illustratives')
+                : t('Registered inventory declaration', 'Déclaration enregistrée de l’inventaire')}
             </small>
           </dd>
         </div>
         <EvidenceFact
+          demo={site.isDemo}
           label={t('Facing orientation', 'Orientation de la face')}
           metric={enrichment.structure.orientation}
           value={numeric(enrichment.structure.orientation)}
           locale={locale}
         />
         <EvidenceFact
+          demo={site.isDemo}
           label={t('Viewing angle', 'Angle de vue')}
           metric={enrichment.structure.viewingAngle}
           value={numeric(enrichment.structure.viewingAngle)}
           locale={locale}
         />
         <EvidenceFact
+          demo={site.isDemo}
           label={t('Viewing distance', 'Distance de visibilité')}
           metric={enrichment.structure.viewingDistance}
           value={numeric(enrichment.structure.viewingDistance)}
           locale={locale}
         />
         <EvidenceFact
+          demo={site.isDemo}
           label={t('Elevation above ground', 'Hauteur au-dessus du sol')}
           metric={enrichment.structure.elevation}
           value={numeric(enrichment.structure.elevation)}
           locale={locale}
         />
         <EvidenceFact
+          demo={site.isDemo}
           label={t('Illumination', 'Éclairage')}
           metric={illumination}
           value={
@@ -338,12 +349,14 @@ function CompareFace({
           locale={locale}
         />
         <EvidenceFact
+          demo={site.isDemo}
           label={t('Visibility score', 'Score de visibilité')}
           metric={enrichment.visibility}
           value={numeric(enrichment.visibility)}
           locale={locale}
         />
         <EvidenceFact
+          demo={site.isDemo}
           label={t('Declared traffic', 'Trafic déclaré')}
           metric={enrichment.declaredTraffic}
           value={numeric(enrichment.declaredTraffic)}
@@ -385,7 +398,9 @@ function EvidenceFact({
   metric,
   value,
   locale,
+  demo,
 }: {
+  demo?: boolean;
   label: string;
   metric: PlanningEnrichmentMetric<unknown>;
   value: string;
@@ -432,7 +447,10 @@ function EvidenceFact({
             )}
             {metric.method && (
               <p>
-                {t('Method', 'Méthode')} : {agencyEvidenceText(metric.method, locale)}
+                {t('Method', 'Méthode')} :{' '}
+                {demo && metric.method === 'Registered inventory declaration'
+                  ? t('Synthetic inventory sample', 'Exemple d’inventaire fictif')
+                  : agencyEvidenceText(metric.method, locale)}
               </p>
             )}
             {metric.freshness.collectedAt && (

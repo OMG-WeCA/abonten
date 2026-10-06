@@ -153,7 +153,16 @@ export class PlanningController {
   @ApiResponse({ status: 200, type: SiteOptionsResponse })
   @ApiResponse({ status: 400, description: 'Invalid date or non-positive flight window' })
   @ApiResponse({ status: 404, description: 'Site is absent, unlisted or not marketplace-ready' })
-  options(@Param('siteId', ParseUUIDPipe) siteId: string, @Query() query: SiteOptionsQueryDto) {
-    return this.service.siteOptions(siteId, query);
+  options(
+    @Param('siteId', ParseUUIDPipe) siteId: string,
+    @Query() query: SiteOptionsQueryDto,
+    @Req() req: Request & { user: AuthenticatedUser },
+  ) {
+    const header = req.headers['x-org-id'];
+    return this.service.siteOptions(
+      siteId,
+      query,
+      typeof header === 'string' ? header : req.user.activeOrgId,
+    );
   }
 }

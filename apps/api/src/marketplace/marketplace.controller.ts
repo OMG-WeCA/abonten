@@ -1,4 +1,6 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CapabilitiesGuard } from '../capabilities/capabilities.guard';
@@ -18,15 +20,22 @@ export class MarketplaceController {
   @RequireCapabilities(Capability.MARKETPLACE_VIEW)
   @Get()
   @ApiOperation({ summary: 'Search listed marketplace sites' })
-  async search(@Query() q: MarketplaceQueryDto) {
-    return this.service.search(q);
+  async search(@Query() q: MarketplaceQueryDto, @Req() req: Request & { user: AuthenticatedUser }) {
+    return this.service.search(q, undefined, this.org(req));
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.MARKETPLACE_VIEW)
   @Get(':siteId')
   @ApiOperation({ summary: 'Authenticated buyer detail for a listed site' })
-  async getSite(@Param('siteId') siteId: string) {
-    return this.service.getMarketplaceSite(siteId);
+  async getSite(
+    @Param('siteId') siteId: string,
+    @Req() req: Request & { user: AuthenticatedUser },
+  ) {
+    return this.service.getMarketplaceSite(siteId, undefined, this.org(req));
+  }
+  private org(req: Request & { user: AuthenticatedUser }) {
+    const header = req.headers['x-org-id'];
+    return typeof header === 'string' ? header : req.user.activeOrgId;
   }
 }

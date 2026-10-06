@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useAgencyDialog } from './useAgencyDialog';
 export function PlanningReplacementDialog({
   locale,
   onContinue,
@@ -9,15 +9,8 @@ export function PlanningReplacementDialog({
   onContinue: () => void;
   onCancel: () => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useAgencyDialog();
   const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
-  useEffect(() => {
-    const old = document.activeElement;
-    dialog.current?.showModal();
-    return () => {
-      if (old instanceof HTMLElement && old.isConnected) old.focus();
-    };
-  }, []);
   return (
     <dialog
       ref={dialog}
@@ -33,8 +26,8 @@ export function PlanningReplacementDialog({
       </h2>
       <p>
         {t(
-          'This tab has unsaved changes or an unconfirmed save. Continuing replaces its settings and shortlist, removes the attached brief and clears chat. Keeping your work lets you resume it later. Saved account plans remain available.',
-          'Cet onglet contient des changements non enregistrés ou un enregistrement à vérifier. Continuer remplace ses paramètres et sa sélection, retire le document joint et efface la conversation. Conserver votre travail permet de le reprendre ensuite. Vos plans enregistrés restent disponibles.',
+          'Replaces this tab’s unsaved draft or unconfirmed save, and clears its brief and chat. Saved account plans remain available.',
+          'Remplace le brouillon non enregistré ou l’enregistrement non confirmé de cet onglet et efface son document et sa conversation. Les plans enregistrés restent disponibles.',
         )}
       </p>
       <footer>

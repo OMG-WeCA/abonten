@@ -40,13 +40,6 @@
   letter-spacing: -0.045em;
   text-wrap: balance;
 }
-.agency-home-lead {
-  margin-top: 16px;
-  max-width: 64ch;
-  color: var(--color-muted);
-  font-size: 15px;
-  line-height: 1.7;
-}
 .agency-home-actions {
   display: flex;
   flex-wrap: wrap;
@@ -266,13 +259,6 @@
   text-decoration: underline;
   text-underline-offset: 4px;
 }
-.agency-home-evidence-note {
-  margin-top: 18px;
-  max-width: 65ch;
-  color: var(--color-muted);
-  font-size: 11px;
-  line-height: 1.8;
-}
 .agency-home-state {
   display: grid;
   justify-items: center;
@@ -397,9 +383,6 @@
   .agency-home h1 {
     font-size: 33px;
     max-width: 24ch;
-  }
-  .agency-home-lead {
-    font-size: 14px;
   }
   .agency-home-columns {
     grid-template-columns: 1fr;

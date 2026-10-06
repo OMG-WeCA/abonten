@@ -692,7 +692,7 @@
   display: grid;
   grid-template-columns: 1fr 88px;
   gap: 10px;
-  margin-top: 19px;
+  margin-top: 0;
 }
 .agency-flight-caption {
   color: var(--color-muted);
@@ -1638,4 +1638,9 @@
     min-width: 44px;
     height: 44px;
   }
+}
+
+.agency-data-use {
+  min-height: 36px;
+  margin-top: 4px;
 }

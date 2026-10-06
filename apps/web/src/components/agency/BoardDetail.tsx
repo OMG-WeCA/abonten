@@ -97,7 +97,9 @@ export function BoardDetail({
           <p className="agency-eyebrow">
             {site.code} · {site.city}
           </p>
-          <h2 id="board-heading">{site.name}</h2>
+          <h2 id="board-heading">
+            {site.name} {site.isDemo && <span className="agency-data-badge">DEMO</span>}
+          </h2>
         </div>
         <button
           className="agency-icon-button"
@@ -115,9 +117,7 @@ export function BoardDetail({
           ) && (
             <div className="px-4 py-3">
               <details className="agency-evidence">
-                <summary>
-                  {t('See the installed LED board', 'Voir le panneau LED installé')}
-                </summary>
+                <summary>{t('Installed LED board', 'Panneau LED installé')}</summary>
                 <div className="mt-3 space-y-3">
                   {site.assets
                     .filter((asset) => asset.kind === 'board_video' || asset.mediaType === 'video')
@@ -142,7 +142,11 @@ export function BoardDetail({
           <label className="agency-field">
             <span>{t('Viewing face', 'Face')}</span>
             <select
-              aria-label={t('Bookable face', 'Face réservable')}
+              aria-label={
+                site.isDemo
+                  ? t('Sample face', 'Face fictive')
+                  : t('Bookable face', 'Face réservable')
+              }
               value={faceId}
               onChange={(event) => onFace(event.target.value)}
             >
@@ -163,7 +167,7 @@ export function BoardDetail({
             </strong>
             <span>
               {estimate?.status === 'ready'
-                ? `${n(estimate.days)} ${t('days · media estimate', 'jours · estimation média')}`
+                ? `${n(estimate.days)} ${site.isDemo ? t('days · sample media cost', 'jours · coût média fictif') : t('days · media estimate', 'jours · estimation média')}`
                 : estimate?.reason && agencyEvidenceText(estimate.reason, locale)}
             </span>
           </div>
@@ -172,19 +176,29 @@ export function BoardDetail({
               className={`agency-availability ${estimate.availability === 'available' ? 'text-success' : 'text-warning'}`}
             >
               <span className="agency-status-dot" />
-              {estimate.availability === 'available'
-                ? t(
-                    'Available at last check · no reservation',
-                    'Disponible au dernier contrôle · sans réservation',
-                  )
-                : t('Availability not confirmed', 'Disponibilité non confirmée')}
+              {site.isDemo
+                ? estimate.availability === 'available'
+                  ? t(
+                      'Available in sample · no booking',
+                      'Disponible dans l’exemple · aucune réservation',
+                    )
+                  : t(
+                      'Sample availability unconfirmed · no booking',
+                      'Disponibilité fictive non confirmée · aucune réservation',
+                    )
+                : estimate.availability === 'available'
+                  ? t(
+                      'Available at last check · no reservation',
+                      'Disponible au dernier contrôle · sans réservation',
+                    )
+                  : t('Availability not confirmed', 'Disponibilité non confirmée')}
             </p>
           )}
           {!availabilityKnown && (
             <p role="status" className="text-warning">
               {t(
-                'Availability could not be checked for this flight. Your draft can continue.',
-                'La disponibilité n’a pas pu être vérifiée pour ces dates. Le brouillon peut continuer.',
+                'Availability unconfirmed for these dates.',
+                'Disponibilité non confirmée pour ces dates.',
               )}{' '}
               <button className="agency-text-button" onClick={onRetryAvailability}>
                 {t('Retry availability check', 'Revérifier la disponibilité')}
@@ -324,12 +338,9 @@ export function BoardDetail({
               {t('Sources, quality & assumptions', 'Sources, qualité et hypothèses')}
               <ArrowUpRight size={14} />
             </summary>
-            <p>
-              {t(
-                'Specifications are registered inventory values. Missing fields remain unknown.',
-                'Les spécifications proviennent de l’inventaire enregistré. Les champs manquants restent inconnus.',
-              )}
-            </p>
+            {site.isDemo && site.demoProvenance && (
+              <p>{agencyEvidenceText(site.demoProvenance, locale)}</p>
+            )}
             <div className="agency-source">
               <strong>{t('Visibility evidence', 'Preuves de visibilité')}</strong>
               {visibility.reason && <p>{agencyEvidenceText(visibility.reason, locale)}</p>}
