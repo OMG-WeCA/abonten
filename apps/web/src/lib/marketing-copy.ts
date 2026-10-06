@@ -7,7 +7,7 @@ export const marketingCopy = {
     closeMenu: 'Close navigation menu',
     mobileNav: 'Mobile navigation',
     footer:
-      'Find billboards, compare locations and plan outdoor campaigns in West & Central Africa.',
+      'Outdoor advertising, planned with context. Discover inventory, compare locations and build a practical campaign shortlist.',
     platform: 'Platform',
     company: 'Explore',
     how: 'How it works',
@@ -15,26 +15,39 @@ export const marketingCopy = {
     rights: 'All rights reserved.',
     language: 'English & French',
     homePage: {
-      title: 'Find billboards and plan outdoor campaigns.',
+      eyebrow: 'Outdoor · Intelligence · Planning',
+      title: 'Outdoor advertising,',
+      accent: 'in clear view.',
       subtitle:
-        'Media partners list their boards. Agencies compare locations, rates and available data to plan campaigns across West & Central Africa.',
-      primary: 'Sign in to your workspace',
-      secondary: 'How it works',
-      heading: 'How Abonten works',
+        'One place for media partners to present their boards and agencies to plan across West & Central Africa. Real inventory, clear costs and evidence you can inspect.',
+      primary: 'Explore your workspace',
+      secondary: 'See how it works',
+      section: 'One platform, shared context',
+      heading: 'Publish. Discover. Plan.',
+      intro:
+        'Connect the people who own outdoor inventory with the people planning the next campaign.',
       cards: [
         [
-          'List your boards',
-          'Add locations, specifications, rates and reference photos or videos. Submit listings for review and keep them up to date.',
+          'Present your inventory',
+          'Register locations, faces, prices and reference media. Submit complete listings for review, and keep availability current.',
         ],
         [
-          'Build a campaign plan',
-          'Find boards on the map, compare distances and costs, and save a shortlist for your dates and budget. Upload a brief to work with the AI planner.',
+          'Plan on the map',
+          'Inspect boards, compare distances and assemble a shortlist around your brief, dates and budget.',
         ],
         [
-          'Review the evidence',
-          'Inspect listing photos, cost assumptions and the sources of available location data. Missing data is identified.',
+          'Know the evidence',
+          'Inspect the source and freshness of available context. Missing traffic or audience data stays visible; it never becomes an invented estimate.',
         ],
       ],
+      workflowTitle: 'From location to shortlist',
+      steps: [
+        ['Register', 'Partners add accurate specifications and reference media.'],
+        ['Review', 'Location checks and listing review help buyers understand what is offered.'],
+        ['Plan', 'Agencies compare boards and draft a plan with clear costs and assumptions.'],
+      ],
+      ctaTitle: 'Bring your next outdoor plan into view',
+      ctaDetail: 'Start with the inventory and context available today.',
     },
     partners: {
       eyebrow: 'For media partners',
@@ -165,7 +178,7 @@ export const marketingCopy = {
     closeMenu: 'Fermer le menu de navigation',
     mobileNav: 'Navigation mobile',
     footer:
-      'Trouvez des panneaux, comparez les emplacements et planifiez vos campagnes en Afrique de l’Ouest et centrale.',
+      'La publicité extérieure, planifiée avec son contexte. Découvrez les sites, comparez les emplacements et préparez une sélection de campagne concrète.',
     platform: 'Plateforme',
     company: 'Découvrir',
     how: 'Comment ça marche',
@@ -173,26 +186,48 @@ export const marketingCopy = {
     rights: 'Tous droits réservés.',
     language: 'Anglais et français',
     homePage: {
-      title: 'Trouvez des panneaux et planifiez vos campagnes.',
+      eyebrow: 'Extérieur · Intelligence · Planification',
+      title: 'La publicité extérieure,',
+      accent: 'en toute clarté.',
       subtitle:
-        'Les partenaires publient leurs panneaux. Les agences comparent les emplacements, les tarifs et les données disponibles pour préparer leurs campagnes en Afrique de l’Ouest et centrale.',
-      primary: 'Se connecter à votre espace',
+        'Un espace pour présenter les panneaux des partenaires et préparer les campagnes des agences en Afrique de l’Ouest et centrale. Des sites réels, des coûts clairs et des preuves consultables.',
+      primary: 'Découvrir votre espace',
       secondary: 'Comment ça marche',
-      heading: 'Comment fonctionne Abonten',
+      section: 'Une plateforme, un contexte partagé',
+      heading: 'Publier. Découvrir. Planifier.',
+      intro:
+        'Reliez les propriétaires de sites publicitaires aux équipes qui préparent la prochaine campagne.',
       cards: [
         [
-          'Publiez vos panneaux',
-          'Ajoutez les emplacements, caractéristiques, tarifs et photos ou vidéos de référence. Soumettez les annonces pour validation et tenez-les à jour.',
+          'Présentez vos sites',
+          'Enregistrez les emplacements, faces, tarifs et médias de référence. Soumettez des annonces complètes à la revue et actualisez les disponibilités.',
         ],
         [
-          'Préparez un plan de campagne',
-          'Trouvez des panneaux sur la carte, comparez les distances et les coûts, puis enregistrez une sélection selon vos dates et votre budget. Importez un brief pour travailler avec l’assistant IA.',
+          'Planifiez sur la carte',
+          'Examinez les panneaux, comparez les distances et préparez une sélection selon votre brief, vos dates et votre budget.',
         ],
         [
-          'Consultez les données',
-          'Consultez les photos des annonces, les hypothèses de coût et les sources des données géographiques disponibles. Les données manquantes sont signalées.',
+          'Comprenez les preuves',
+          'Consultez la source et la fraîcheur du contexte disponible. Les données de trafic ou d’audience manquantes restent visibles ; elles ne deviennent jamais une estimation inventée.',
         ],
       ],
+      workflowTitle: 'De l’emplacement à la sélection',
+      steps: [
+        [
+          'Enregistrer',
+          'Les partenaires ajoutent des caractéristiques exactes et des médias de référence.',
+        ],
+        [
+          'Vérifier',
+          'Les contrôles de localisation et la revue des annonces aident les acheteurs à comprendre l’offre.',
+        ],
+        [
+          'Planifier',
+          'Les agences comparent les panneaux et préparent un plan aux coûts et hypothèses explicites.',
+        ],
+      ],
+      ctaTitle: 'Donnez du contexte à votre prochaine campagne',
+      ctaDetail: 'Commencez avec les sites et les données disponibles aujourd’hui.',
     },
     partners: {
       eyebrow: 'Pour les partenaires média',
