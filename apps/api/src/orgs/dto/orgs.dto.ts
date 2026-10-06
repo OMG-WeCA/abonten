@@ -7,9 +7,12 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { findMarket } from '../../common/supported-markets';
+import { PartnerTermsAcceptanceDto } from './partner-terms.dto';
 import { ORGANIZATION_ROLE_VALUES } from '../../capabilities/organization-roles';
 
 export const ORGANIZATION_TYPES = ['media_partner', 'agency', 'brand', 'platform'] as const;
@@ -19,6 +22,12 @@ export const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'XAF', 'XOF', 'USD', 'EUR'] a
 export const SUPPORTED_LOCALES = ['en', 'fr'] as const;
 
 export class CreateOrgDto {
+  @ApiPropertyOptional({ type: PartnerTermsAcceptanceDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PartnerTermsAcceptanceDto)
+  partnerTerms?: PartnerTermsAcceptanceDto;
+
   @ApiPropertyOptional({ description: 'Stable client key for resumable onboarding' })
   @IsOptional()
   @IsUUID('4')
@@ -34,7 +43,9 @@ export class CreateOrgDto {
   @IsIn(SELF_SERVICE_ORGANIZATION_TYPES)
   type!: (typeof SELF_SERVICE_ORGANIZATION_TYPES)[number];
   @ApiProperty()
-  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? (findMarket(value)?.name ?? value.trim()) : value,
+  )
   @IsString()
   @MinLength(2)
   @MaxLength(80)
@@ -65,7 +76,9 @@ export class UpdateOrganizationSettingsDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? (findMarket(value)?.name ?? value.trim()) : value,
+  )
   @IsString()
   @MinLength(2)
   @MaxLength(80)

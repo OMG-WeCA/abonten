@@ -1,4 +1,5 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { canonicalCountry } from '../../common/supported-markets';
 import {
   IsArray,
   IsBoolean,
@@ -32,7 +33,12 @@ export class StructureProvenanceDto {
   @ApiPropertyOptional() @IsOptional() @IsDateString() collectedAt?: string;
 }
 
-export const VERIFICATION_STATES = ['unverified', 'partner_declared', 'field_verified', 'third_party'] as const;
+export const VERIFICATION_STATES = [
+  'unverified',
+  'partner_declared',
+  'field_verified',
+  'third_party',
+] as const;
 export type VerificationState = (typeof VERIFICATION_STATES)[number];
 
 export class CreateSiteDto {
@@ -56,7 +62,10 @@ export class CreateSiteDto {
   @ApiPropertyOptional() @IsOptional() @IsString() address?: string;
   @ApiProperty() @IsString() city!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() region?: string;
-  @ApiProperty() @IsString() country!: string;
+  @ApiProperty()
+  @IsString()
+  @Transform(({ value }: { value: unknown }) => canonicalCountry(value))
+  country!: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() marketId?: string;
 
   @ApiProperty() @IsNumber() @IsPositive() @Type(() => Number) width!: number;
@@ -86,10 +95,18 @@ export class UpdateSiteDto extends PartialType(CreateSiteDto) {}
 
 export class ListSitesQueryDto {
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @IsNumber() @Type(() => Number) page?: number;
-  @ApiPropertyOptional({ default: 20 }) @IsOptional() @IsNumber() @Type(() => Number) limit?: number;
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  limit?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() format?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() city?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() country?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }: { value: unknown }) => canonicalCountry(value))
+  country?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() status?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() search?: string;
 }
@@ -109,9 +126,24 @@ export class CreateFaceDto {
   // digital_led faces; nullable everywhere so static faces are unaffected.
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(1) @Type(() => Number) pixelWidth?: number;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(1) @Type(() => Number) pixelHeight?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @IsPositive() @Type(() => Number) spotLengthSeconds?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @IsPositive() @Type(() => Number) loopLengthSeconds?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(1) @Type(() => Number) spotsPerLoop?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  @Type(() => Number)
+  spotLengthSeconds?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  @Type(() => Number)
+  loopLengthSeconds?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Type(() => Number)
+  spotsPerLoop?: number;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() proofOfPlay?: boolean;
 }
 
@@ -147,7 +179,10 @@ export class CreateRateCardDto {
   @Type(() => RateCardRatesDto)
   @ValidateNested()
   rates!: RateCardRatesDto;
-  @ApiPropertyOptional({ type: Object }) @IsOptional() @IsInstance(Object) seasonalRules?: Record<string, unknown>;
+  @ApiPropertyOptional({ type: Object }) @IsOptional() @IsInstance(Object) seasonalRules?: Record<
+    string,
+    unknown
+  >;
   @ApiProperty() @IsDateString() effectiveFrom!: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() effectiveTo?: string;
 }
@@ -163,4 +198,12 @@ export class CreateBlackoutDto {
 
 export class RejectSiteDto {
   @ApiProperty() @IsString() reason!: string;
+}
+
+/** Locale changes the feedback only, never the verification policy or submitted facts. */
+export class VerifyLocationDto {
+  @ApiPropertyOptional({ enum: ['en', 'fr'], default: 'en' })
+  @IsOptional()
+  @IsIn(['en', 'fr'])
+  locale?: 'en' | 'fr';
 }

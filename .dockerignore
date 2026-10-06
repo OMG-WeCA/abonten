@@ -16,6 +16,7 @@ compose.production.yml
 **/.test-dist
 **/coverage
 **/uploads
+**/.local-dev
 work
 docs
 *.log

@@ -135,33 +135,36 @@ If the DB isn't running, the seed fails gracefully with a clear error and exit c
 
 ### Seeded users for testing
 
-| Email | Role | Org |
-| --- | --- | --- |
-| `ama@accraoutdoor.com` | org_owner | Accra Outdoor Media (media_partner) |
-| `kwame@accraoutdoor.com` | inventory_manager | Accra Outdoor Media |
-| `akosua@accraoutdoor.com` | field_operator | Accra Outdoor Media |
-| `yaw@accraoutdoor.com` | org_admin | Accra Outdoor Media |
-| `chidi@mediareach.com` | org_owner | mediaReach OMD Lagos (agency) |
-| `aisha@mediareach.com` | planner | mediaReach OMD Lagos |
-| `emeka@mediareach.com` | planner_admin | mediaReach OMD Lagos |
-| `funke@unilever.com` | org_owner | Unilever West Africa (brand) |
-| `tunde@unilever.com` | client_admin | Unilever West Africa |
-| `ngozi@unilever.com` | client_viewer | Unilever West Africa |
-| `seyi@omg-weca.com` | org_owner | OMG WeCA (platform) |
-| `adaora@omg-weca.com` | platform_admin | OMG WeCA |
+| Email                     | Role              | Org                                 |
+| ------------------------- | ----------------- | ----------------------------------- |
+| `ama@accraoutdoor.com`    | org_owner         | Accra Outdoor Media (media_partner) |
+| `kwame@accraoutdoor.com`  | inventory_manager | Accra Outdoor Media                 |
+| `akosua@accraoutdoor.com` | field_operator    | Accra Outdoor Media                 |
+| `yaw@accraoutdoor.com`    | org_admin         | Accra Outdoor Media                 |
+| `chidi@mediareach.com`    | org_owner         | mediaReach OMD Lagos (agency)       |
+| `aisha@mediareach.com`    | planner           | mediaReach OMD Lagos                |
+| `emeka@mediareach.com`    | planner_admin     | mediaReach OMD Lagos                |
+| `funke@unilever.com`      | org_owner         | Unilever West Africa (brand)        |
+| `tunde@unilever.com`      | client_admin      | Unilever West Africa                |
+| `ngozi@unilever.com`      | client_viewer     | Unilever West Africa                |
+| `seyi@omg-weca.com`       | org_owner         | OMG WeCA (platform)                 |
+| `adaora@omg-weca.com`     | platform_admin    | OMG WeCA                            |
 
 Capability overrides: `akosua` (field_operator) is granted `REPORT_VIEW`;
 `kwame` (inventory_manager) has `INVENTORY_DELETE` revoked.
 
-10 billboard sites across Lagos, Accra, and Douala with realistic lat/long, formats
-(static, digital_led, 3d), illumination, dimensions, and lifecycle statuses. 18 site
-faces, 10 site metadata records (traffic, visibility, audience, POI), 10 rate cards
-(one per site, currency by country: NGN/GHS/XAF), and 7 site assets (placeholder
-reference photo URLs).
+12 billboard sites across Lagos, Accra, Douala, Cotonou and Abidjan with plausible
+coordinates, formats (static, digital_led, 3d), dimensions and lifecycle statuses.
+The Cotonou/Abidjan additions are explicitly synthetic, unpublished draft samples;
+they do not imply verified inventory or enrichment coverage. There are 20 faces,
+10 metadata records, 12 sample rate cards (NGN/GHS/XAF/XOF), and 7 placeholder
+reference photo assets. Placeholder media is not capture evidence. Terms seed
+scripts never fabricate an affirmative acceptance or acknowledgement.
 
 ### Convention for adding new seed data
 
 When a feature adds or changes entities:
+
 1. **Create or update** the relevant `seed/<domain>.seed.ts` file (or create a new one).
 2. **Follow the existing idempotent pattern**: use deterministic UUIDs from `seed-ids.ts`
    and `repo.save(repo.create({...id, ...fields}))` (upsert by primary key). For PostGIS
@@ -174,43 +177,46 @@ When a feature adds or changes entities:
    migration `DataSource` (`src/data-source.ts`) use. Add a corresponding `CREATE TABLE`
    to the initial migration (or a new migration) so `migration:run` creates it.
 4. **Seed data should be realistic** and cover the WeCA market context (Nigeria, Ghana,
-   Cameroon; real street names, plausible traffic counts, local currencies).
+   Benin, Côte d’Ivoire and Cameroon; plausible street names and local currencies).
+   Mark synthetic samples clearly. Missing enrichment, media evidence and consent
+   must remain missing; never invent measured counts or acceptance events.
 5. **Run `pnpm seed`** to verify it works, then `pnpm build && pnpm type-check && pnpm lint`
    to ensure the seed type-checks and lints clean.
+
 ## 8. Brand Colors & Theming
 
 Abonten uses the **OMD brand color palette** (from omd.com brand materials):
 
-| Token | Hex | Usage |
-| --- | --- | --- |
-| Brand Red | `#E4002B` | Primary accent (buttons, links, highlights) |
-| Brand Black | `#0A0A0A` | Dark surfaces, primary text (raw palette) |
-| Navy | `#0A0E27` | Deep navy — web dark-mode background (OMD-style marketing aesthetic) |
-| Brand White | `#FFFFFF` | Light backgrounds |
-| Light Gray | `#F5F5F5` | Muted/surface backgrounds |
-| Medium Gray | `#6B7280` | Muted text, borders |
-| Dark Gray | `#374151` | Secondary text |
-| Accents | `#FFB020` `#3B82F6` `#2DD4BF` `#A855F7` `#FB923C` | Vibrant accents for icons, badges, stat numbers (gold/blue/teal/violet/orange) |
+| Token       | Hex                                               | Usage                                                                          |
+| ----------- | ------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Brand Red   | `#E4002B`                                         | Primary accent (buttons, links, highlights)                                    |
+| Brand Black | `#0A0A0A`                                         | Dark surfaces, primary text (raw palette)                                      |
+| Navy        | `#0A0E27`                                         | Deep navy — web dark-mode background (OMD-style marketing aesthetic)           |
+| Brand White | `#FFFFFF`                                         | Light backgrounds                                                              |
+| Light Gray  | `#F5F5F5`                                         | Muted/surface backgrounds                                                      |
+| Medium Gray | `#6B7280`                                         | Muted text, borders                                                            |
+| Dark Gray   | `#374151`                                         | Secondary text                                                                 |
+| Accents     | `#FFB020` `#3B82F6` `#2DD4BF` `#A855F7` `#FB923C` | Vibrant accents for icons, badges, stat numbers (gold/blue/teal/violet/orange) |
 
 ### Semantic token system
 
 Raw hex values are mapped into **semantic tokens** — the only color references
 allowed in components:
 
-| Token | Light | Dark |
-| --- | --- | --- |
-| `primary` | `#E4002B` | `#E4002B` |
+| Token           | Light     | Dark      |
+| --------------- | --------- | --------- |
+| `primary`       | `#E4002B` | `#E4002B` |
 | `primary-hover` | `#C20028` | `#C20028` |
-| `background` | `#FFFFFF` | `#0A0E27` |
-| `surface` | `#F5F5F5` | `#131A3A` |
-| `surface-2` | `#FFFFFF` | `#0E1530` |
-| `foreground` | `#0A0A0A` | `#FFFFFF` |
-| `muted` | `#6B7280` | `#9BA8C7` |
-| `border` | `#E5E7EB` | `#243056` |
-| `success` | `#16A34A` | `#34D399` |
-| `warning` | `#F59E0B` | `#FFB020` |
-| `error` | `#DC2626` | `#FF5470` |
-| `info` | `#2563EB` | `#3B82F6` |
+| `background`    | `#FFFFFF` | `#0A0E27` |
+| `surface`       | `#F5F5F5` | `#131A3A` |
+| `surface-2`     | `#FFFFFF` | `#0E1530` |
+| `foreground`    | `#0A0A0A` | `#FFFFFF` |
+| `muted`         | `#6B7280` | `#9BA8C7` |
+| `border`        | `#E5E7EB` | `#243056` |
+| `success`       | `#16A34A` | `#34D399` |
+| `warning`       | `#F59E0B` | `#FFB020` |
+| `error`         | `#DC2626` | `#FF5470` |
+| `info`          | `#2563EB` | `#3B82F6` |
 
 ### Rule: always use semantic tokens, never raw hex
 

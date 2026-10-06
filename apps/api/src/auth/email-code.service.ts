@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, randomInt, randomUUID } from 'node:crypto';
+import { signInCopy, signInEmail, type SignInLocale } from './sign-in-copy';
 import { MailService } from '../common/mail.service';
 import { RedisService } from '../common/redis.service';
 import { AuthService, type AuthResult, type SessionMetadata } from './auth.service';
@@ -90,7 +91,7 @@ export class EmailCodeService {
     private readonly cfg: ConfigService,
   ) {}
 
-  async request(emailInput: string): Promise<{ accepted: true }> {
+  async request(emailInput: string, locale: SignInLocale = 'en'): Promise<{ accepted: true }> {
     const email = normalizeEmailIdentity(emailInput);
     const code = generateCode();
     const challenge: EmailCodeChallenge = {
@@ -113,49 +114,57 @@ export class EmailCodeService {
       );
       if (Number(accepted) !== 1) {
         throw new HttpException(
-          'Too many sign-in code requests. Please try again later.',
+          { message: signInCopy[locale].requestLimit, errorCode: 'auth.request_limit' },
           HttpStatus.TOO_MANY_REQUESTS,
         );
       }
     } catch (error) {
       if (error instanceof HttpException && error.getStatus() === HttpStatus.TOO_MANY_REQUESTS)
         throw error;
-      throw new ServiceUnavailableException(
-        'Sign-in is temporarily unavailable. Please try again.',
-      );
+      throw new ServiceUnavailableException({
+        message: signInCopy[locale].unavailable,
+        errorCode: 'auth.unavailable',
+      });
     }
 
     try {
-      await this.mail.send(
-        email,
-        'Your Abonten sign-in code',
-        `<p>Use this code to sign in:</p><p style="font-size: 28px; font-weight: 700; letter-spacing: 0.2em">${code}</p><p>It expires in ${this.codeTtlMinutes} minutes. If you did not request it, you can ignore this email.</p>`,
-      );
+      const message = signInEmail(code, this.codeTtlMinutes, locale);
+      await this.mail.send(email, message.subject, message.html);
     } catch {
       await this.deleteChallengeIfCurrent(email, challenge.id);
-      throw new ServiceUnavailableException(
-        'Sign-in is temporarily unavailable. Please try again.',
-      );
+      throw new ServiceUnavailableException({
+        message: signInCopy[locale].unavailable,
+        errorCode: 'auth.unavailable',
+      });
     }
 
     return { accepted: true };
   }
 
-  async verify(emailInput: string, code: string, metadata?: SessionMetadata): Promise<AuthResult> {
+  async verify(
+    emailInput: string,
+    code: string,
+    metadata?: SessionMetadata,
+    locale: SignInLocale = 'en',
+  ): Promise<AuthResult> {
     const email = normalizeEmailIdentity(emailInput);
-    const result = await this.verifyChallenge(email, code);
+    const result = await this.verifyChallenge(email, code, locale);
     if (result.status === 'rate_limited') {
       throw new HttpException(
-        'Too many verification attempts. Please try again later.',
+        { message: signInCopy[locale].verifyLimit, errorCode: 'auth.verify_limit' },
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
     if (result.status !== 'valid') {
-      throw new UnauthorizedException('Invalid or expired sign-in code');
+      throw new UnauthorizedException({
+        message: signInCopy[locale].invalid,
+        errorCode: 'auth.invalid_code',
+      });
     }
 
     const user = await this.identities.findOrCreateByEmail(result.email, {
       name: result.email.split('@')[0],
+      locale,
     });
     return this.auth.issueTokens(user, undefined, metadata);
   }
@@ -163,6 +172,7 @@ export class EmailCodeService {
   private async verifyChallenge(
     email: string,
     code: string,
+    locale: SignInLocale,
   ): Promise<
     { status: 'valid'; email: string } | { status: 'invalid' | 'locked' | 'rate_limited' }
   > {
@@ -179,9 +189,10 @@ export class EmailCodeService {
         String(this.maxAttempts),
       );
     } catch {
-      throw new ServiceUnavailableException(
-        'Sign-in is temporarily unavailable. Please try again.',
-      );
+      throw new ServiceUnavailableException({
+        message: signInCopy[locale].unavailable,
+        errorCode: 'auth.unavailable',
+      });
     }
 
     const values = Array.isArray(response) ? response.map(String) : [];

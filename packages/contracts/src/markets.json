@@ -1,0 +1,92 @@
+[
+  {
+    "code": "NG",
+    "name": "Nigeria",
+    "labels": {
+      "en": "Nigeria",
+      "fr": "Nigéria"
+    },
+    "currency": "NGN",
+    "timezone": "Africa/Lagos",
+    "center": [3.3792, 6.5244],
+    "bounds": {
+      "south": 3.6,
+      "north": 14,
+      "west": 2.2,
+      "east": 15
+    },
+    "aliases": ["NG", "NGA", "Nigeria", "Nigéria"]
+  },
+  {
+    "code": "GH",
+    "name": "Ghana",
+    "labels": {
+      "en": "Ghana",
+      "fr": "Ghana"
+    },
+    "currency": "GHS",
+    "timezone": "Africa/Accra",
+    "center": [-0.187, 5.6037],
+    "bounds": {
+      "south": 4.2,
+      "north": 11.3,
+      "west": -3.6,
+      "east": 1.5
+    },
+    "aliases": ["GH", "GHA", "Ghana"]
+  },
+  {
+    "code": "BJ",
+    "name": "Benin",
+    "labels": {
+      "en": "Benin",
+      "fr": "Bénin"
+    },
+    "currency": "XOF",
+    "timezone": "Africa/Porto-Novo",
+    "center": [2.3912, 6.3703],
+    "bounds": {
+      "south": 5.8,
+      "north": 12.7,
+      "west": 0.5,
+      "east": 4
+    },
+    "aliases": ["BJ", "BEN", "Benin", "Bénin"]
+  },
+  {
+    "code": "CI",
+    "name": "Côte d'Ivoire",
+    "labels": {
+      "en": "Côte d’Ivoire",
+      "fr": "Côte d’Ivoire"
+    },
+    "currency": "XOF",
+    "timezone": "Africa/Abidjan",
+    "center": [-4.0083, 5.36],
+    "bounds": {
+      "south": 4,
+      "north": 11,
+      "west": -9,
+      "east": -2
+    },
+    "aliases": ["CI", "CIV", "Côte d'Ivoire", "Cote d Ivoire", "Ivory Coast"]
+  },
+  {
+    "code": "CM",
+    "name": "Cameroon",
+    "labels": {
+      "en": "Cameroon",
+      "fr": "Cameroun"
+    },
+    "currency": "XAF",
+    "timezone": "Africa/Douala",
+    "center": [9.7679, 4.0511],
+    "bounds": {
+      "south": 1.2,
+      "north": 13.3,
+      "west": 7.9,
+      "east": 16.5
+    },
+    "aliases": ["CM", "CMR", "Cameroon", "Cameroun"]
+  }
+]

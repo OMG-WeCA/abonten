@@ -64,6 +64,21 @@ function createSubject() {
 }
 
 describe('UserIdentityService', () => {
+  it('uses the chosen sign-in language for new accounts without overwriting existing preferences', async () => {
+    const { service } = createSubject();
+    const created = await service.findOrCreateByEmail('french@example.com', {
+      name: 'French',
+      locale: 'fr',
+    });
+    assert.equal(created.locale, 'fr');
+    const existing = await service.findOrCreateByEmail('french@example.com', {
+      name: 'Other',
+      locale: 'en',
+    });
+    assert.equal(existing.locale, 'fr');
+    assert.equal(existing.name, 'French');
+  });
+
   it('canonicalizes email creation and recovers the winner of a concurrent insert', async () => {
     const { service, users } = createSubject();
     users.failNextSaveWithConcurrent = {

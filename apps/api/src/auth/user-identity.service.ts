@@ -7,6 +7,7 @@ import { UserEntity } from './entities/user.entity';
 export interface NewUserProfile {
   name: string;
   status?: string;
+  locale?: 'en' | 'fr';
 }
 
 export interface MicrosoftIdentityProfile extends NewUserProfile {
@@ -30,6 +31,7 @@ export class UserIdentityService {
           email,
           name: profile.name,
           status: profile.status ?? 'active',
+          ...(profile.locale ? { locale: profile.locale } : {}),
         }),
       );
     } catch (error) {

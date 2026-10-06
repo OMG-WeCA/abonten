@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { randomUUID } from 'node:crypto';
 import { describe, it } from 'node:test';
+import { ForbiddenException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { DatabaseService } from '../common/database.service';
 import { CapabilityResolverService } from '../capabilities/capability-resolver.service';
@@ -9,6 +10,8 @@ import type { AuthenticatedUser } from '../auth/authenticated-user';
 import type { CreateSiteDto } from './dto/inventory.dto';
 import { InventoryService } from './inventory.service';
 import { PartOneInventoryTrust1720000000007 } from '../migrations/1720000000007-PartOneInventoryTrust';
+import { SiteLocationVerification1760000001000 } from '../migrations/1760000001000-SiteLocationVerification';
+import { InventoryMediaEvidence1760000002000 } from '../migrations/1760000002000-InventoryMediaEvidence';
 
 /**
  * Real-Postgres proof for the inventory trust contract (execution plan §1.6
@@ -26,6 +29,7 @@ const databaseUrl = process.env.POSTGRES_INTEGRATION_URL;
 async function withSchema(
   test: (dataSource: DataSource) => Promise<void>,
   applyInventoryMigration = true,
+  poolSize?: number,
 ): Promise<void> {
   if (!databaseUrl) throw new Error('POSTGRES_INTEGRATION_URL is required');
   const schema = `inv_trust_${randomUUID().replaceAll('-', '')}`;
@@ -35,7 +39,10 @@ async function withSchema(
     type: 'postgres',
     url: databaseUrl,
     entities: ENTITIES,
-    extra: { options: `-c search_path=${schema},public` },
+    extra: {
+      options: `-c search_path=${schema},public`,
+      ...(poolSize ? { max: poolSize, connectionTimeoutMillis: 1500 } : {}),
+    },
   });
   await dataSource.initialize();
   try {
@@ -117,7 +124,20 @@ async function withSchema(
         area double precision NOT NULL,
         units varchar NOT NULL DEFAULT 'm',
         printable_area varchar,
+        bleed_mm double precision,
+        substrate varchar,
+        file_requirements text,
         bookable boolean NOT NULL DEFAULT true,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE TABLE face_blackouts (
+        id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+        face_id varchar NOT NULL,
+        organization_id varchar NOT NULL,
+        start_date date NOT NULL,
+        end_date date NOT NULL,
+        reason text NOT NULL,
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
       );
@@ -174,8 +194,18 @@ async function withSchema(
     `);
     // Part 1 additive columns (data_class/verification, digital face attrs)
     // are part of the fixture schema for every test.
-    if (applyInventoryMigration) {
-      await new PartOneInventoryTrust1720000000007().up(dataSource.createQueryRunner());
+    const migrations = [
+      ...(applyInventoryMigration ? [new PartOneInventoryTrust1720000000007()] : []),
+      new SiteLocationVerification1760000001000(),
+      new InventoryMediaEvidence1760000002000(),
+    ];
+    for (const migration of migrations) {
+      const runner = dataSource.createQueryRunner();
+      try {
+        await migration.up(runner);
+      } finally {
+        await runner.release();
+      }
     }
     await test(dataSource);
   } finally {
@@ -307,6 +337,78 @@ describe('inventory audit — postgres transactional integrity', { skip: !databa
     });
   });
 
+  it(
+    'updates and removes owned faces with a one-connection pool and rejects foreign tenants without audit loss',
+    { timeout: 10_000 },
+    async () => {
+      // A global repository lookup inside either transaction requires a second
+      // pooled connection and fails this test within 1.5s rather than hanging CI.
+      await withSchema(
+        async (dataSource) => {
+          await dataSource.query(
+            `INSERT INTO organizations (id, name, type) VALUES ($1, 'Synthetic Partner', 'media_partner')`,
+            [ORG],
+          );
+          const service = buildService(dataSource);
+          const site = await service.createSite(ORG, createDto(), {
+            userId: USER.userId,
+            orgId: ORG,
+          });
+          const face = await service.addFace(USER, ORG, site.id, {
+            faceLabel: 'Original face',
+            width: 12,
+            height: 3,
+            area: 36,
+            units: 'm',
+            bookable: true,
+          });
+          const updated = await service.updateFace(USER, ORG, face.id, {
+            faceLabel: 'Corrected face',
+            width: 13,
+            area: 39,
+          });
+          assert.equal(updated.faceLabel, 'Corrected face');
+          assert.equal(Number(updated.width), 13);
+          await assert.rejects(
+            service.updateFace(USER, 'foreign-org', face.id, { faceLabel: 'Unauthorized edit' }),
+            ForbiddenException,
+          );
+          await assert.rejects(
+            service.removeFace(USER, 'foreign-org', face.id),
+            ForbiddenException,
+          );
+          assert.equal(
+            (await dataSource.query('SELECT * FROM site_faces WHERE id = $1', [face.id])).length,
+            1,
+          );
+          const beforeDelete = await dataSource.query('SELECT * FROM audit_logs ORDER BY at');
+          assert.equal(beforeDelete.length, 3);
+          const updateAudit = beforeDelete.find(
+            (row: { action: string }) => row.action === 'inventory.face.updated',
+          );
+          assert.equal(updateAudit.before.faceLabel, 'Original face');
+          assert.equal(updateAudit.after.faceLabel, 'Corrected face');
+          assert.equal(updateAudit.actor_org_id, ORG);
+          const removed = await service.removeFace(USER, ORG, face.id);
+          assert.equal(removed.deleted, true);
+          assert.equal(
+            (await dataSource.query('SELECT * FROM site_faces WHERE id = $1', [face.id])).length,
+            0,
+          );
+          const audits = await dataSource.query('SELECT * FROM audit_logs ORDER BY at');
+          assert.equal(audits.length, 4);
+          const deletion = audits.find(
+            (row: { action: string }) => row.action === 'inventory.face.removed',
+          );
+          assert.equal(deletion.before.faceLabel, 'Corrected face');
+          assert.equal(deletion.after, null);
+        },
+        true,
+        1,
+      );
+    },
+  );
+
   it('classifies only known seed metadata as demo during migration', async () => {
     await withSchema(async (dataSource) => {
       // Simulate a database with both seeded fiction and a real partner record.
@@ -323,7 +425,11 @@ describe('inventory audit — postgres transactional integrity', { skip: !databa
       );
       const runner = dataSource.createQueryRunner();
       const migration = new PartOneInventoryTrust1720000000007();
-      await migration.up(runner);
+      try {
+        await migration.up(runner);
+      } finally {
+        await runner.release();
+      }
       const rows = await dataSource.query(`SELECT id, data_class, verification FROM site_metadata`);
       assert.equal(rows.length, 2);
       const byId = new Map<string, { id: string; data_class: string; verification: string }>(

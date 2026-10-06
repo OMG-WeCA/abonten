@@ -15,6 +15,8 @@ const MARKETS = [
   { id: IDS.market.kumasiMetro, name: 'Kumasi Metro', country: 'Ghana' },
   { id: IDS.market.doualaMetro, name: 'Douala Metro', country: 'Cameroon' },
   { id: IDS.market.portHarcourt, name: 'Port Harcourt', country: 'Nigeria' },
+  { id: IDS.market.cotonouMetro, name: 'Cotonou', country: 'Benin' },
+  { id: IDS.market.abidjanMetro, name: 'Abidjan', country: "Côte d'Ivoire" },
 ];
 
 export async function seedMarkets(ds: DataSource): Promise<void> {

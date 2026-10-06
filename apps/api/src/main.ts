@@ -11,6 +11,7 @@ import { oidcSessionOptions } from './common/oidc-session-options';
 import { OidcRedisSessionStore } from './common/oidc-session-store';
 import { RedisService } from './common/redis.service';
 import { configureApiBodyLimits } from './planning/planning-http';
+import { LocalizedExceptionFilter } from './common/localized-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -36,13 +37,14 @@ async function bootstrap() {
   // /health stays at the root; everything else is under /api.
   app.setGlobalPrefix('api', { exclude: ['health'] });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalFilters(new LocalizedExceptionFilter());
   // Browser dashboard and API may be deployed on distinct configured origins.
   // Reflect the requesting origin for the bearer-token API (no cookie credentials),
   // including preview and local development hosts without adding a UI-only backdoor.
   app.enableCors({
     origin: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Org-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Org-Id', 'Accept-Language'],
   });
 
   const swaggerConfig = new DocumentBuilder()

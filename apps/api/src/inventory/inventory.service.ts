@@ -5,7 +5,19 @@ import {
   Injectable,
   NotFoundException,
   PayloadTooLargeException,
+  Optional,
 } from '@nestjs/common';
+import { LocationVerificationService } from './location/location-verification.service';
+import {
+  locationFingerprint,
+  locationMessage,
+  locationRecheckMessage,
+  type LocationInput,
+  type LocationVerification,
+} from './location/location-verification';
+import { projectMediaAssetEvidence } from './inventory-media-projection';
+import type { EntityManager } from 'typeorm';
+import { findMarket } from '../common/supported-markets';
 import { DatabaseService } from '../common/database.service';
 import { StorageService } from '../common/storage.service';
 import { CapabilityResolverService } from '../capabilities/capability-resolver.service';
@@ -50,7 +62,7 @@ const SITE_DETAIL_COLUMNS =
   'address, city, region, country, market_id AS "marketId", orientation_deg AS "orientationDeg", ' +
   'viewing_distance AS "viewingDistance", elevation, width, height, area, units, ' +
   'illumination_type AS "illuminationType", illumination_hours AS "illuminationHours", ' +
-  'description, status, rejection_reason AS "rejectionReason", permit_ref AS "permitRef", permit_expires_at AS "permitExpiresAt", ' +
+  'location_verification AS "locationVerification", description, status, rejection_reason AS "rejectionReason", permit_ref AS "permitRef", permit_expires_at AS "permitExpiresAt", ' +
   'created_at AS "createdAt", updated_at AS "updatedAt"';
 
 // Same columns as SITE_DETAIL_COLUMNS but table-qualified with `s.` for the list
@@ -61,7 +73,7 @@ const LIST_SITE_COLUMNS =
   's.address, s.city, s.region, s.country, s.market_id AS "marketId", s.orientation_deg AS "orientationDeg", ' +
   's.viewing_distance AS "viewingDistance", s.elevation, s.width, s.height, s.area, s.units, ' +
   's.illumination_type AS "illuminationType", s.illumination_hours AS "illuminationHours", ' +
-  's.description, s.status, s.rejection_reason AS "rejectionReason", s.permit_ref AS "permitRef", s.permit_expires_at AS "permitExpiresAt", ' +
+  's.location_verification AS "locationVerification", s.description, s.status, s.rejection_reason AS "rejectionReason", s.permit_ref AS "permitRef", s.permit_expires_at AS "permitExpiresAt", ' +
   's.created_at AS "createdAt", s.updated_at AS "updatedAt"';
 
 /** Reference-photo constraints enforced server-side (SPEC §6.2) so the
@@ -76,17 +88,22 @@ const PHOTO_KINDS = new Set(['front', 'context', 'night', 'diagram']);
  * future model input. Enforced in the query itself, never in a post-filter. */
 function hasImageSignature(mimetype: string, buffer: Buffer): boolean {
   if (buffer.length < 12) return false;
-  if (mimetype === 'image/jpeg') return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  if (mimetype === 'image/jpeg')
+    return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
   if (mimetype === 'image/png') {
     return (
-      buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
-      buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47 &&
+      buffer[4] === 0x0d &&
+      buffer[5] === 0x0a &&
+      buffer[6] === 0x1a &&
+      buffer[7] === 0x0a
     );
   }
   if (mimetype === 'image/webp') {
-    return (
-      buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP'
-    );
+    return buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
   }
   return false;
 }
@@ -112,13 +129,17 @@ function assertRateDetails(
   effectiveTo?: Date | null,
   minBookingDays?: number | null,
 ): void {
-  const prices = rates && [rates.perDay, rates.perWeek, rates.perMonth].filter((price) => price !== undefined);
+  const prices =
+    rates && [rates.perDay, rates.perWeek, rates.perMonth].filter((price) => price !== undefined);
   if (!prices?.length || prices.some((price) => !Number.isFinite(price) || price! <= 0)) {
     throw new BadRequestException('Add at least one positive daily, weekly, or monthly rate.');
   }
-  if (!/^[A-Z]{3}$/.test(currency)) throw new BadRequestException('Use a three-letter currency code.');
-  if (!Number.isFinite(effectiveFrom.getTime()) ||
-      (effectiveTo && (!Number.isFinite(effectiveTo.getTime()) || effectiveTo < effectiveFrom))) {
+  if (!/^[A-Z]{3}$/.test(currency))
+    throw new BadRequestException('Use a three-letter currency code.');
+  if (
+    !Number.isFinite(effectiveFrom.getTime()) ||
+    (effectiveTo && (!Number.isFinite(effectiveTo.getTime()) || effectiveTo < effectiveFrom))
+  ) {
     throw new BadRequestException('Rate end date must be on or after its start date.');
   }
   if (minBookingDays != null && (!Number.isInteger(minBookingDays) || minBookingDays < 1)) {
@@ -149,10 +170,13 @@ export class InventoryService {
     private readonly db: DatabaseService,
     private readonly resolver: CapabilityResolverService,
     private readonly storage: StorageService,
+    @Optional()
+    private readonly locationVerifier: LocationVerificationService = new LocationVerificationService(),
   ) {}
 
   // ----------------------------------------------------------------- sites
   async createSite(orgId: string, dto: CreateSiteDto, actor: Actor = {}) {
+    dto = { ...dto, country: findMarket(dto.country)?.name ?? dto.country };
     await this.assertMediaPartnerOrg(orgId);
     const repo = await this.db.repo(BillboardSiteEntity);
     // Idempotent create (ambiguous-network retry): a client-supplied operation
@@ -309,7 +333,7 @@ export class InventoryService {
     }
     if (q.format) push('format = ?', q.format);
     if (q.city) push('city ILIKE ?', `%${q.city}%`);
-    if (q.country) push('country = ?', q.country);
+    if (q.country) push('country = ?', findMarket(q.country)?.name ?? q.country);
     if (q.search) push('(name ILIKE ? OR description ILIKE ?)', `%${q.search}%`, `%${q.search}%`);
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -326,20 +350,30 @@ export class InventoryService {
         `ORDER BY s.created_at DESC LIMIT ${limit} OFFSET ${offset}`,
       params,
     );
-    const totalRows = await repo.query(`SELECT count(*)::int AS c FROM billboard_sites s ${whereSql}`, params);
+    const totalRows = await repo.query(
+      `SELECT count(*)::int AS c FROM billboard_sites s ${whereSql}`,
+      params,
+    );
     const total = totalRows[0]?.c ?? 0;
+    if (!caps.has(Capability.PLATFORM_ADMIN) && !(caps.has(Capability.INVENTORY_VIEW) && orgId)) {
+      // Private automated-review evidence is for the owner and moderation team.
+      for (const row of rows) delete row.locationVerification;
+    }
     return { items: rows, total, page, limit };
   }
 
   async getSite(user: AuthenticatedUser, orgId: string | undefined, siteId: string) {
     const repo = await this.db.repo(BillboardSiteEntity);
-    const rows = await repo.query(`SELECT ${SITE_DETAIL_COLUMNS} FROM billboard_sites WHERE id = $1`, [siteId]);
+    const rows = await repo.query(
+      `SELECT ${SITE_DETAIL_COLUMNS} FROM billboard_sites WHERE id = $1`,
+      [siteId],
+    );
     const site = rows[0];
     if (!site) throw new NotFoundException('Site not found');
     const reader = await this.assertCanReadSite(user, orgId, siteId, site.status);
     const [faces, assets, rateCards] = await Promise.all([
       this.listFaces(siteId),
-      this.listAssets(siteId),
+      this.listAssets(siteId, site),
       this.listRateCards(siteId),
     ]);
     // Metadata follows the reader, not the route: the unfiltered owner view
@@ -356,16 +390,19 @@ export class InventoryService {
       // receive the owning organization's internal id.
       const rest = { ...(site as Record<string, unknown>) };
       delete rest.organizationId;
+      delete rest.locationVerification;
       return { ...rest, faces, assets, metadata, rateCards };
     }
     return { ...site, faces, assets, metadata, rateCards };
   }
 
   async updateSite(user: AuthenticatedUser, orgId: string, siteId: string, dto: UpdateSiteDto) {
+    if (dto.country != null)
+      dto = { ...dto, country: findMarket(dto.country)?.name ?? dto.country };
     await this.assertOwnership(orgId, siteId);
     await this.db.transaction(async (manager) => {
       const currentRows = await manager.query(
-        `SELECT ${SITE_DETAIL_COLUMNS} FROM billboard_sites WHERE id = $1`,
+        `SELECT ${SITE_DETAIL_COLUMNS} FROM billboard_sites WHERE id = $1 FOR UPDATE`,
         [siteId],
       );
       const current = currentRows[0];
@@ -376,16 +413,37 @@ export class InventoryService {
       // Nullable strings may be cleared with an explicit null; numeric core
       // fields must not (a null wipe would corrupt live inventory data).
       const NUMERIC_KEYS = new Set<keyof UpdateSiteDto>([
-        'latitude', 'longitude', 'width', 'height', 'area',
-        'orientationDeg', 'viewingDistance', 'elevation',
+        'latitude',
+        'longitude',
+        'width',
+        'height',
+        'area',
+        'orientationDeg',
+        'viewingDistance',
+        'elevation',
       ]);
       const map: Array<[string, keyof UpdateSiteDto]> = [
-        ['name', 'name'], ['code', 'code'], ['type', 'type'], ['format', 'format'],
-        ['sub_format', 'subFormat'], ['address', 'address'], ['city', 'city'], ['region', 'region'],
-        ['country', 'country'], ['market_id', 'marketId'], ['orientation_deg', 'orientationDeg'],
-        ['viewing_distance', 'viewingDistance'], ['elevation', 'elevation'], ['width', 'width'],
-        ['height', 'height'], ['area', 'area'], ['units', 'units'], ['illumination_type', 'illuminationType'],
-        ['illumination_hours', 'illuminationHours'], ['description', 'description'], ['permit_ref', 'permitRef'],
+        ['name', 'name'],
+        ['code', 'code'],
+        ['type', 'type'],
+        ['format', 'format'],
+        ['sub_format', 'subFormat'],
+        ['address', 'address'],
+        ['city', 'city'],
+        ['region', 'region'],
+        ['country', 'country'],
+        ['market_id', 'marketId'],
+        ['orientation_deg', 'orientationDeg'],
+        ['viewing_distance', 'viewingDistance'],
+        ['elevation', 'elevation'],
+        ['width', 'width'],
+        ['height', 'height'],
+        ['area', 'area'],
+        ['units', 'units'],
+        ['illumination_type', 'illuminationType'],
+        ['illumination_hours', 'illuminationHours'],
+        ['description', 'description'],
+        ['permit_ref', 'permitRef'],
       ];
       for (const [col, key] of map) {
         const v = dto[key];
@@ -457,6 +515,20 @@ export class InventoryService {
           );
         }
 
+        const effectiveLocation = {
+          address: dto.address === undefined ? current.address : dto.address,
+          city: dto.city === undefined ? current.city : dto.city,
+          region: dto.region === undefined ? current.region : dto.region,
+          country: dto.country ?? current.country,
+          latitude: dto.latitude ?? current.latitude,
+          longitude: dto.longitude ?? current.longitude,
+        };
+        if (locationFingerprint(effectiveLocation) !== locationFingerprint(current)) {
+          sets.push('location_verification = NULL', 'rejection_reason = NULL');
+          // A corrected pin/address must be reviewed again before public discovery.
+          // Decommissioned inventory cannot be revived by editing its location.
+          if (current.status !== 'decommissioned') sets.push("status = 'draft'");
+        }
         params.push(siteId);
         await manager.query(
           `UPDATE billboard_sites SET ${sets.join(', ')} WHERE id = $${params.length}`,
@@ -495,7 +567,9 @@ export class InventoryService {
         [siteId],
       );
       if (!rows[0]) throw new NotFoundException('Site not found');
-      await manager.query(`UPDATE billboard_sites SET status = 'decommissioned' WHERE id = $1`, [siteId]);
+      await manager.query(`UPDATE billboard_sites SET status = 'decommissioned' WHERE id = $1`, [
+        siteId,
+      ]);
       await writeInventoryAudit(manager, actorOf(user, orgId), {
         action: 'inventory.site.deleted',
         entityType: INVENTORY_AUDIT_ENTITY.site,
@@ -507,33 +581,238 @@ export class InventoryService {
     return { id: siteId, status: 'decommissioned' };
   }
 
-  async submitSite(user: AuthenticatedUser, orgId: string, siteId: string) {
+  /** A check uses saved tenant-owned facts; the client cannot nominate a provider result. */
+  async verifySiteLocation(user: AuthenticatedUser, orgId: string, siteId: string, locale = 'en') {
     await this.assertOwnership(orgId, siteId);
-    // SPEC §7.1 step 2: coordinates, format, dimensions and a reference image
-    // are validated server-side at submit — not only in the browser.
+    const current = await this.locationSnapshot(siteId);
+    const cached = current.locationVerification;
+    const age = cached ? Date.now() - new Date(cached.checkedAt).getTime() : Infinity;
+    if (
+      cached &&
+      cached.status !== 'unable_to_verify' &&
+      age >= 0 &&
+      age < 24 * 60 * 60 * 1000 &&
+      cached.inputFingerprint === locationFingerprint(current)
+    ) {
+      const decision = this.localizedLocationDecision(cached, locale);
+      // An unchanged retry should not create another provider call or audit.
+      // Legacy pending mismatch evidence still needs its rejection transition.
+      if (!(current.status === 'pending_review' && decision.status === 'mismatch')) return decision;
+      return this.persistLocationDecision(user, orgId, siteId, current, decision, false, locale);
+    }
+    const decision = await this.locationVerifier.verify(current, locale);
+    return this.persistLocationDecision(user, orgId, siteId, current, decision, false, locale);
+  }
+
+  async submitSite(user: AuthenticatedUser, orgId: string, siteId: string, locale = 'en') {
+    await this.assertOwnership(orgId, siteId);
+    const current = await this.locationSnapshot(siteId);
+    // An ambiguous retry replays the persisted submission without a second provider request/audit.
+    if (
+      (current.status === 'pending_review' ||
+        (current.status === 'rejected' && current.locationVerification?.status === 'mismatch')) &&
+      current.locationVerification?.inputFingerprint === locationFingerprint(current)
+    ) {
+      return {
+        id: siteId,
+        status: current.status,
+        rejectionReason: current.rejectionReason ?? null,
+        locationVerification: this.localizedLocationDecision(current.locationVerification, locale),
+      };
+    }
+    if (!['draft', 'rejected'].includes(current.status)) {
+      throw new ForbiddenException(`Site is ${current.status}, expected draft/rejected`);
+    }
     const problems = await this.listingProblems(siteId);
     if (problems.length > 0) {
       throw new BadRequestException(`Site is not ready for review: ${problems.join('; ')}.`);
     }
-    await this.transitionWithAudit(user, orgId, siteId, 'draft', 'pending_review', {
-      action: 'inventory.site.submitted',
-      reason: null,
+    const cached = current.locationVerification;
+    const age = cached ? Date.now() - new Date(cached.checkedAt).getTime() : Infinity;
+    // Cache our persisted decision only when unchanged and recent. Unknown outcomes may retry.
+    const decision =
+      cached &&
+      cached.status !== 'unable_to_verify' &&
+      age >= 0 &&
+      age < 24 * 60 * 60 * 1000 &&
+      cached.inputFingerprint === locationFingerprint(current)
+        ? this.localizedLocationDecision(cached, locale)
+        : await this.locationVerifier.verify(current, locale);
+    return this.persistLocationDecision(user, orgId, siteId, current, decision, true, locale);
+  }
+
+  private localizedLocationDecision(
+    decision: LocationVerification,
+    locale: string,
+  ): LocationVerification {
+    return {
+      ...decision,
+      message: locationMessage(decision.status, locale),
+      ...(decision.lastAttempt && {
+        lastAttempt: { ...decision.lastAttempt, message: locationRecheckMessage(locale) },
+      }),
+    };
+  }
+
+  private async locationSnapshot(siteId: string): Promise<
+    LocationInput & {
+      status: string;
+      locationVerification?: LocationVerification | null;
+      rejectionReason?: string | null;
+    }
+  > {
+    const repo = await this.db.repo(BillboardSiteEntity);
+    const rows = await repo.query(
+      `SELECT ${SITE_DETAIL_COLUMNS} FROM billboard_sites WHERE id = $1`,
+      [siteId],
+    );
+    if (!rows[0]) throw new NotFoundException('Site not found');
+    return rows[0];
+  }
+
+  private async persistLocationDecision(
+    user: AuthenticatedUser,
+    orgId: string,
+    siteId: string,
+    snapshot: LocationInput & { status: string },
+    decision: LocationVerification,
+    submit: boolean,
+    locale: string,
+  ) {
+    return this.db.transaction(async (manager) => {
+      const rows = await manager.query(
+        `SELECT ${SITE_DETAIL_COLUMNS} FROM billboard_sites WHERE id = $1 FOR UPDATE`,
+        [siteId],
+      );
+      const current = rows[0];
+      if (!current) throw new NotFoundException('Site not found');
+      if (current.organizationId !== orgId) throw new ForbiddenException('Not your site');
+      if (locationFingerprint(current) !== locationFingerprint(snapshot)) {
+        throw new ConflictException(
+          'Location changed during verification. Check the saved address and pin, then retry.',
+        );
+      }
+      if (
+        submit &&
+        (current.status === 'pending_review' ||
+          (current.status === 'rejected' && snapshot.status !== 'rejected')) &&
+        current.locationVerification
+      ) {
+        return {
+          id: siteId,
+          status: current.status,
+          rejectionReason: current.rejectionReason ?? null,
+          locationVerification: current.locationVerification,
+        };
+      }
+      if (submit && !['draft', 'rejected'].includes(current.status)) {
+        throw new ConflictException(
+          'Site status changed during verification. Refresh the site before retrying.',
+        );
+      }
+      if (!submit && current.status !== snapshot.status) {
+        throw new ConflictException(
+          'Site status changed during verification. Refresh the site before retrying.',
+        );
+      }
+      if (submit) {
+        // The provider call deliberately holds no locks. Re-read readiness under
+        // this parent lock, shared with readiness-affecting child mutations.
+        const problems = await this.listingProblems(siteId, manager);
+        if (problems.length > 0) {
+          throw new BadRequestException(`Site is not ready for review: ${problems.join('; ')}.`);
+        }
+      }
+      const previous = current.locationVerification as LocationVerification | null;
+      // The 24 h cache controls provider reuse, not the validity of confirmed
+      // mismatch evidence. Resolve it only with changed inputs or a definitive
+      // new result; outages and ambiguity cannot reopen approval or listing.
+      if (
+        decision.status === 'unable_to_verify' &&
+        previous?.status === 'mismatch' &&
+        previous.inputFingerprint === locationFingerprint(current)
+      ) {
+        decision = {
+          ...this.localizedLocationDecision(previous, locale),
+          lastAttempt: {
+            status: 'unable_to_verify',
+            reasonCode: decision.reasonCode,
+            checkedAt: decision.checkedAt,
+            provider: decision.provider,
+            message: locationRecheckMessage(locale),
+          },
+        };
+      }
+      const automaticallyRejected =
+        decision.status === 'mismatch' && (submit || current.status === 'pending_review');
+      const status = automaticallyRejected
+        ? 'rejected'
+        : submit
+          ? 'pending_review'
+          : current.status;
+      const reason = automaticallyRejected
+        ? decision.message
+        : submit
+          ? null
+          : (current.rejectionReason ?? null);
+      // Prevent a check on already-published inventory from leaving a known mismatch public.
+      const persistedStatus =
+        !submit && decision.status === 'mismatch' && ['listed', 'approved'].includes(status)
+          ? 'suspended'
+          : status;
+      await manager.query(
+        'UPDATE billboard_sites SET location_verification = $1::jsonb, status = $2, rejection_reason = $3 WHERE id = $4',
+        [JSON.stringify(decision), persistedStatus, reason, siteId],
+      );
+      await writeInventoryAudit(manager, actorOf(user, orgId), {
+        action: automaticallyRejected
+          ? 'inventory.site.rejected'
+          : submit
+            ? 'inventory.site.submitted'
+            : 'inventory.site.updated',
+        entityType: INVENTORY_AUDIT_ENTITY.site,
+        entityId: siteId,
+        before: {
+          status: current.status,
+          locationVerification: current.locationVerification ?? null,
+        },
+        after: {
+          status: persistedStatus,
+          rejectionReason: reason,
+          locationVerification: decision,
+          reviewMethod: 'address_pin_automatic_check',
+        },
+      });
+      return submit
+        ? {
+            id: siteId,
+            status: persistedStatus,
+            rejectionReason: reason,
+            locationVerification: decision,
+          }
+        : decision;
     });
-    return { id: siteId, status: 'pending_review' };
   }
 
   async approveSite(user: AuthenticatedUser, orgId: string | undefined, siteId: string) {
     // SPEC §5.1 lifecycle: pending_review → approved → listed (two steps); clear any rejection reason.
-    // Re-validate completeness at approval: inventory may have changed since submission.
-    const problems = await this.listingProblems(siteId);
-    if (problems.length > 0) {
-      throw new BadRequestException(`Site cannot be listed yet: ${problems.join('; ')}.`);
-    }
     await this.db.transaction(async (manager) => {
-      const rows = await manager.query(`SELECT status FROM billboard_sites WHERE id = $1`, [siteId]);
+      const rows = await manager.query(
+        `SELECT status, location_verification AS "locationVerification" FROM billboard_sites WHERE id = $1 FOR UPDATE`,
+        [siteId],
+      );
       if (!rows[0]) throw new NotFoundException('Site not found');
+      if (rows[0].locationVerification?.status === 'mismatch') {
+        throw new BadRequestException(
+          'Correct the address/pin mismatch and resubmit before listing this site.',
+        );
+      }
       if (rows[0].status !== 'pending_review') {
         throw new ForbiddenException(`Site is ${rows[0].status}, expected pending_review`);
+      }
+      const problems = await this.listingProblems(siteId, manager);
+      if (problems.length > 0) {
+        throw new BadRequestException(`Site cannot be listed yet: ${problems.join('; ')}.`);
       }
       // One endpoint mutation = one audit row: the two-step transition lands in
       // a single audit record (before pending_review, after listed).
@@ -542,18 +821,27 @@ export class InventoryService {
         [siteId],
       );
       await manager.query(`UPDATE billboard_sites SET status = 'listed' WHERE id = $1`, [siteId]);
-      await writeInventoryAudit(manager, { userId: user.userId, orgId }, {
-        action: 'inventory.site.approved',
-        entityType: INVENTORY_AUDIT_ENTITY.site,
-        entityId: siteId,
-        before: { status: 'pending_review' },
-        after: { status: 'listed' },
-      });
+      await writeInventoryAudit(
+        manager,
+        { userId: user.userId, orgId },
+        {
+          action: 'inventory.site.approved',
+          entityType: INVENTORY_AUDIT_ENTITY.site,
+          entityId: siteId,
+          before: { status: 'pending_review' },
+          after: { status: 'listed' },
+        },
+      );
     });
     return { id: siteId, status: 'listed' };
   }
 
-  async rejectSite(user: AuthenticatedUser, orgId: string | undefined, siteId: string, reason: string) {
+  async rejectSite(
+    user: AuthenticatedUser,
+    orgId: string | undefined,
+    siteId: string,
+    reason: string,
+  ) {
     await this.transitionWithAudit(user, orgId, siteId, 'pending_review', 'draft', {
       action: 'inventory.site.rejected',
       reason,
@@ -579,6 +867,7 @@ export class InventoryService {
   async addFace(user: AuthenticatedUser, orgId: string, siteId: string, dto: CreateFaceDto) {
     await this.assertOwnership(orgId, siteId);
     return this.db.transaction(async (manager) => {
+      await this.lockOwnedSite(manager, orgId, siteId);
       const repo = manager.getRepository(SiteFaceEntity);
       const face = await repo.save(
         repo.create({
@@ -620,9 +909,11 @@ export class InventoryService {
   async updateFace(user: AuthenticatedUser, orgId: string, faceId: string, dto: UpdateFaceDto) {
     return this.db.transaction(async (manager) => {
       const repo = manager.getRepository(SiteFaceEntity);
-      const face = await repo.findOne({ where: { id: faceId } });
+      let face = await repo.findOne({ where: { id: faceId } });
       if (!face) throw new NotFoundException('Face not found');
-      await this.assertOwnership(orgId, (face as { siteId: string }).siteId);
+      await this.lockOwnedSite(manager, orgId, face.siteId);
+      face = await repo.findOne({ where: { id: faceId } });
+      if (!face) throw new NotFoundException('Face not found');
       const before = faceAuditSnapshot(face);
       Object.assign(face, {
         ...(dto.faceLabel !== undefined && { faceLabel: dto.faceLabel }),
@@ -657,14 +948,22 @@ export class InventoryService {
   async removeFace(user: AuthenticatedUser, orgId: string, faceId: string) {
     return this.db.transaction(async (manager) => {
       const repo = manager.getRepository(SiteFaceEntity);
-      const face = await repo.findOne({ where: { id: faceId } });
+      let face = await repo.findOne({ where: { id: faceId } });
       if (!face) throw new NotFoundException('Face not found');
-      await this.assertOwnership(orgId, (face as { siteId: string }).siteId);
-      const locked = await manager.query('SELECT id FROM site_faces WHERE id = $1 FOR UPDATE', [faceId]);
+      await this.lockOwnedSite(manager, orgId, face.siteId);
+      face = await repo.findOne({ where: { id: faceId } });
+      if (!face) throw new NotFoundException('Face not found');
+      const locked = await manager.query('SELECT id FROM site_faces WHERE id = $1 FOR UPDATE', [
+        faceId,
+      ]);
       if (!locked[0]) throw new NotFoundException('Face not found');
-      const blackout = await manager.getRepository(FaceBlackoutEntity).findOne({ where: { faceId } });
+      const blackout = await manager
+        .getRepository(FaceBlackoutEntity)
+        .findOne({ where: { faceId } });
       if (blackout) {
-        throw new ConflictException('Remove this face’s unavailable periods before removing the face.');
+        throw new ConflictException(
+          'Remove this face’s unavailable periods before removing the face.',
+        );
       }
       await repo.delete({ id: faceId });
       await writeInventoryAudit(manager, actorOf(user, orgId), {
@@ -706,7 +1005,7 @@ export class InventoryService {
     if (kind === 'front' && !capturedAt) {
       throw new BadRequestException('Front photos need a capture date (capturedAt).');
     }
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
     const storageRef = `assets/${siteId}/${Date.now()}-${safeName}`;
     await this.storage.store(storageRef, file.buffer, file.mimetype);
     try {
@@ -735,14 +1034,29 @@ export class InventoryService {
     }
   }
 
-  async listAssets(siteId: string) {
+  async listAssets(siteId: string, currentSitePin?: { latitude: unknown; longitude: unknown }) {
     const repo = await this.db.repo(SiteAssetEntity);
-    return repo.find({ where: { siteId } });
+    const assets = await repo.find({ where: { siteId } });
+    const pin =
+      currentSitePin ??
+      (
+        await (
+          await this.db.repo(BillboardSiteEntity)
+        ).query('SELECT latitude, longitude FROM billboard_sites WHERE id = $1', [siteId])
+      )[0];
+    return assets.map((asset) =>
+      projectMediaAssetEvidence(asset, pin ?? { latitude: null, longitude: null }),
+    );
   }
 
   /** Read a stored asset for streaming to an authenticated owner/admin (SPEC §6.2).
-  * Seeded placeholder assets store an external URL, returned for redirection. */
-  async readAsset(user: AuthenticatedUser, orgId: string | undefined, siteId: string, assetId: string) {
+   * Seeded placeholder assets store an external URL, returned for redirection. */
+  async readAsset(
+    user: AuthenticatedUser,
+    orgId: string | undefined,
+    siteId: string,
+    assetId: string,
+  ) {
     await this.assertCanReadSite(user, orgId, siteId);
     const repo = await this.db.repo(SiteAssetEntity);
     const asset = await repo.findOne({ where: { id: assetId, siteId } });
@@ -766,12 +1080,18 @@ export class InventoryService {
       if (!asset) throw new NotFoundException('Asset not found');
       // A listed or in-review site must keep its front-on reference photo
       // (SPEC §7.1): deleting the last one would leave invalid live inventory.
-      if ((asset as { kind: string }).kind === 'front') {
-        const siteRows = await manager.query(`SELECT status FROM billboard_sites WHERE id = $1`, [siteId]);
+      if (
+        (asset as { kind: string; capturedAt?: Date | null }).kind === 'front' &&
+        asset.capturedAt
+      ) {
+        const siteRows = await manager.query(
+          `SELECT status FROM billboard_sites WHERE id = $1 FOR UPDATE`,
+          [siteId],
+        );
         const status = siteRows[0]?.status;
         if (status === 'pending_review' || status === 'approved' || status === 'listed') {
           const fronts = await manager.query(
-            `SELECT count(*)::int AS c FROM site_assets WHERE site_id = $1 AND kind = 'front'`,
+            `SELECT count(*)::int AS c FROM site_assets WHERE site_id = $1 AND kind = 'front' AND captured_at IS NOT NULL`,
             [siteId],
           );
           if ((fronts[0]?.c ?? 0) <= 1) {
@@ -802,7 +1122,12 @@ export class InventoryService {
   }
 
   // ----------------------------------------------------------------- metadata
-  async addMetadata(user: AuthenticatedUser, orgId: string, siteId: string, dto: CreateMetadataDto) {
+  async addMetadata(
+    user: AuthenticatedUser,
+    orgId: string,
+    siteId: string,
+    dto: CreateMetadataDto,
+  ) {
     await this.assertOwnership(orgId, siteId);
     return this.db.transaction(async (manager) => {
       const repo = manager.getRepository(SiteMetadataEntity);
@@ -861,7 +1186,12 @@ export class InventoryService {
     );
   }
 
-  async updateMetadata(user: AuthenticatedUser, orgId: string, metadataId: string, dto: UpdateMetadataDto) {
+  async updateMetadata(
+    user: AuthenticatedUser,
+    orgId: string,
+    metadataId: string,
+    dto: UpdateMetadataDto,
+  ) {
     return this.db.transaction(async (manager) => {
       const repo = manager.getRepository(SiteMetadataEntity);
       const m = await repo.findOne({ where: { id: metadataId } });
@@ -874,8 +1204,12 @@ export class InventoryService {
         ...(dto.source !== undefined && { source: dto.source }),
         ...(dto.method !== undefined && { method: dto.method }),
         ...(dto.confidence !== undefined && { confidence: dto.confidence }),
-        ...(dto.collectedAt !== undefined && { collectedAt: dto.collectedAt ? new Date(dto.collectedAt) : null }),
-        ...(dto.expiresAt !== undefined && { expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null }),
+        ...(dto.collectedAt !== undefined && {
+          collectedAt: dto.collectedAt ? new Date(dto.collectedAt) : null,
+        }),
+        ...(dto.expiresAt !== undefined && {
+          expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        }),
         ...(dto.verification !== undefined && { verification: dto.verification }),
       });
       const saved = await repo.save(m);
@@ -891,15 +1225,30 @@ export class InventoryService {
   }
 
   // ----------------------------------------------------------------- rate cards
-  async createRateCard(user: AuthenticatedUser, orgId: string, siteId: string, dto: CreateRateCardDto) {
+  async createRateCard(
+    user: AuthenticatedUser,
+    orgId: string,
+    siteId: string,
+    dto: CreateRateCardDto,
+  ) {
     await this.assertMediaPartnerOrg(orgId);
     await this.assertOwnership(orgId, siteId);
-    assertRateDetails(dto.currency, dto.rates, new Date(dto.effectiveFrom),
-      dto.effectiveTo ? new Date(dto.effectiveTo) : null, dto.minBookingDays);
+    assertRateDetails(
+      dto.currency,
+      dto.rates,
+      new Date(dto.effectiveFrom),
+      dto.effectiveTo ? new Date(dto.effectiveTo) : null,
+      dto.minBookingDays,
+    );
     return this.db.transaction(async (manager) => {
+      await this.lockOwnedSite(manager, orgId, siteId);
       if (dto.faceId) {
-        const faces = await manager.query(`SELECT 1 FROM site_faces WHERE id = $1 AND site_id = $2`, [dto.faceId, siteId]);
-        if (!faces[0]) throw new BadRequestException('The selected face does not belong to this site.');
+        const faces = await manager.query(
+          `SELECT 1 FROM site_faces WHERE id = $1 AND site_id = $2`,
+          [dto.faceId, siteId],
+        );
+        if (!faces[0])
+          throw new BadRequestException('The selected face does not belong to this site.');
       }
       const repo = manager.getRepository(RateCardEntity);
       const card = await repo.save(
@@ -931,17 +1280,29 @@ export class InventoryService {
     return repo.find({ where: { siteId } });
   }
 
-  async updateRateCard(user: AuthenticatedUser, orgId: string, rateCardId: string, dto: UpdateRateCardDto) {
+  async updateRateCard(
+    user: AuthenticatedUser,
+    orgId: string,
+    rateCardId: string,
+    dto: UpdateRateCardDto,
+  ) {
     return this.db.transaction(async (manager) => {
       const repo = manager.getRepository(RateCardEntity);
-      const rc = await repo.findOne({ where: { id: rateCardId } });
+      let rc = await repo.findOne({ where: { id: rateCardId } });
       if (!rc) throw new NotFoundException('Rate card not found');
       if ((rc as { organizationId: string }).organizationId !== orgId) {
         throw new ForbiddenException('Not your rate card');
       }
+      if (rc.siteId) await this.lockOwnedSite(manager, orgId, rc.siteId);
+      rc = await repo.findOne({ where: { id: rateCardId } });
+      if (!rc) throw new NotFoundException('Rate card not found');
       if (dto.faceId) {
-        const faces = await manager.query(`SELECT 1 FROM site_faces WHERE id = $1 AND site_id = $2`, [dto.faceId, rc.siteId]);
-        if (!faces[0]) throw new BadRequestException('The selected face does not belong to this site.');
+        const faces = await manager.query(
+          `SELECT 1 FROM site_faces WHERE id = $1 AND site_id = $2`,
+          [dto.faceId, rc.siteId],
+        );
+        if (!faces[0])
+          throw new BadRequestException('The selected face does not belong to this site.');
       }
       const before = rateCardAuditSnapshot(rc);
       Object.assign(rc, {
@@ -951,10 +1312,17 @@ export class InventoryService {
         ...(dto.rates !== undefined && { rates: dto.rates }),
         ...(dto.seasonalRules !== undefined && { seasonalRules: dto.seasonalRules }),
         ...(dto.effectiveFrom !== undefined && { effectiveFrom: new Date(dto.effectiveFrom) }),
-        ...(dto.effectiveTo !== undefined && { effectiveTo: dto.effectiveTo ? new Date(dto.effectiveTo) : null }),
+        ...(dto.effectiveTo !== undefined && {
+          effectiveTo: dto.effectiveTo ? new Date(dto.effectiveTo) : null,
+        }),
       });
-      assertRateDetails(rc.currency, rc.rates, new Date(rc.effectiveFrom),
-        rc.effectiveTo ? new Date(rc.effectiveTo) : null, rc.minBookingDays);
+      assertRateDetails(
+        rc.currency,
+        rc.rates,
+        new Date(rc.effectiveFrom),
+        rc.effectiveTo ? new Date(rc.effectiveTo) : null,
+        rc.minBookingDays,
+      );
       const saved = await repo.save(rc);
       await writeInventoryAudit(manager, actorOf(user, orgId), {
         action: 'inventory.rate_card.updated',
@@ -970,11 +1338,19 @@ export class InventoryService {
   async withdrawFutureRateCard(user: AuthenticatedUser, orgId: string, rateCardId: string) {
     return this.db.transaction(async (manager) => {
       const repo = manager.getRepository(RateCardEntity);
-      const card = await repo.findOne({ where: { id: rateCardId } });
+      let card = await repo.findOne({ where: { id: rateCardId } });
       if (!card) throw new NotFoundException('Rate card not found');
       if (card.organizationId !== orgId) throw new ForbiddenException('Not your rate card');
-      if (new Date(card.effectiveFrom).toISOString().slice(0, 10) <= new Date().toISOString().slice(0, 10)) {
-        throw new ConflictException('Only future rate cards can be withdrawn. End a current rate instead.');
+      if (card.siteId) await this.lockOwnedSite(manager, orgId, card.siteId);
+      card = await repo.findOne({ where: { id: rateCardId } });
+      if (!card) throw new NotFoundException('Rate card not found');
+      if (
+        new Date(card.effectiveFrom).toISOString().slice(0, 10) <=
+        new Date().toISOString().slice(0, 10)
+      ) {
+        throw new ConflictException(
+          'Only future rate cards can be withdrawn. End a current rate instead.',
+        );
       }
       await repo.delete({ id: rateCardId });
       await writeInventoryAudit(manager, actorOf(user, orgId), {
@@ -998,40 +1374,62 @@ export class InventoryService {
     return repo.find({ where: { faceId }, order: { startDate: 'ASC' } });
   }
 
-  async addBlackout(user: AuthenticatedUser, orgId: string, faceId: string, dto: CreateBlackoutDto) {
+  async addBlackout(
+    user: AuthenticatedUser,
+    orgId: string,
+    faceId: string,
+    dto: CreateBlackoutDto,
+  ) {
     await this.assertMediaPartnerOrg(orgId);
     const start = Date.parse(dto.startDate + 'T00:00:00Z');
     const end = Date.parse(dto.endDate + 'T00:00:00Z');
     const days = (end - start) / 86_400_000;
-    if (!Number.isFinite(start) || !Number.isFinite(end) ||
-        !Number.isInteger(days) || days < 1 || days > 366 ||
-        new Date(start).toISOString().slice(0, 10) !== dto.startDate ||
-        new Date(end).toISOString().slice(0, 10) !== dto.endDate) {
-      throw new BadRequestException('Choose a valid period of 1 to 366 days. The end date is the first available day.');
+    if (
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      !Number.isInteger(days) ||
+      days < 1 ||
+      days > 366 ||
+      new Date(start).toISOString().slice(0, 10) !== dto.startDate ||
+      new Date(end).toISOString().slice(0, 10) !== dto.endDate
+    ) {
+      throw new BadRequestException(
+        'Choose a valid period of 1 to 366 days. The end date is the first available day.',
+      );
     }
-    if (!dto.reason.trim()) throw new BadRequestException('Give a reason for the unavailable period.');
+    if (!dto.reason.trim())
+      throw new BadRequestException('Give a reason for the unavailable period.');
     return this.db.transaction(async (manager) => {
       // Lock the face so future booking confirmation uses the same concurrency boundary.
-      const faces = await manager.query(
+      const faces = (await manager.query(
         `SELECT f.site_id AS "siteId", s.organization_id AS "organizationId"
          FROM site_faces f JOIN billboard_sites s ON s.id::text = f.site_id
-         WHERE f.id = $1 FOR UPDATE OF f`, [faceId],
-      ) as Array<{ siteId: string; organizationId: string }>;
+         WHERE f.id = $1 FOR UPDATE OF f`,
+        [faceId],
+      )) as Array<{ siteId: string; organizationId: string }>;
       if (!faces[0]) throw new NotFoundException('Face not found');
       if (faces[0].organizationId !== orgId) throw new ForbiddenException('Not your face');
-      const conflicts = await manager.query(
+      const conflicts = (await manager.query(
         `SELECT
           EXISTS(SELECT 1 FROM face_blackouts WHERE face_id = $1 AND start_date < $3::date AND end_date > $2::date) AS blackout,
           EXISTS(SELECT 1 FROM bookings WHERE face_id = $1 AND status IN ('held', 'confirmed', 'live')
             AND start_date < $3::date AND end_date > $2::date) AS booking`,
         [faceId, dto.startDate, dto.endDate],
-      ) as Array<{ blackout: boolean; booking: boolean }>;
-      if (conflicts[0]?.blackout) throw new ConflictException('An unavailable period already overlaps these dates.');
-      if (conflicts[0]?.booking) throw new ConflictException('A reservation already overlaps these dates.');
+      )) as Array<{ blackout: boolean; booking: boolean }>;
+      if (conflicts[0]?.blackout)
+        throw new ConflictException('An unavailable period already overlaps these dates.');
+      if (conflicts[0]?.booking)
+        throw new ConflictException('A reservation already overlaps these dates.');
       const repo = manager.getRepository(FaceBlackoutEntity);
-      const blackout = await repo.save(repo.create({
-        faceId, organizationId: orgId, startDate: dto.startDate, endDate: dto.endDate, reason: dto.reason.trim(),
-      }));
+      const blackout = await repo.save(
+        repo.create({
+          faceId,
+          organizationId: orgId,
+          startDate: dto.startDate,
+          endDate: dto.endDate,
+          reason: dto.reason.trim(),
+        }),
+      );
       await writeInventoryAudit(manager, actorOf(user, orgId), {
         action: 'inventory.blackout.created',
         entityType: 'face_blackout',
@@ -1048,15 +1446,23 @@ export class InventoryService {
       const repo = manager.getRepository(FaceBlackoutEntity);
       const blackout = await repo.findOne({ where: { id: blackoutId } });
       if (!blackout) throw new NotFoundException('Unavailable period not found');
-      if (blackout.organizationId !== orgId) throw new ForbiddenException('Not your unavailable period');
-      const faces = await manager.query(`SELECT id FROM site_faces WHERE id = $1 FOR UPDATE`, [blackout.faceId]);
+      if (blackout.organizationId !== orgId)
+        throw new ForbiddenException('Not your unavailable period');
+      const faces = await manager.query(`SELECT id FROM site_faces WHERE id = $1 FOR UPDATE`, [
+        blackout.faceId,
+      ]);
       if (!faces[0]) throw new NotFoundException('Face not found');
       await repo.delete({ id: blackoutId });
       await writeInventoryAudit(manager, actorOf(user, orgId), {
         action: 'inventory.blackout.removed',
         entityType: 'face_blackout',
         entityId: blackoutId,
-        before: { faceId: blackout.faceId, startDate: blackout.startDate, endDate: blackout.endDate, reason: blackout.reason },
+        before: {
+          faceId: blackout.faceId,
+          startDate: blackout.startDate,
+          endDate: blackout.endDate,
+          reason: blackout.reason,
+        },
         after: null,
       });
       return { id: blackoutId, removed: true };
@@ -1070,7 +1476,11 @@ export class InventoryService {
     manager: import('typeorm').EntityManager,
     siteId: string,
     provenance: StructureProvenance,
-    values: { orientationDeg?: number | null; viewingDistance?: number | null; elevation?: number | null },
+    values: {
+      orientationDeg?: number | null;
+      viewingDistance?: number | null;
+      elevation?: number | null;
+    },
   ): Promise<void> {
     const repo = manager.getRepository(SiteMetadataEntity);
     const fields = structureFieldsTouched(values);
@@ -1112,16 +1522,18 @@ export class InventoryService {
       snapshot.structureProvenance = {
         source: structureProvenance.source,
         method: structureProvenance.method,
-        ...(structureProvenance.collectedAt ? { collectedAt: structureProvenance.collectedAt } : {}),
+        ...(structureProvenance.collectedAt
+          ? { collectedAt: structureProvenance.collectedAt }
+          : {}),
       };
     }
     return snapshot;
   }
 
   /** Tenant-safe read gate for a site and its children (faces/assets/metadata/
-  * rate cards): the owning organization (INVENTORY_VIEW), a platform admin, or
-  * — only for listed inventory — a marketplace viewer. A plain INVENTORY_VIEW
-  * holder from another organization never passes, listed or not (SPEC §4.5). */
+   * rate cards): the owning organization (INVENTORY_VIEW), a platform admin, or
+   * — only for listed inventory — a marketplace viewer. A plain INVENTORY_VIEW
+   * holder from another organization never passes, listed or not (SPEC §4.5). */
   /**
    * Who is reading, and therefore which metadata variant the detail response
    * may carry: 'owner' sees every attached record (demo rows labelled in the
@@ -1170,14 +1582,18 @@ export class InventoryService {
     const orgs = await this.db.repo(OrganizationEntity);
     const org = await orgs.findOne({ where: { id: orgId } }).catch(() => null);
     if (!org || org.type !== 'media_partner') {
-      throw new ForbiddenException('Only media-partner organizations can manage billboard inventory');
+      throw new ForbiddenException(
+        'Only media-partner organizations can manage billboard inventory',
+      );
     }
   }
 
   // ----------------------------------------------------------------- helpers
   /** SPEC §7.1 listing-completeness problems, checked at submit and approval. */
-  private async listingProblems(siteId: string): Promise<string[]> {
-    const repo = await this.db.repo(BillboardSiteEntity);
+  private async listingProblems(siteId: string, manager?: EntityManager): Promise<string[]> {
+    const repo = manager
+      ? manager.getRepository(BillboardSiteEntity)
+      : await this.db.repo(BillboardSiteEntity);
     const rows = await repo.query(
       `SELECT latitude, longitude, format, width, height, permit_expires_at::date::text AS "permitExpiresAt"
        FROM billboard_sites WHERE id = $1`,
@@ -1188,36 +1604,71 @@ export class InventoryService {
     const problems: string[] = [];
     const lat = Number(s.latitude);
     const lon = Number(s.longitude);
-    if (!Number.isFinite(lat) || Math.abs(lat) > 90) problems.push('latitude must be between -90 and 90');
-    if (!Number.isFinite(lon) || Math.abs(lon) > 180) problems.push('longitude must be between -180 and 180');
+    if (!Number.isFinite(lat) || Math.abs(lat) > 90)
+      problems.push('latitude must be between -90 and 90');
+    if (!Number.isFinite(lon) || Math.abs(lon) > 180)
+      problems.push('longitude must be between -180 and 180');
     if (!s.format) problems.push('format is required');
     if (!(Number(s.width) > 0)) problems.push('width must be greater than 0');
     if (!(Number(s.height) > 0)) problems.push('height must be greater than 0');
     const front = await repo.query(
-      `SELECT 1 FROM site_assets WHERE site_id = $1 AND kind = 'front' LIMIT 1`,
+      `SELECT 1 FROM site_assets WHERE site_id = $1 AND kind = 'front' AND captured_at IS NOT NULL LIMIT 1`,
       [siteId],
     );
-    if (!front[0]) problems.push('a front-on reference photo is required');
+    if (!front[0])
+      problems.push('a front-on reference photo with a known capture date is required');
     if (s.permitExpiresAt && s.permitExpiresAt < new Date().toISOString().slice(0, 10)) {
       problems.push('the recorded permit has expired');
     }
-    const faces = (await this.listFaces(siteId)).filter((face) => face.bookable);
+    const allFaces = manager
+      ? await manager.getRepository(SiteFaceEntity).find({ where: { siteId } })
+      : await this.listFaces(siteId);
+    const faces = allFaces.filter((face) => face.bookable);
     if (faces.length === 0) problems.push('add at least one bookable face');
-    if (s.format === 'digital_led' && faces.some((face) =>
-      !face.pixelWidth || !face.pixelHeight || !face.spotLengthSeconds || !face.loopLengthSeconds || !face.spotsPerLoop
-    )) problems.push('complete the pixel and loop/spot details for each bookable digital face');
+    if (
+      s.format === 'digital_led' &&
+      faces.some(
+        (face) =>
+          !face.pixelWidth ||
+          !face.pixelHeight ||
+          !face.spotLengthSeconds ||
+          !face.loopLengthSeconds ||
+          !face.spotsPerLoop,
+      )
+    )
+      problems.push('complete the pixel and loop/spot details for each bookable digital face');
     if (faces.length > 0) {
       const today = new Date().toISOString().slice(0, 10);
-      const rates = await this.listRateCards(siteId);
-      const priced = (faceId: string) => rates.some((rate) =>
-        (!rate.faceId || rate.faceId === faceId) &&
-        new Date(rate.effectiveFrom).toISOString().slice(0, 10) <= today &&
-        (!rate.effectiveTo || new Date(rate.effectiveTo).toISOString().slice(0, 10) >= today) &&
-        Object.values(rate.rates).some((price) => typeof price === 'number' && Number.isFinite(price) && price > 0),
-      );
-      if (faces.some((face) => !priced(face.id))) problems.push('add a current rate for each bookable face');
+      const rates = manager
+        ? await manager.getRepository(RateCardEntity).find({ where: { siteId } })
+        : await this.listRateCards(siteId);
+      const priced = (faceId: string) =>
+        rates.some(
+          (rate) =>
+            (!rate.faceId || rate.faceId === faceId) &&
+            new Date(rate.effectiveFrom).toISOString().slice(0, 10) <= today &&
+            (!rate.effectiveTo || new Date(rate.effectiveTo).toISOString().slice(0, 10) >= today) &&
+            Object.values(rate.rates).some(
+              (price) => typeof price === 'number' && Number.isFinite(price) && price > 0,
+            ),
+        );
+      if (faces.some((face) => !priced(face.id)))
+        problems.push('add a current rate for each bookable face');
     }
     return problems;
+  }
+
+  private async lockOwnedSite(
+    manager: EntityManager,
+    orgId: string,
+    siteId: string,
+  ): Promise<void> {
+    const rows = await manager.query(
+      'SELECT organization_id AS "organizationId" FROM billboard_sites WHERE id = $1 FOR UPDATE',
+      [siteId],
+    );
+    if (!rows[0]) throw new NotFoundException('Site not found');
+    if (rows[0].organizationId !== orgId) throw new ForbiddenException('Not your site');
   }
 
   private async assertOwnership(orgId: string | undefined, siteId: string) {
@@ -1241,8 +1692,16 @@ export class InventoryService {
   ) {
     await this.db.transaction(async (manager) => {
       const fromList = Array.isArray(from) ? from : [from];
-      const rows = await manager.query(`SELECT status FROM billboard_sites WHERE id = $1`, [siteId]);
+      const rows = await manager.query(
+        `SELECT status, location_verification AS "locationVerification" FROM billboard_sites WHERE id = $1 FOR UPDATE`,
+        [siteId],
+      );
       if (!rows[0]) throw new NotFoundException('Site not found');
+      if (to === 'listed' && rows[0].locationVerification?.status === 'mismatch') {
+        throw new BadRequestException(
+          'Correct the address/pin mismatch and resubmit before relisting this site.',
+        );
+      }
       const beforeStatus = rows[0].status;
       if (!fromList.includes(beforeStatus)) {
         throw new ForbiddenException(`Site is ${beforeStatus}, expected ${fromList.join('/')}`);
@@ -1255,13 +1714,20 @@ export class InventoryService {
       } else {
         await manager.query(`UPDATE billboard_sites SET status = $1 WHERE id = $2`, [to, siteId]);
       }
-      await writeInventoryAudit(manager, { userId: user.userId, orgId }, {
-        action: opts.action,
-        entityType: INVENTORY_AUDIT_ENTITY.site,
-        entityId: siteId,
-        before: { status: beforeStatus },
-        after: { status: to, ...(opts.reason !== undefined ? { rejectionReason: opts.reason } : {}) },
-      });
+      await writeInventoryAudit(
+        manager,
+        { userId: user.userId, orgId },
+        {
+          action: opts.action,
+          entityType: INVENTORY_AUDIT_ENTITY.site,
+          entityId: siteId,
+          before: { status: beforeStatus },
+          after: {
+            status: to,
+            ...(opts.reason !== undefined ? { rejectionReason: opts.reason } : {}),
+          },
+        },
+      );
     });
   }
 

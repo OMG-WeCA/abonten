@@ -7,6 +7,8 @@ import { SiteAssetEntity } from '../common/entities/site-asset.entity';
 import { SiteMetadataEntity } from '../common/entities/site-metadata.entity';
 import { RateCardEntity } from '../common/entities/rate-card.entity';
 import { METADATA_COLUMNS, PRODUCTION_METADATA_WHERE } from '../common/metadata-filter';
+import { findMarket } from '../common/supported-markets';
+import { projectMediaAssetEvidence } from '../inventory/inventory-media-projection';
 import type { MarketplaceQueryDto } from './dto/marketplace.dto';
 
 const SITE_COLUMNS =
@@ -74,13 +76,16 @@ export class MarketplaceService {
       `AND specific.effective_from::date <= ${end} ` +
       `AND (specific.effective_to IS NULL OR specific.effective_to::date >= ${start}) ` +
       `AND ${validPrice('specific')})))`;
-    const currentRateForFace = `${rateScope('CURRENT_DATE', 'CURRENT_DATE')} AND r.effective_from::date <= CURRENT_DATE ` +
+    const currentRateForFace =
+      `${rateScope('CURRENT_DATE', 'CURRENT_DATE')} AND r.effective_from::date <= CURRENT_DATE ` +
       `AND (r.effective_to IS NULL OR r.effective_to::date >= CURRENT_DATE) AND ${validPrice('r')}`;
     const rateForFace =
       `${rateScope(periodStart, periodEnd)} ` +
       `AND r.effective_from::date <= ${periodStart} ` +
       `AND (r.effective_to IS NULL OR r.effective_to::date >= ${periodEnd}) ` +
-      (hasWindow ? 'AND (r.min_booking_days IS NULL OR r.min_booking_days <= ($2::date - $1::date)) ' : '') +
+      (hasWindow
+        ? 'AND (r.min_booking_days IS NULL OR r.min_booking_days <= ($2::date - $1::date)) '
+        : '') +
       `AND ${validPrice('r')}`;
     // One eligibility rule drives both visibility and displayed/budget price.
     // A partial face override suppresses the default for the whole query window;
@@ -92,11 +97,16 @@ export class MarketplaceService {
     const where: string[] = [
       "s.status = 'listed'",
       `(s.permit_expires_at IS NULL OR (s.permit_expires_at::date >= CURRENT_DATE AND s.permit_expires_at::date >= ${periodEnd}))`,
-      "EXISTS (SELECT 1 FROM site_assets a WHERE a.site_id = s.id::text AND a.kind = 'front')",
+      "EXISTS (SELECT 1 FROM site_assets a WHERE a.site_id = s.id::text AND a.kind = 'front' AND a.captured_at IS NOT NULL)",
       'NOT EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = s.id::text AND f.bookable ' +
         `AND ((${bookableFace}) IS NOT TRUE OR NOT EXISTS (SELECT 1 FROM rate_cards r WHERE ${currentRateForFace})))`,
       'EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = s.id::text AND ' +
-        bookableFace + ' ' + faceAvailable + ' AND EXISTS (SELECT 1 FROM rate_cards r WHERE ' + rateForFace + '))',
+        bookableFace +
+        ' ' +
+        faceAvailable +
+        ' AND EXISTS (SELECT 1 FROM rate_cards r WHERE ' +
+        rateForFace +
+        '))',
     ];
     const push = (clause: string, ...values: unknown[]) => {
       const start = params.length + 1;
@@ -105,7 +115,7 @@ export class MarketplaceService {
       where.push(clause.replace(/\?/g, () => `$${n++}`));
     };
 
-    if (q.country) push('s.country = ?', q.country);
+    if (q.country) push('s.country = ?', findMarket(q.country)?.name ?? q.country);
     if (q.city) push('s.city ILIKE ?', `%${q.city}%`);
     if (q.market) push('s.market_id = ?', q.market);
     if (q.format) push('s.format = ?', q.format);
@@ -169,7 +179,10 @@ export class MarketplaceService {
       params,
     );
     checkDetailCancelled(signal);
-    const totalRows = await repo.query(`SELECT count(*)::int AS c FROM billboard_sites s WHERE ${whereSql}`, params);
+    const totalRows = await repo.query(
+      `SELECT count(*)::int AS c FROM billboard_sites s WHERE ${whereSql}`,
+      params,
+    );
     checkDetailCancelled(signal);
     return { items: rows, total: totalRows[0]?.c ?? 0, page, limit };
   }
@@ -180,14 +193,19 @@ export class MarketplaceService {
     checkDetailCancelled(signal);
     const repo = await this.db.repo(BillboardSiteEntity);
     checkDetailCancelled(signal);
-    const rows = await repo.query(`SELECT ${SITE_COLUMNS} FROM billboard_sites WHERE id = $1`, [siteId]);
+    const rows = await repo.query(`SELECT ${SITE_COLUMNS} FROM billboard_sites WHERE id = $1`, [
+      siteId,
+    ]);
     checkDetailCancelled(signal);
     const site = rows[0];
     if (!site) throw new NotFoundException('Site not found');
     if (site.status !== 'listed') {
       throw new NotFoundException('Site not listed');
     }
-    const load = async <T extends ObjectLiteral, R>(target: EntityTarget<T>, read: (repository: Repository<T>) => Promise<R>) => {
+    const load = async <T extends ObjectLiteral, R>(
+      target: EntityTarget<T>,
+      read: (repository: Repository<T>) => Promise<R>,
+    ) => {
       checkDetailCancelled(signal);
       const repository = await this.db.repo(target);
       checkDetailCancelled(signal);
@@ -208,23 +226,42 @@ export class MarketplaceService {
     checkDetailCancelled(signal);
     const today = new Date().toISOString().slice(0, 10);
     const bookable = faces.filter((face) => face.bookable);
-    const ready = (!site.permitExpiresAt || new Date(site.permitExpiresAt).toISOString().slice(0, 10) >= today) &&
-      assets.some((asset) => asset.kind === 'front') && bookable.length > 0 &&
-      bookable.every((face) =>
-        (site.format !== 'digital_led' || Boolean(
-          face.pixelWidth && face.pixelHeight && face.spotLengthSeconds && face.loopLengthSeconds && face.spotsPerLoop
-        )) && rateCards.some((rate) =>
-          (!rate.faceId || rate.faceId === face.id) &&
-          new Date(rate.effectiveFrom).toISOString().slice(0, 10) <= today &&
-          (!rate.effectiveTo || new Date(rate.effectiveTo).toISOString().slice(0, 10) >= today) &&
-          Object.values(rate.rates).some((price) => typeof price === 'number' && price > 0),
-        ),
+    const ready =
+      (!site.permitExpiresAt ||
+        new Date(site.permitExpiresAt).toISOString().slice(0, 10) >= today) &&
+      assets.some((asset) => asset.kind === 'front' && asset.capturedAt) &&
+      bookable.length > 0 &&
+      bookable.every(
+        (face) =>
+          (site.format !== 'digital_led' ||
+            Boolean(
+              face.pixelWidth &&
+              face.pixelHeight &&
+              face.spotLengthSeconds &&
+              face.loopLengthSeconds &&
+              face.spotsPerLoop,
+            )) &&
+          rateCards.some(
+            (rate) =>
+              (!rate.faceId || rate.faceId === face.id) &&
+              new Date(rate.effectiveFrom).toISOString().slice(0, 10) <= today &&
+              (!rate.effectiveTo ||
+                new Date(rate.effectiveTo).toISOString().slice(0, 10) >= today) &&
+              Object.values(rate.rates).some((price) => typeof price === 'number' && price > 0),
+          ),
       );
     if (!ready) throw new NotFoundException('Site is not ready for the marketplace');
-    return { ...site, faces, assets, metadata, rateCards };
+    return {
+      ...site,
+      faces,
+      assets: assets.map((asset) => projectMediaAssetEvidence(asset, site)),
+      metadata,
+      rateCards,
+    };
   }
 }
 
 function checkDetailCancelled(signal?: AbortSignal) {
-  if (signal?.aborted) throw new HttpException('The marketplace detail request was cancelled.', 499);
+  if (signal?.aborted)
+    throw new HttpException('The marketplace detail request was cancelled.', 499);
 }

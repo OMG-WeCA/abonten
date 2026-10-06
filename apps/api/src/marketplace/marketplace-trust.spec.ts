@@ -97,7 +97,12 @@ class MarketplaceMemRepo {
   }
 }
 
-function buildHarness(): { service: MarketplaceService; sites: Row[]; metadata: Row[]; assets: Row[] } {
+function buildHarness(): {
+  service: MarketplaceService;
+  sites: Row[];
+  metadata: Row[];
+  assets: Row[];
+} {
   const sites: Row[] = [
     {
       id: 'site-listed',
@@ -134,15 +139,32 @@ function buildHarness(): { service: MarketplaceService; sites: Row[]; metadata: 
     },
   ];
   const faces: Row[] = [{ id: 'face-1', siteId: 'site-listed', bookable: true }];
-  const assets: Row[] = [{ id: 'asset-1', siteId: 'site-listed', kind: 'front' }];
-  const rateCards: Row[] = [{ id: 'rate-1', siteId: 'site-listed', faceId: null,
-    effectiveFrom: new Date('2020-01-01'), rates: { perDay: 100 }, currency: 'NGN' }];
+  const assets: Row[] = [
+    { id: 'asset-1', siteId: 'site-listed', kind: 'front', capturedAt: '2026-10-01T09:00:00Z' },
+  ];
+  const rateCards: Row[] = [
+    {
+      id: 'rate-1',
+      siteId: 'site-listed',
+      faceId: null,
+      effectiveFrom: new Date('2020-01-01'),
+      rates: { perDay: 100 },
+      currency: 'NGN',
+    },
+  ];
   const repoFor = async (target: unknown) => {
-    const source: 'sites' | 'faces' | 'assets' | 'metadata' | 'rates' = target === SiteFaceEntity ? 'faces' :
-      target === SiteAssetEntity ? 'assets' :
-      target === SiteMetadataEntity ? 'metadata' :
-      target === RateCardEntity ? 'rates' :
-      target === BillboardSiteEntity ? 'sites' : 'sites';
+    const source: 'sites' | 'faces' | 'assets' | 'metadata' | 'rates' =
+      target === SiteFaceEntity
+        ? 'faces'
+        : target === SiteAssetEntity
+          ? 'assets'
+          : target === SiteMetadataEntity
+            ? 'metadata'
+            : target === RateCardEntity
+              ? 'rates'
+              : target === BillboardSiteEntity
+                ? 'sites'
+                : 'sites';
     return new MarketplaceMemRepo(sites, metadata, faces, assets, rateCards, source);
   };
   const db = { repo: repoFor } as unknown as DatabaseService;
@@ -178,6 +200,11 @@ describe('marketplace demo-data suppression (§1.4.1)', () => {
   it('does not serve a listed legacy site without a front photo as ready inventory', async () => {
     const { service, assets } = buildHarness();
     assets.length = 0;
+    await assert.rejects(() => service.getMarketplaceSite('site-listed'), NotFoundException);
+  });
+  it('does not serve an undated front photo as ready buyer inventory', async () => {
+    const { service, assets } = buildHarness();
+    assets[0].capturedAt = null;
     await assert.rejects(() => service.getMarketplaceSite('site-listed'), NotFoundException);
   });
 });

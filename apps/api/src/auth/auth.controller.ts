@@ -40,14 +40,14 @@ export class AuthController {
   @Post('email-code/request')
   @ApiOperation({ summary: 'Email a six-digit passwordless sign-in code' })
   requestEmailCode(@Body() dto: RequestEmailCodeDto) {
-    return this.emailCode.request(dto.email);
+    return this.emailCode.request(dto.email, dto.locale);
   }
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('email-code/verify')
   @ApiOperation({ summary: 'Verify an emailed sign-in code and issue a token pair' })
   verifyEmailCode(@Body() dto: VerifyEmailCodeDto, @Req() req: Request) {
-    return this.emailCode.verify(dto.email, dto.code, sessionMetadata(req));
+    return this.emailCode.verify(dto.email, dto.code, sessionMetadata(req), dto.locale);
   }
 
   @Post('refresh')

@@ -214,6 +214,25 @@ async function expectStatus(action: () => Promise<unknown>, status: HttpStatus):
 }
 
 describe('EmailCodeService', () => {
+  it('sends a French code email and keeps verification language independent from token security', async () => {
+    const { service, mail } = createSubject();
+    await service.request('french@example.com', 'fr');
+    assert.equal(mail.sent[0].subject, 'Votre code de connexion Abonten');
+    assert.match(mail.sent[0].html, /lang="fr"/);
+    assert.match(mail.sent[0].html, /Il expire dans 10 minutes/);
+    const code = latestCode(mail);
+    await assert.rejects(
+      () => service.verify('french@example.com', differentCode(code), undefined, 'fr'),
+      (error: unknown) =>
+        error instanceof HttpException &&
+        JSON.stringify(error.getResponse()).includes('Code de connexion incorrect ou expiré'),
+    );
+    assert.equal(
+      (await service.verify('french@example.com', code, undefined, 'fr')).user.email,
+      'french@example.com',
+    );
+  });
+
   it('stores only a keyed hash and issues existing session tokens after a correct code', async () => {
     const { service, redis, mail, users, issued } = createSubject();
     await users.save(

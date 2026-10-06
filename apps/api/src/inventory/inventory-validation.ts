@@ -1,3 +1,5 @@
+import { findMarket, normalizeMarketName, SUPPORTED_MARKETS } from '../common/supported-markets';
+
 /**
  * Entry plausibility checks for inventory capture (execution plan §1.4 /
  * SPEC §5.1 trust contract item 6). Pure functions so the same rules run in
@@ -18,28 +20,46 @@ export interface PlausibilityInput {
 }
 
 /** Generous bounding boxes; borders are fuzzy, so these over-cover by design. */
-export const COUNTRY_BOUNDS: Record<string, { minLat: number; maxLat: number; minLng: number; maxLng: number }> = {
-  nigeria: { minLat: 3.6, maxLat: 14.0, minLng: 2.2, maxLng: 15.0 },
-  ghana: { minLat: 4.2, maxLat: 11.3, minLng: -3.6, maxLng: 1.5 },
-  cameroon: { minLat: 1.2, maxLat: 13.3, minLng: 7.9, maxLng: 16.5 },
-};
+export const COUNTRY_BOUNDS: Record<
+  string,
+  { minLat: number; maxLat: number; minLng: number; maxLng: number }
+> = Object.fromEntries(
+  SUPPORTED_MARKETS.flatMap((market) =>
+    [market.name, ...market.aliases].map((name) => [
+      normalizeMarketName(name),
+      {
+        minLat: market.bounds.south,
+        maxLat: market.bounds.north,
+        minLng: market.bounds.west,
+        maxLng: market.bounds.east,
+      },
+    ]),
+  ),
+);
 
 /**
  * Illumination hours: either around-the-clock ('24/7') or a 24h time range
  * like '18:00-06:00' (en dash/colon spacing tolerated). Retained seed data
  * uses both shapes; anything else is asked to be corrected, not reinterpreted.
  */
-export const ILLUMINATION_HOURS_PATTERN = /^\s*24\s*\/\s*7\s*$|^\s*([01]?\d|2[0-3]):[0-5]\d\s*[-\u2013\u2014]\s*([01]?\d|2[0-3]):[0-5]\d\s*$/;
+export const ILLUMINATION_HOURS_PATTERN =
+  /^\s*24\s*\/\s*7\s*$|^\s*([01]?\d|2[0-3]):[0-5]\d\s*[-\u2013\u2014]\s*([01]?\d|2[0-3]):[0-5]\d\s*$/;
 
 export function plausibilityProblems(input: PlausibilityInput): string[] {
   const problems: string[] = [];
-  if (input.latitude !== undefined && (!Number.isFinite(input.latitude) || Math.abs(input.latitude) > 90)) {
+  if (
+    input.latitude !== undefined &&
+    (!Number.isFinite(input.latitude) || Math.abs(input.latitude) > 90)
+  ) {
     problems.push('latitude must be between -90 and 90');
   }
-  if (input.longitude !== undefined && (!Number.isFinite(input.longitude) || Math.abs(input.longitude) > 180)) {
+  if (
+    input.longitude !== undefined &&
+    (!Number.isFinite(input.longitude) || Math.abs(input.longitude) > 180)
+  ) {
     problems.push('longitude must be between -180 and 180');
   }
-  const country = (input.country ?? '').trim().toLowerCase();
+  const country = normalizeMarketName(input.country ?? '');
   const box = COUNTRY_BOUNDS[country];
   if (
     box &&
@@ -52,18 +72,32 @@ export function plausibilityProblems(input: PlausibilityInput): string[] {
       input.longitude < box.minLng ||
       input.longitude > box.maxLng)
   ) {
-    problems.push(`coordinates fall outside ${country}'s bounding box — check the pin`);
+    problems.push(
+      `coordinates fall outside ${(findMarket(input.country)?.name ?? input.country)?.toLowerCase()}'s bounding box — check the pin`,
+    );
   }
-  if (input.orientationDeg !== undefined && (!Number.isFinite(input.orientationDeg) || input.orientationDeg < 0 || input.orientationDeg > 359)) {
+  if (
+    input.orientationDeg !== undefined &&
+    (!Number.isFinite(input.orientationDeg) ||
+      input.orientationDeg < 0 ||
+      input.orientationDeg > 359)
+  ) {
     problems.push('orientation must be between 0 and 359 degrees');
   }
-  if (input.viewingDistance !== undefined && (!Number.isFinite(input.viewingDistance) || input.viewingDistance <= 0)) {
+  if (
+    input.viewingDistance !== undefined &&
+    (!Number.isFinite(input.viewingDistance) || input.viewingDistance <= 0)
+  ) {
     problems.push('viewing distance must be greater than 0');
   }
   if (input.elevation !== undefined && (!Number.isFinite(input.elevation) || input.elevation < 0)) {
     problems.push('elevation cannot be negative');
   }
-  if (input.illuminationHours !== undefined && input.illuminationHours.trim() !== '' && !ILLUMINATION_HOURS_PATTERN.test(input.illuminationHours)) {
+  if (
+    input.illuminationHours !== undefined &&
+    input.illuminationHours.trim() !== '' &&
+    !ILLUMINATION_HOURS_PATTERN.test(input.illuminationHours)
+  ) {
     problems.push('illumination hours should look like 18:00-06:00 or 24/7');
   }
   return problems;
@@ -81,8 +115,16 @@ export type StructureField = (typeof STRUCTURE_FIELDS)[number];
 
 /** The structure fields a create/update actually touches. */
 export function structureFieldsTouched(
-  dto: { orientationDeg?: number | null; viewingDistance?: number | null; elevation?: number | null },
-  current?: { orientationDeg?: number | null; viewingDistance?: number | null; elevation?: number | null },
+  dto: {
+    orientationDeg?: number | null;
+    viewingDistance?: number | null;
+    elevation?: number | null;
+  },
+  current?: {
+    orientationDeg?: number | null;
+    viewingDistance?: number | null;
+    elevation?: number | null;
+  },
 ): StructureField[] {
   const touched: StructureField[] = [];
   for (const field of STRUCTURE_FIELDS) {

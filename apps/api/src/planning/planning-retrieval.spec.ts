@@ -4,6 +4,36 @@ import { derivePlanningRetrieval, type PlanningRetrievalFormat } from './plannin
 const window = { startDate: '2026-10-10', endDate: '2026-10-24' };
 
 describe('pure bounded consent-safe planning retrieval intent', () => {
+  it('distinguishes Nigerian Benin City from Benin while retaining explicit country conflicts and brief consent', () => {
+    for (const message of ['City: Benin City', 'Find boards in Benin City', 'Ville: Benin City']) {
+      const result = derivePlanningRetrieval({ message }).provider;
+      assert.deepEqual(result.queries, [{ city: 'Benin City', country: 'Nigeria' }], message);
+      assert.ok(!result.needsConfirmation.includes('geography'), message);
+    }
+    assert.deepEqual(
+      derivePlanningRetrieval({ message: 'Find boards in Benin' }).provider.queries,
+      [{ country: 'Benin' }],
+    );
+    const conflicting = derivePlanningRetrieval({
+      message: 'Country: Benin; City: Benin City',
+    }).provider;
+    assert.deepEqual(conflicting.queries, []);
+    assert.ok(conflicting.needsConfirmation.includes('geography'));
+    const privateBrief = derivePlanningRetrieval({
+      message: 'Help',
+      briefText: 'City: Benin City',
+      shareBriefWithProvider: false,
+    });
+    assert.deepEqual(privateBrief.local.queries, [{ city: 'Benin City', country: 'Nigeria' }]);
+    assert.deepEqual(privateBrief.provider.queries, [{}]);
+    assert.deepEqual(
+      derivePlanningRetrieval({ message: 'Compare Benin City and Cotonou' }).provider.queries,
+      [
+        { city: 'Benin City', country: 'Nigeria' },
+        { city: 'Cotonou', country: 'Benin' },
+      ],
+    );
+  });
   it('uses literal brief market and format rather than an unrelated default snapshot', () => {
     const result = derivePlanningRetrieval({
       message: 'Help plan this campaign',
@@ -216,7 +246,7 @@ describe('pure bounded consent-safe planning retrieval intent', () => {
       message: 'Ville: Abidjan; Pays: Côte d’Ivoire; Format: mural',
     }).provider;
     assert.deepEqual(abidjan.queries, [
-      { city: 'Abidjan', country: 'Côte d’Ivoire', format: 'mural' },
+      { city: 'Abidjan', country: "Côte d'Ivoire", format: 'mural' },
     ]);
     const contextual = derivePlanningRetrieval({
       message: 'City: Tema',
@@ -244,7 +274,9 @@ describe('pure bounded consent-safe planning retrieval intent', () => {
       briefText: 'Ville: Abidjan; Axe: Boulevard de la République',
       shareBriefWithProvider: true,
     }).provider;
-    assert.deepEqual(shared.queries, [{ city: 'Abidjan', search: 'Boulevard de la République' }]);
+    assert.deepEqual(shared.queries, [
+      { city: 'Abidjan', country: "Côte d'Ivoire", search: 'Boulevard de la République' },
+    ]);
     const road = derivePlanningRetrieval({
       message: 'City: Tema; Road: Harbour Road',
       context: { filters: { search: 'Motorway' } },

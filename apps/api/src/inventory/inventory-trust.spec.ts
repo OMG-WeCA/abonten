@@ -1,6 +1,11 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { DatabaseService } from '../common/database.service';
 import { AuditLogEntity } from '../common/entities/audit-log.entity';
 import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
@@ -51,7 +56,11 @@ class MemRepo {
   }
 
   async save(row: Row): Promise<Row> {
-    if (!row.id) row = { id: `row-${this.table.length + 1}-${Math.random().toString(16).slice(2, 6)}`, ...row };
+    if (!row.id)
+      row = {
+        id: `row-${this.table.length + 1}-${Math.random().toString(16).slice(2, 6)}`,
+        ...row,
+      };
     const idx = this.table.findIndex((r) => r.id === row.id);
     if (idx >= 0) this.table[idx] = { ...this.table[idx], ...row };
     else this.table.push({ ...row });
@@ -106,7 +115,9 @@ class MemRepo {
       return [];
     }
     if (/FROM billboard_sites WHERE organization_id = \$1 AND client_request_id = \$2/.test(s)) {
-      return this.table.filter((r) => r.organizationId === params[0] && r.clientRequestId === params[1]).map(clone);
+      return this.table
+        .filter((r) => r.organizationId === params[0] && r.clientRequestId === params[1])
+        .map(clone);
     }
     if (/FROM billboard_sites WHERE id = \$1/.test(s)) {
       return this.table.filter((r) => r.id === params[0]).map(clone);
@@ -125,10 +136,26 @@ class MemRepo {
         .map(clone);
     }
     if (/SELECT 1 FROM site_assets/.test(s)) {
-      return this.assetTable.some((r) => r.siteId === params[0] && r.kind === 'front') ? [{ ok: 1 }] : [];
+      return this.assetTable.some(
+        (r) =>
+          r.siteId === params[0] &&
+          r.kind === 'front' &&
+          (!s.includes('captured_at IS NOT NULL') || r.capturedAt != null),
+      )
+        ? [{ ok: 1 }]
+        : [];
     }
     if (/SELECT count\(\*\)/.test(s)) {
-      return [{ c: this.assetTable.filter((r) => r.siteId === params[0] && r.kind === 'front').length }];
+      return [
+        {
+          c: this.assetTable.filter(
+            (r) =>
+              r.siteId === params[0] &&
+              r.kind === 'front' &&
+              (!s.includes('captured_at IS NOT NULL') || r.capturedAt != null),
+          ).length,
+        },
+      ];
     }
     throw new Error(`Unexpected query: ${s}`);
   }
@@ -183,7 +210,9 @@ function buildHarness(
   const rateCards: Row[] = [];
   const blackouts: Row[] = [];
   const audit: Row[] = [];
-  const organizations: Row[] = options.organizations ?? [{ id: 'org-partner', type: 'media_partner' }];
+  const organizations: Row[] = options.organizations ?? [
+    { id: 'org-partner', type: 'media_partner' },
+  ];
   const storage = { stored: [] as string[], removed: [] as string[] };
 
   // Sync: TypeORM's EntityManager.getRepository is synchronous.
@@ -221,7 +250,11 @@ function buildHarness(
           },
         };
       case UserCapabilityOverrideEntity:
-        return { async find() { return []; } };
+        return {
+          async find() {
+            return [];
+          },
+        };
       case OrganizationEntity:
         return new MemRepo(organizations);
       default:
@@ -269,26 +302,26 @@ function buildHarness(
   };
 
   const db = { repo: async (t: unknown) => repoFor(t), transaction } as unknown as DatabaseService;
-  const service = new InventoryService(
-    db,
-    new CapabilityResolverService(),
-    {
-      async store(ref: string) {
-        storage.stored.push(ref);
-        return ref;
-      },
-      async read() {
-        return Buffer.alloc(4);
-      },
-      async remove(ref: string) {
-        storage.removed.push(ref);
-      },
-    } as never,
-  );
+  const service = new InventoryService(db, new CapabilityResolverService(), {
+    async store(ref: string) {
+      storage.stored.push(ref);
+      return ref;
+    },
+    async read() {
+      return Buffer.alloc(4);
+    },
+    async remove(ref: string) {
+      storage.removed.push(ref);
+    },
+  } as never);
   return { service, sites, faces, assets, metadata, rateCards, blackouts, audit, storage };
 }
 
-const USER: AuthenticatedUser = { userId: 'kwame-1', email: 'kwame@example.test', sessionVersion: 0 };
+const USER: AuthenticatedUser = {
+  userId: 'kwame-1',
+  email: 'kwame@example.test',
+  sessionVersion: 0,
+};
 const ORG = 'org-partner';
 
 const createDto = (patch: Partial<CreateSiteDto> = {}): CreateSiteDto =>
@@ -305,7 +338,10 @@ const createDto = (patch: Partial<CreateSiteDto> = {}): CreateSiteDto =>
   }) as CreateSiteDto;
 
 const png = () => ({
-  buffer: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(8)]),
+  buffer: Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(8),
+  ]),
   mimetype: 'image/png',
   originalname: 'front.png',
 });
@@ -328,6 +364,23 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
     assert.equal((row.after as Row).name, 'Ikorodu Road Panel');
   });
 
+  it('canonicalizes supported countries for direct service callers while retaining unknown legacy countries', async () => {
+    for (const [country, name, latitude, longitude] of [
+      ['NGA', 'Nigeria', 6.5, 3.3],
+      ['GHA', 'Ghana', 5.6, -0.18],
+      ['Bénin', 'Benin', 6.37, 2.39],
+      ['Ivory Coast', "Côte d'Ivoire", 5.36, -4],
+      ['Cameroun', 'Cameroon', 4.05, 9.77],
+      ['Legacy Market', 'Legacy Market', 6.5, 3.3],
+    ] as const) {
+      const h = buildHarness();
+      const created = await h.service.createSite(ORG, createDto({ country, latitude, longitude }));
+      assert.equal(created.country, name);
+      await h.service.updateSite(USER, ORG, 'site-1', { country, latitude, longitude });
+      assert.equal(h.sites[0].country, name);
+    }
+  });
+
   it('updateSite writes one audit row with before/after snapshots', async () => {
     const h = buildHarness();
     await h.service.updateSite(USER, ORG, 'site-1', {
@@ -339,6 +392,32 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
     assert.equal((h.audit[0].before as Row).name, 'Fixture Site');
     assert.equal((h.audit[0].after as Row).name, 'Renamed Site');
     assert.equal(h.sites[0].name, 'Renamed Site');
+  });
+
+  it('location corrections invalidate review evidence and unpublish; unrelated edits retain it', async () => {
+    const verification = { status: 'mismatch', reasonCode: 'address_pin_mismatch' };
+    const h = buildHarness({
+      site: {
+        status: 'listed',
+        locationVerification: verification,
+        rejectionReason: 'Correct the pin',
+      },
+    });
+    await h.service.updateSite(USER, ORG, 'site-1', { name: 'Renamed fixture' });
+    assert.deepEqual(h.sites[0].locationVerification, verification);
+    assert.equal(h.sites[0].status, 'listed');
+    await h.service.updateSite(USER, ORG, 'site-1', { address: '20 Corrected Synthetic Road' });
+    assert.equal(h.sites[0].locationVerification, null);
+    assert.equal(h.sites[0].rejectionReason, null);
+    assert.equal(h.sites[0].status, 'draft');
+    const retired = buildHarness({
+      site: { status: 'decommissioned', locationVerification: verification },
+    });
+    await retired.service.updateSite(USER, ORG, 'site-1', {
+      address: '30 Corrected Synthetic Road',
+    });
+    assert.equal(retired.sites[0].status, 'decommissioned');
+    assert.equal(retired.sites[0].locationVerification, null);
   });
 
   it('deleteSite (decommission) writes one audit row and keeps the snapshot', async () => {
@@ -353,9 +432,22 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
   it('lifecycle mutations each write exactly one audit row', async () => {
     const h = buildHarness({ site: { status: 'draft' } });
     // The server-side submit gate requires a front-on reference photo (SPEC §7.1).
-    h.assets.push({ id: 'asset-1', siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' });
+    h.assets.push({
+      id: 'asset-1',
+      siteId: 'site-1',
+      kind: 'front',
+      capturedAt: new Date('2026-08-01'),
+      storageRef: 'assets/site-1/front.png',
+    });
     h.faces.push({ id: 'face-1', siteId: 'site-1', bookable: true });
-    h.rateCards.push({ id: 'rate-1', siteId: 'site-1', faceId: null, effectiveFrom: new Date('2020-01-01'), rates: { perDay: 100 }, currency: 'NGN' });
+    h.rateCards.push({
+      id: 'rate-1',
+      siteId: 'site-1',
+      faceId: null,
+      effectiveFrom: new Date('2020-01-01'),
+      rates: { perDay: 100 },
+      currency: 'NGN',
+    });
     await h.service.submitSite(USER, ORG, 'site-1');
     await h.service.approveSite(USER, ORG, 'site-1');
     await h.service.suspendSite(USER, ORG, 'site-1');
@@ -373,7 +465,13 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
 
     // A reject returns a pending site to draft with its reason recorded.
     const pending = buildHarness({ site: { status: 'pending_review' } });
-    pending.assets.push({ id: 'asset-1', siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' });
+    pending.assets.push({
+      id: 'asset-1',
+      siteId: 'site-1',
+      kind: 'front',
+      capturedAt: new Date('2026-08-01'),
+      storageRef: 'assets/site-1/front.png',
+    });
     await pending.service.rejectSite(USER, ORG, 'site-1', 'blurry photo');
     assert.deepEqual(auditActions(pending), ['inventory.site.rejected']);
     assert.equal(pending.sites[0].status, 'draft');
@@ -407,7 +505,12 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
   it('keeps a face with unavailable periods until the partner clears them', async () => {
     const h = buildHarness();
     const face = await h.service.addFace(USER, ORG, 'site-1', {
-      faceLabel: 'A', width: 12, height: 3, area: 36, units: 'm', bookable: true,
+      faceLabel: 'A',
+      width: 12,
+      height: 3,
+      area: 36,
+      units: 'm',
+      bookable: true,
     });
     const faceId = String((face as unknown as Row).id);
     h.blackouts.push({ id: 'blackout-1', faceId, organizationId: ORG });
@@ -421,7 +524,14 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
 
   it('asset upload + delete write one audit row each; storage removal is post-commit', async () => {
     const h = buildHarness();
-    const asset = await h.service.addAsset(USER, ORG, 'site-1', 'front', png(), new Date('2026-08-01'));
+    const asset = await h.service.addAsset(
+      USER,
+      ORG,
+      'site-1',
+      'front',
+      png(),
+      new Date('2026-08-01'),
+    );
     assert.deepEqual(auditActions(h), ['inventory.asset.added']);
     await h.service.deleteAsset(USER, ORG, 'site-1', String((asset as unknown as Row).id));
     assert.deepEqual(auditActions(h), ['inventory.asset.added', 'inventory.asset.deleted']);
@@ -430,19 +540,23 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
 
   it('metadata + rate card mutations each write one audit row', async () => {
     const h = buildHarness();
-    const m = await h.service.addMetadata(
-      USER,
-      ORG,
-      'site-1',
-      { dimension: 'structure', payload: { aadt: 55000 }, source: 'field visit', method: 'count' },
-    );
-    await h.service.updateMetadata(USER, ORG, String((m as unknown as Row).id), { confidence: 0.9 });
+    const m = await h.service.addMetadata(USER, ORG, 'site-1', {
+      dimension: 'structure',
+      payload: { aadt: 55000 },
+      source: 'field visit',
+      method: 'count',
+    });
+    await h.service.updateMetadata(USER, ORG, String((m as unknown as Row).id), {
+      confidence: 0.9,
+    });
     const rc = await h.service.createRateCard(USER, ORG, 'site-1', {
       currency: 'NGN',
       rates: { perDay: 150000 },
       effectiveFrom: '2026-09-01',
     });
-    await h.service.updateRateCard(USER, ORG, String((rc as unknown as Row).id), { seasonalRules: { rule: 'harmattan' } });
+    await h.service.updateRateCard(USER, ORG, String((rc as unknown as Row).id), {
+      seasonalRules: { rule: 'harmattan' },
+    });
     assert.deepEqual(auditActions(h), [
       'inventory.metadata.added',
       'inventory.metadata.updated',
@@ -454,12 +568,25 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
 
   it('rejects empty prices and backwards rate dates before persisting a card', async () => {
     const h = buildHarness();
-    await assert.rejects(() => h.service.createRateCard(USER, ORG, 'site-1', {
-      currency: 'NGN', rates: {}, effectiveFrom: '2026-09-01',
-    }), BadRequestException);
-    await assert.rejects(() => h.service.createRateCard(USER, ORG, 'site-1', {
-      currency: 'NGN', rates: { perDay: 100 }, effectiveFrom: '2026-09-01', effectiveTo: '2026-08-31',
-    }), BadRequestException);
+    await assert.rejects(
+      () =>
+        h.service.createRateCard(USER, ORG, 'site-1', {
+          currency: 'NGN',
+          rates: {},
+          effectiveFrom: '2026-09-01',
+        }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () =>
+        h.service.createRateCard(USER, ORG, 'site-1', {
+          currency: 'NGN',
+          rates: { perDay: 100 },
+          effectiveFrom: '2026-09-01',
+          effectiveTo: '2026-08-31',
+        }),
+      BadRequestException,
+    );
     assert.equal(h.rateCards.length, 0);
     assert.equal(h.audit.length, 0);
   });
@@ -467,17 +594,37 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
   it('withdraws a future rate with an audit record and keeps current rates', async () => {
     const h = buildHarness();
     const future = await h.service.createRateCard(USER, ORG, 'site-1', {
-      currency: 'NGN', rates: { perDay: 100 }, effectiveFrom: '2099-01-01',
+      currency: 'NGN',
+      rates: { perDay: 100 },
+      effectiveFrom: '2099-01-01',
     });
     const current = await h.service.createRateCard(USER, ORG, 'site-1', {
-      currency: 'NGN', rates: { perDay: 90 }, effectiveFrom: '2020-01-01',
+      currency: 'NGN',
+      rates: { perDay: 90 },
+      effectiveFrom: '2020-01-01',
     });
-    await assert.rejects(() => h.service.withdrawFutureRateCard(USER, 'another-org', String((future as unknown as Row).id)), ForbiddenException);
-    await assert.rejects(() => h.service.withdrawFutureRateCard(USER, ORG, String((current as unknown as Row).id)), ConflictException);
+    await assert.rejects(
+      () =>
+        h.service.withdrawFutureRateCard(
+          USER,
+          'another-org',
+          String((future as unknown as Row).id),
+        ),
+      ForbiddenException,
+    );
+    await assert.rejects(
+      () => h.service.withdrawFutureRateCard(USER, ORG, String((current as unknown as Row).id)),
+      ConflictException,
+    );
     await h.service.withdrawFutureRateCard(USER, ORG, String((future as unknown as Row).id));
-    assert.deepEqual(h.rateCards.map((rate) => rate.id), [(current as unknown as Row).id]);
+    assert.deepEqual(
+      h.rateCards.map((rate) => rate.id),
+      [(current as unknown as Row).id],
+    );
     assert.deepEqual(auditActions(h), [
-      'inventory.rate_card.created', 'inventory.rate_card.created', 'inventory.rate_card.withdrawn',
+      'inventory.rate_card.created',
+      'inventory.rate_card.created',
+      'inventory.rate_card.withdrawn',
     ]);
     assert.equal(h.audit[2].after, null);
   });
@@ -498,7 +645,11 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
     const h = buildHarness();
     const dto = createDto({ clientRequestId: 'req-x' });
     const first = await h.service.createSite(ORG, dto, { userId: USER.userId, orgId: ORG });
-    const replay = await h.service.createSite(ORG, { ...dto, name: 'Second Try' }, { userId: USER.userId, orgId: ORG });
+    const replay = await h.service.createSite(
+      ORG,
+      { ...dto, name: 'Second Try' },
+      { userId: USER.userId, orgId: ORG },
+    );
     assert.equal(h.sites.length, 2); // seeded fixture + one created draft
     assert.equal(h.audit.length, 1); // replay wrote no second audit row
     assert.equal((replay as unknown as Row).id, (first as unknown as Row).id);
@@ -507,7 +658,10 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
 
   it('cross-tenant mutations write no audit rows', async () => {
     const h = buildHarness();
-    await assert.rejects(() => h.service.deleteSite(USER, 'org-other', 'site-1'), ForbiddenException);
+    await assert.rejects(
+      () => h.service.deleteSite(USER, 'org-other', 'site-1'),
+      ForbiddenException,
+    );
     await assert.rejects(
       () => h.service.updateFace(USER, 'org-other', 'nope', { bookable: false }),
       NotFoundException,
@@ -532,7 +686,11 @@ describe('inventory provenance + plausibility (SPEC §5.1 trust contract)', () =
   it('requires provenance when orientation/viewing distance/elevation is entered', async () => {
     const h = buildHarness();
     await assert.rejects(
-      () => h.service.createSite(ORG, createDto({ orientationDeg: 90 }), { userId: USER.userId, orgId: ORG }),
+      () =>
+        h.service.createSite(ORG, createDto({ orientationDeg: 90 }), {
+          userId: USER.userId,
+          orgId: ORG,
+        }),
       BadRequestException,
     );
     await assert.rejects(
@@ -556,7 +714,11 @@ describe('inventory provenance + plausibility (SPEC §5.1 trust contract)', () =
       createDto({
         orientationDeg: 90,
         viewingDistance: 40,
-        structureProvenance: { source: 'Google Maps street view', method: 'visual estimate', collectedAt: '2026-09-01' },
+        structureProvenance: {
+          source: 'Google Maps street view',
+          method: 'visual estimate',
+          collectedAt: '2026-09-01',
+        },
       }),
       { userId: USER.userId, orgId: ORG },
     );
@@ -577,16 +739,18 @@ describe('inventory provenance + plausibility (SPEC §5.1 trust contract)', () =
     );
     // Unchanged value needs no provenance.
     await h.service.updateSite(USER, ORG, 'site-1', { orientationDeg: 90 } as UpdateSiteDto);
-    assert.deepEqual(h.metadata.filter((m) => m.dimension === 'structure'), []);
-    await h.service.updateSite(
-      USER,
-      ORG,
-      'site-1',
-      {
-        orientationDeg: 300,
-        structureProvenance: { source: 'Site visit', method: 'compass reading', collectedAt: '2026-09-10' },
-      } as UpdateSiteDto,
+    assert.deepEqual(
+      h.metadata.filter((m) => m.dimension === 'structure'),
+      [],
     );
+    await h.service.updateSite(USER, ORG, 'site-1', {
+      orientationDeg: 300,
+      structureProvenance: {
+        source: 'Site visit',
+        method: 'compass reading',
+        collectedAt: '2026-09-10',
+      },
+    } as UpdateSiteDto);
     const structure = h.metadata.filter((m) => m.dimension === 'structure');
     assert.equal(structure.length, 1);
     assert.equal(structure[0].verification, 'partner_declared');
@@ -597,8 +761,15 @@ describe('inventory provenance + plausibility (SPEC §5.1 trust contract)', () =
   it('plausibility: rejects bad orientation, non-positive viewing distance, malformed hours, and out-of-box coordinates', async () => {
     const h = buildHarness();
     await assert.rejects(
-      () => h.service.createSite(ORG, createDto({ illuminationHours: 'sometimes' }), { userId: USER.userId, orgId: ORG }),
-      (err: BadRequestException) => { assert.match(err.message, /illumination hours/); return true; },
+      () =>
+        h.service.createSite(ORG, createDto({ illuminationHours: 'sometimes' }), {
+          userId: USER.userId,
+          orgId: ORG,
+        }),
+      (err: BadRequestException) => {
+        assert.match(err.message, /illumination hours/);
+        return true;
+      },
     );
     await assert.rejects(
       () =>
@@ -611,7 +782,10 @@ describe('inventory provenance + plausibility (SPEC §5.1 trust contract)', () =
           }),
           { userId: USER.userId, orgId: ORG },
         ),
-      (err: BadRequestException) => { assert.match(err.message, /viewing distance/); return true; },
+      (err: BadRequestException) => {
+        assert.match(err.message, /viewing distance/);
+        return true;
+      },
     );
     await assert.rejects(
       () =>
@@ -620,18 +794,27 @@ describe('inventory provenance + plausibility (SPEC §5.1 trust contract)', () =
           createDto({ country: 'Nigeria', latitude: 48.2, longitude: 11.5 }),
           { userId: USER.userId, orgId: ORG },
         ),
-      (err: BadRequestException) => { assert.match(err.message, /outside nigeria's bounding box/i); return true; },
+      (err: BadRequestException) => {
+        assert.match(err.message, /outside nigeria's bounding box/i);
+        return true;
+      },
     );
     await assert.rejects(
-      () => h.service.createSite(ORG, createDto({ orientationDeg: 360 }), { userId: USER.userId, orgId: ORG }),
-      (err: BadRequestException) => { assert.match(err.message, /between 0 and 359/); return true; },
+      () =>
+        h.service.createSite(ORG, createDto({ orientationDeg: 360 }), {
+          userId: USER.userId,
+          orgId: ORG,
+        }),
+      (err: BadRequestException) => {
+        assert.match(err.message, /between 0 and 359/);
+        return true;
+      },
     );
     // Same shape as retained seed data is accepted.
-    const ok = await h.service.createSite(
-      ORG,
-      createDto({ illuminationHours: '18:00-06:00' }),
-      { userId: USER.userId, orgId: ORG },
-    );
+    const ok = await h.service.createSite(ORG, createDto({ illuminationHours: '18:00-06:00' }), {
+      userId: USER.userId,
+      orgId: ORG,
+    });
     assert.ok(ok);
   });
 
@@ -639,7 +822,10 @@ describe('inventory provenance + plausibility (SPEC §5.1 trust contract)', () =
     const h = buildHarness();
     await assert.rejects(
       () => h.service.addAsset(USER, ORG, 'site-1', 'front', png()),
-      (err: BadRequestException) => { assert.match(err.message, /capture date/); return true; },
+      (err: BadRequestException) => {
+        assert.match(err.message, /capture date/);
+        return true;
+      },
     );
     const context = await h.service.addAsset(USER, ORG, 'site-1', 'context', png());
     assert.ok(context);
@@ -699,7 +885,10 @@ describe('demo metadata suppression (truth reset §1.4.1)', () => {
       ORG,
       'site-1',
     );
-    assert.deepEqual((ownerSite.metadata as Row[]).map((r) => r.id), ['demo-1', 'prod-1']);
+    assert.deepEqual(
+      (ownerSite.metadata as Row[]).map((r) => r.id),
+      ['demo-1', 'prod-1'],
+    );
     assert.equal(ownerSite.organizationId, 'org-partner');
 
     // A cross-org MARKETPLACE_VIEW planner reads the same route as a buyer:
@@ -710,18 +899,21 @@ describe('demo metadata suppression (truth reset §1.4.1)', () => {
       'org-agency',
       'site-1',
     );
-    assert.deepEqual((buyerSite.metadata as Row[]).map((r) => r.id), ['prod-1']);
+    assert.deepEqual(
+      (buyerSite.metadata as Row[]).map((r) => r.id),
+      ['prod-1'],
+    );
     assert.equal(buyerSite.organizationId, undefined);
   });
 
   it('partner-entered metadata is always production-class even if a demo flag is attempted', async () => {
     const h = buildHarness();
-    const record = await h.service.addMetadata(
-      USER,
-      ORG,
-      'site-1',
-      { dimension: 'traffic', payload: {}, verification: 'partner_declared', dataClass: 'demo' } as never,
-    );
+    const record = await h.service.addMetadata(USER, ORG, 'site-1', {
+      dimension: 'traffic',
+      payload: {},
+      verification: 'partner_declared',
+      dataClass: 'demo',
+    } as never);
     const row = record as unknown as Row;
     assert.equal(row.dataClass, 'production');
     assert.equal(row.verification, 'partner_declared');

@@ -113,7 +113,12 @@ class MemRepo {
         .slice(s.indexOf('(') + 1, s.indexOf(')'))
         .split(',')
         .map((c) => c.trim());
-      const row: Row = { id: nextRowId(), createdAt: 'now', updatedAt: 'now', rejectionReason: null };
+      const row: Row = {
+        id: nextRowId(),
+        createdAt: 'now',
+        updatedAt: 'now',
+        rejectionReason: null,
+      };
       cols.forEach((col, i) => {
         row[toCamel(col)] = params[i];
       });
@@ -125,17 +130,35 @@ class MemRepo {
         this.opts.replaysToSkip!.count -= 1;
         return [];
       }
-      return this.table.filter((r) => r.organizationId === params[0] && r.clientRequestId === params[1]);
+      return this.table.filter(
+        (r) => r.organizationId === params[0] && r.clientRequestId === params[1],
+      );
     }
     if (s.includes('FROM billboard_sites WHERE id =')) {
       return this.table.filter((r) => r.id === params[0]);
     }
     if (this.variant === 'site' && s.startsWith('SELECT 1 FROM site_assets')) {
       const assets = this.opts.assetTable ?? [];
-      return assets.some((r) => r.siteId === params[0] && r.kind === 'front') ? [{ ok: 1 }] : [];
+      return assets.some(
+        (r) =>
+          r.siteId === params[0] &&
+          r.kind === 'front' &&
+          (!s.includes('captured_at IS NOT NULL') || r.capturedAt != null),
+      )
+        ? [{ ok: 1 }]
+        : [];
     }
     if (this.variant === 'asset' && s.startsWith('SELECT count(*)')) {
-      return [{ c: this.table.filter((r) => r.siteId === params[0] && r.kind === 'front').length }];
+      return [
+        {
+          c: this.table.filter(
+            (r) =>
+              r.siteId === params[0] &&
+              r.kind === 'front' &&
+              (!s.includes('captured_at IS NOT NULL') || r.capturedAt != null),
+          ).length,
+        },
+      ];
     }
     if (s.startsWith('UPDATE billboard_sites SET')) {
       const row = this.table.find((r) => r.id === params[params.length - 1]);
@@ -238,15 +261,26 @@ function buildFixture(opts: FixtureOptions = {}) {
           return (
             memberships.find(
               (m) =>
-                m.userId === where.userId && m.organizationId === where.organizationId && where.status === 'active',
+                m.userId === where.userId &&
+                m.organizationId === where.organizationId &&
+                where.status === 'active',
             ) ?? null
           );
         },
       };
     }
-    if (target === UserCapabilityOverrideEntity) return { async find() { return []; } };
+    if (target === UserCapabilityOverrideEntity)
+      return {
+        async find() {
+          return [];
+        },
+      };
     if (target === OrganizationEntity) {
-      return { async findOne() { return { id: 'org', type: opts.orgType ?? 'media_partner' }; } };
+      return {
+        async findOne() {
+          return { id: 'org', type: opts.orgType ?? 'media_partner' };
+        },
+      };
     }
     throw new Error('Unexpected repository');
   };
@@ -285,14 +319,34 @@ function buildFixture(opts: FixtureOptions = {}) {
   };
   const db = { repo: async (t: unknown) => repoFor(t), transaction } as unknown as DatabaseService;
   const storage = new FakeStorage();
-  const service = new InventoryService(db, new CapabilityResolverService(), storage as unknown as StorageService);
+  const service = new InventoryService(
+    db,
+    new CapabilityResolverService(),
+    storage as unknown as StorageService,
+  );
   return { service, sites, faces, rateCards, assets, metadata, audit, storage };
 }
 
-const USER: AuthenticatedUser = { userId: 'partner-user', email: 'kwame@example.test', sessionVersion: 0 };
-const OTHER_TENANT: AuthenticatedUser = { userId: 'other-user', email: 'chidi@example.test', sessionVersion: 0 };
-const PLANNER: AuthenticatedUser = { userId: 'planner-user', email: 'aisha@example.test', sessionVersion: 0 };
-const PLATFORM: AuthenticatedUser = { userId: 'platform-user', email: 'adaora@example.test', sessionVersion: 0 };
+const USER: AuthenticatedUser = {
+  userId: 'partner-user',
+  email: 'kwame@example.test',
+  sessionVersion: 0,
+};
+const OTHER_TENANT: AuthenticatedUser = {
+  userId: 'other-user',
+  email: 'chidi@example.test',
+  sessionVersion: 0,
+};
+const PLANNER: AuthenticatedUser = {
+  userId: 'planner-user',
+  email: 'aisha@example.test',
+  sessionVersion: 0,
+};
+const PLATFORM: AuthenticatedUser = {
+  userId: 'platform-user',
+  email: 'adaora@example.test',
+  sessionVersion: 0,
+};
 
 const createDto = (patch: Partial<CreateSiteDto> = {}): CreateSiteDto =>
   ({
@@ -308,7 +362,10 @@ const createDto = (patch: Partial<CreateSiteDto> = {}): CreateSiteDto =>
   }) as CreateSiteDto;
 
 const png = (): { buffer: Buffer; mimetype: string; originalname: string } => ({
-  buffer: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(8)]),
+  buffer: Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(8),
+  ]),
   mimetype: 'image/png',
   originalname: 'front.png',
 });
@@ -318,16 +375,30 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
     it('403s a cross-tenant INVENTORY_VIEW holder on a listed site detail', async () => {
       const { service } = buildFixture({
         site: { status: 'listed' },
-        memberships: [{ userId: 'other-user', organizationId: 'org-other', role: 'inventory_manager' }],
+        memberships: [
+          { userId: 'other-user', organizationId: 'org-other', role: 'inventory_manager' },
+        ],
       });
-      await assert.rejects(() => service.getSite(OTHER_TENANT, 'org-other', 'site-1'), ForbiddenException);
+      await assert.rejects(
+        () => service.getSite(OTHER_TENANT, 'org-other', 'site-1'),
+        ForbiddenException,
+      );
     });
 
     it('403s the same holder on a listed site asset read (child endpoint)', async () => {
       const { service } = buildFixture({
         site: { status: 'listed' },
-        assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
-        memberships: [{ userId: 'other-user', organizationId: 'org-other', role: 'inventory_manager' }],
+        assets: [
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: new Date('2026-08-01'),
+            storageRef: 'assets/site-1/front.png',
+          },
+        ],
+        memberships: [
+          { userId: 'other-user', organizationId: 'org-other', role: 'inventory_manager' },
+        ],
       });
       await assert.rejects(
         () => service.readAsset(OTHER_TENANT, 'org-other', 'site-1', 'asset-1'),
@@ -349,13 +420,23 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
         memberships: [{ userId: 'planner-user', organizationId: 'org-agency', role: 'planner' }],
         orgType: 'agency',
       });
-      await assert.rejects(() => draft.service.getSite(PLANNER, 'org-agency', 'site-1'), ForbiddenException);
+      await assert.rejects(
+        () => draft.service.getSite(PLANNER, 'org-agency', 'site-1'),
+        ForbiddenException,
+      );
     });
 
     it('admits the owning organization and a platform admin, and streams listed assets', async () => {
       const owner = buildFixture({
         site: { status: 'listed' },
-        assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
+        assets: [
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: new Date('2026-08-01'),
+            storageRef: 'assets/site-1/front.png',
+          },
+        ],
       });
       const site = await owner.service.getSite(USER, 'org-partner', 'site-1');
       assert.equal(site.status, 'listed');
@@ -363,7 +444,9 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
 
       const admin = buildFixture({
         site: { status: 'pending_review' },
-        memberships: [{ userId: 'platform-user', organizationId: 'org-platform', role: 'platform_admin' }],
+        memberships: [
+          { userId: 'platform-user', organizationId: 'org-platform', role: 'platform_admin' },
+        ],
         orgType: 'platform',
       });
       const adminSite = await admin.service.getSite(PLATFORM, 'org-platform', 'site-1');
@@ -371,7 +454,14 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
 
       const viewer = buildFixture({
         site: { status: 'listed' },
-        assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
+        assets: [
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: new Date('2026-08-01'),
+            storageRef: 'assets/site-1/front.png',
+          },
+        ],
         memberships: [{ userId: 'planner-user', organizationId: 'org-agency', role: 'planner' }],
         orgType: 'agency',
       });
@@ -382,7 +472,9 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
 
   describe('listing completeness at submit and approve', () => {
     it('rejects a submit without a front-on photo with all server-side problems', async () => {
-      const { service } = buildFixture({ site: { format: null, width: 0, latitude: 95, longitude: 200 } });
+      const { service } = buildFixture({
+        site: { format: null, width: 0, latitude: 95, longitude: 200 },
+      });
       await assert.rejects(
         () => service.submitSite(USER, 'org-partner', 'site-1'),
         (err: unknown) => {
@@ -401,7 +493,14 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
     it('rejects an approve on a pending site that lost its front photo since submission', async () => {
       const { service, assets } = buildFixture({
         site: { status: 'pending_review' },
-        assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/gone.png' }],
+        assets: [
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: new Date('2026-08-01'),
+            storageRef: 'assets/site-1/gone.png',
+          },
+        ],
       });
       assets.length = 0; // photo disappeared after submit (the drift the red team probed)
       await assert.rejects(
@@ -416,10 +515,23 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
 
     it('completes draft -> pending_review -> listed when the site is complete', async () => {
       const { service, sites, faces, rateCards } = buildFixture({
-        assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
+        assets: [
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: new Date('2026-08-01'),
+            storageRef: 'assets/site-1/front.png',
+          },
+        ],
       });
       faces.push({ id: 'face-1', siteId: 'site-1', bookable: true });
-      rateCards.push({ siteId: 'site-1', faceId: null, effectiveFrom: new Date('2020-01-01'), rates: { perDay: 100 }, currency: 'GHS' });
+      rateCards.push({
+        siteId: 'site-1',
+        faceId: null,
+        effectiveFrom: new Date('2020-01-01'),
+        rates: { perDay: 100 },
+        currency: 'GHS',
+      });
       await service.submitSite(USER, 'org-partner', 'site-1');
       assert.equal(sites[0].status, 'pending_review');
       const approved = await service.approveSite(USER, 'org-partner', 'site-1');
@@ -427,17 +539,55 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
       assert.equal(sites[0].status, 'listed');
     });
 
+    it('does not submit a site with only an unknown-date front image', async () => {
+      const h = buildFixture({
+        assets: [
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: null,
+            storageRef: 'assets/site-1/unknown.png',
+          },
+        ],
+      });
+      await assert.rejects(
+        () => h.service.submitSite(USER, 'org-partner', 'site-1'),
+        /known capture date/,
+      );
+      assert.equal(h.audit.length, 0);
+    });
+
     it('requires a current price for every bookable face', async () => {
       const { service, faces, rateCards } = buildFixture({
-        assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
+        assets: [
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: new Date('2026-08-01'),
+            storageRef: 'assets/site-1/front.png',
+          },
+        ],
       });
       faces.push(
         { id: 'face-1', siteId: 'site-1', bookable: true },
         { id: 'face-2', siteId: 'site-1', bookable: true },
       );
-      rateCards.push({ siteId: 'site-1', faceId: 'face-1', effectiveFrom: new Date('2020-01-01'), rates: { perDay: 100 } });
-      await assert.rejects(() => service.submitSite(USER, 'org-partner', 'site-1'), /current rate for each bookable face/);
-      rateCards.push({ siteId: 'site-1', faceId: 'face-2', effectiveFrom: new Date('2020-01-01'), rates: { perWeek: 600 } });
+      rateCards.push({
+        siteId: 'site-1',
+        faceId: 'face-1',
+        effectiveFrom: new Date('2020-01-01'),
+        rates: { perDay: 100 },
+      });
+      await assert.rejects(
+        () => service.submitSite(USER, 'org-partner', 'site-1'),
+        /current rate for each bookable face/,
+      );
+      rateCards.push({
+        siteId: 'site-1',
+        faceId: 'face-2',
+        effectiveFrom: new Date('2020-01-01'),
+        rates: { perWeek: 600 },
+      });
       await service.submitSite(USER, 'org-partner', 'site-1');
     });
   });
@@ -459,14 +609,25 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
     it('rejects a photo larger than 10 MB with 413', async () => {
       const { service, storage } = buildFixture();
       const big = { ...png(), buffer: Buffer.alloc(PHOTO_MAX_BYTES + 1) };
-      await assert.rejects(() => service.addAsset(USER, 'org-partner', 'site-1', 'front', big, new Date('2026-08-01')), PayloadTooLargeException);
+      await assert.rejects(
+        () => service.addAsset(USER, 'org-partner', 'site-1', 'front', big, new Date('2026-08-01')),
+        PayloadTooLargeException,
+      );
       assert.equal(storage.stored.length, 0);
     });
 
     it('rejects non-image MIME and PNG files with a forged signature', async () => {
       const { service, storage } = buildFixture();
       await assert.rejects(
-        () => service.addAsset(USER, 'org-partner', 'site-1', 'front', { ...png(), mimetype: 'text/plain' }, new Date('2026-08-01')),
+        () =>
+          service.addAsset(
+            USER,
+            'org-partner',
+            'site-1',
+            'front',
+            { ...png(), mimetype: 'text/plain' },
+            new Date('2026-08-01'),
+          ),
         (err: unknown) => {
           assert.ok(err instanceof BadRequestException);
           assert.match((err as BadRequestException).message, /JPEG, PNG, or WebP/);
@@ -474,13 +635,20 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
         },
       );
       const forged = { ...png(), buffer: Buffer.alloc(24) }; // claims image/png, wrong magic bytes
-      await assert.rejects(() => service.addAsset(USER, 'org-partner', 'site-1', 'front', forged, new Date('2026-08-01')), BadRequestException);
+      await assert.rejects(
+        () =>
+          service.addAsset(USER, 'org-partner', 'site-1', 'front', forged, new Date('2026-08-01')),
+        BadRequestException,
+      );
       assert.equal(storage.stored.length, 0);
     });
 
     it('checks site ownership before touching storage', async () => {
       const { service, storage } = buildFixture();
-      await assert.rejects(() => service.addAsset(USER, 'org-other', 'site-1', 'front', png(), new Date('2026-08-01')), ForbiddenException);
+      await assert.rejects(
+        () => service.addAsset(USER, 'org-other', 'site-1', 'front', png(), new Date('2026-08-01')),
+        ForbiddenException,
+      );
       assert.equal(storage.stored.length, 0);
     });
 
@@ -507,13 +675,29 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
         },
       } as unknown as DatabaseService;
       const storage = new FakeStorage();
-      const broken = new InventoryService(brokenDb, new CapabilityResolverService(), storage as unknown as StorageService);
-      await assert.rejects(() => broken.addAsset(USER, 'org-partner', 'site-1', 'front', png(), new Date('2026-08-01')));
-      assert.deepEqual(storage.removed, storage.stored.map((s) => s.ref));
+      const broken = new InventoryService(
+        brokenDb,
+        new CapabilityResolverService(),
+        storage as unknown as StorageService,
+      );
+      await assert.rejects(() =>
+        broken.addAsset(USER, 'org-partner', 'site-1', 'front', png(), new Date('2026-08-01')),
+      );
+      assert.deepEqual(
+        storage.removed,
+        storage.stored.map((s) => s.ref),
+      );
       assert.equal(storage.stored.length, 1);
 
       const ok = buildFixture();
-      const asset = await ok.service.addAsset(USER, 'org-partner', 'site-1', 'front', png(), new Date('2026-08-01'));
+      const asset = await ok.service.addAsset(
+        USER,
+        'org-partner',
+        'site-1',
+        'front',
+        png(),
+        new Date('2026-08-01'),
+      );
       assert.equal(asset.kind, 'front');
       assert.match(String(asset.storageRef), /^assets\/site-1\//);
       assert.equal(ok.storage.stored.length, 1);
@@ -524,7 +708,14 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
     it('blocks deleting the only front photo of a pending_review site', async () => {
       const { service, assets, storage } = buildFixture({
         site: { status: 'pending_review' },
-        assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
+        assets: [
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: new Date('2026-08-01'),
+            storageRef: 'assets/site-1/front.png',
+          },
+        ],
       });
       await assert.rejects(
         () => service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-1'),
@@ -542,9 +733,19 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
       for (const status of ['approved', 'listed']) {
         const { service } = buildFixture({
           site: { status },
-          assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
+          assets: [
+            {
+              siteId: 'site-1',
+              kind: 'front',
+              capturedAt: new Date('2026-08-01'),
+              storageRef: 'assets/site-1/front.png',
+            },
+          ],
         });
-        await assert.rejects(() => service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-1'), ForbiddenException);
+        await assert.rejects(
+          () => service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-1'),
+          ForbiddenException,
+        );
       }
     });
 
@@ -552,8 +753,18 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
       const replacement = buildFixture({
         site: { status: 'pending_review' },
         assets: [
-          { siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/old.png' },
-          { siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/new.png' },
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: new Date('2026-08-01'),
+            storageRef: 'assets/site-1/old.png',
+          },
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: new Date('2026-08-01'),
+            storageRef: 'assets/site-1/new.png',
+          },
         ],
       });
       const res = await replacement.service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-1');
@@ -562,10 +773,45 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
       assert.deepEqual(replacement.storage.removed, ['assets/site-1/old.png']);
 
       const draft = buildFixture({
-        assets: [{ siteId: 'site-1', kind: 'front', storageRef: 'assets/site-1/front.png' }],
+        assets: [
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: new Date('2026-08-01'),
+            storageRef: 'assets/site-1/front.png',
+          },
+        ],
       });
       await draft.service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-1');
       assert.equal(draft.assets.length, 0);
+    });
+
+    it('requires a dated replacement and permits removing undated evidence without losing the dated front', async () => {
+      const h = buildFixture({
+        site: { status: 'listed' },
+        assets: [
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: new Date('2026-08-01'),
+            storageRef: 'assets/site-1/dated.png',
+          },
+          {
+            siteId: 'site-1',
+            kind: 'front',
+            capturedAt: null,
+            storageRef: 'assets/site-1/unknown.png',
+          },
+        ],
+      });
+      await assert.rejects(
+        () => h.service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-1'),
+        ForbiddenException,
+      );
+      assert.equal(h.assets.length, 2);
+      await h.service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-2');
+      assert.equal(h.assets.length, 1);
+      assert.deepEqual(h.storage.removed, ['assets/site-1/unknown.png']);
     });
 
     it('403s a cross-tenant INVENTORY_EDIT holder on any asset delete (marketplace-visible ids)', async () => {
@@ -650,19 +896,28 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
 
   describe('detail endpoint capability metadata', () => {
     it('guards GET /sites/:id with auth + any-of (INVENTORY_VIEW, MARKETPLACE_VIEW, PLATFORM_ADMIN)', () => {
-      const handler = Object.getOwnPropertyDescriptor(InventoryController.prototype, 'getSite')?.value;
+      const handler = Object.getOwnPropertyDescriptor(
+        InventoryController.prototype,
+        'getSite',
+      )?.value;
       assert.ok(handler);
       const guards = Reflect.getMetadata(GUARDS_METADATA, handler) as unknown[];
       const caps = Reflect.getMetadata(REQUIRE_ANY_CAPABILITIES_KEY, handler) as Capability[];
       assert.ok(guards.includes(JwtAuthGuard));
       assert.ok(guards.includes(CapabilitiesGuard));
-      assert.deepEqual(caps, [Capability.INVENTORY_VIEW, Capability.MARKETPLACE_VIEW, Capability.PLATFORM_ADMIN]);
+      assert.deepEqual(caps, [
+        Capability.INVENTORY_VIEW,
+        Capability.MARKETPLACE_VIEW,
+        Capability.PLATFORM_ADMIN,
+      ]);
     });
 
     it('admits a MARKETPLACE_VIEW holder at the guard; the service decides by status', async () => {
-      const memberships = [{ userId: 'planner-user', organizationId: 'org-agency', role: 'planner' }];
+      const memberships = [
+        { userId: 'planner-user', organizationId: 'org-agency', role: 'planner' },
+      ];
       // Sync: TypeORM's EntityManager.getRepository is synchronous.
-  const repoFor = (target: unknown) => {
+      const repoFor = (target: unknown) => {
         if (target === MembershipEntity) {
           return {
             async findOne({ where }: { where: Record<string, unknown> }) {
@@ -674,8 +929,18 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
             },
           };
         }
-        if (target === UserCapabilityOverrideEntity) return { async find() { return []; } };
-        if (target === OrganizationEntity) return { async findOne() { return { id: 'org', type: 'agency' }; } };
+        if (target === UserCapabilityOverrideEntity)
+          return {
+            async find() {
+              return [];
+            },
+          };
+        if (target === OrganizationEntity)
+          return {
+            async findOne() {
+              return { id: 'org', type: 'agency' };
+            },
+          };
         throw new Error('Unexpected repository');
       };
       const guard = new CapabilitiesGuard(

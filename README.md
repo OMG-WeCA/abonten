@@ -46,6 +46,19 @@ pnpm lint
 
 ## Production packaging
 
+Inventory photo validation requires the pinned `sharp` dependency; installed
+LED-board recordings require local `ffprobe` and `ffmpeg`. The API image includes
+these tools. Host development should install FFmpeg before testing video uploads.
+Uploads are decoded locally and never sent to an external media processor.
+EXIF/device evidence remains unverified; absent GPS or capture time is not inferred.
+A dated front photo is required for publication, while incomplete evidence may be
+saved in a draft.
+
+See [address/pin verification](docs/location-verification.md) and
+[versioned partner terms](docs/partner-terms.md) for configuration and activation
+gates. Map rendering does not establish retained-geocoding entitlement. Draft terms
+are readable; preview acknowledgement is enabled only outside production.
+
 The API and static web app have separate container targets and a production Compose
 template. The template uses external PostgreSQL/PostGIS, Redis, S3-compatible storage,
 SMTP, and a TLS reverse proxy. It binds app ports to loopback only. See
@@ -83,6 +96,7 @@ POSTGRES_INTEGRATION_URL=postgresql://abonten:abonten@localhost:5432/abonten \
 ## Tooling
 
 pnpm workspaces + Turborepo; strict TypeScript everywhere; latest stable versions.
+
 ## Geographic context (Nigeria and Ghana)
 
 The site detail page includes production-only road, administrative-area, mapped POI,

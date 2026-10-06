@@ -1,3 +1,4 @@
+import { SUPPORTED_MARKETS } from '../common/supported-markets';
 import { extractConstraints } from './brief-constraints';
 import type { AssistantMessageDto } from './dto/planning.dto';
 import { planningDays, type PlanningWindow } from './planning-math';
@@ -40,14 +41,22 @@ const cities: (Literal & { country: string })[] = [
   { value: 'Accra', country: 'Ghana', aliases: ['Accra'] },
   { value: 'Douala', country: 'Cameroon', aliases: ['Douala'] },
   { value: 'Abuja', country: 'Nigeria', aliases: ['Abuja'] },
+  { value: 'Benin City', country: 'Nigeria', aliases: ['Benin City'] },
   { value: 'Kumasi', country: 'Ghana', aliases: ['Kumasi'] },
   { value: 'Yaoundé', country: 'Cameroon', aliases: ['Yaoundé', 'Yaounde'] },
+  { value: 'Cotonou', country: 'Benin', aliases: ['Cotonou'] },
+  { value: 'Porto-Novo', country: 'Benin', aliases: ['Porto-Novo', 'Porto Novo'] },
+  { value: 'Abidjan', country: "Côte d'Ivoire", aliases: ['Abidjan'] },
+  { value: 'Yamoussoukro', country: "Côte d'Ivoire", aliases: ['Yamoussoukro'] },
 ];
-const countries: Literal[] = [
-  { value: 'Nigeria', aliases: ['Nigeria', 'Nigéria'] },
-  { value: 'Ghana', aliases: ['Ghana'] },
-  { value: 'Cameroon', aliases: ['Cameroon', 'Cameroun'] },
-];
+const countries: Literal[] = SUPPORTED_MARKETS.map((market) => ({
+  value: market.name,
+  // Short ISO codes are not natural-language country mentions (e.g. "CM" can
+  // describe centimetres); explicit filters still support those aliases.
+  aliases: market.aliases
+    .filter((alias) => alias.length > 3)
+    .flatMap((alias) => [alias, alias.replace(/'/g, '’')]),
+}));
 const formats: Literal[] = [
   { value: 'static', aliases: ['static', 'statique', 'statiques'] },
   {
@@ -76,14 +85,32 @@ function escaped(value: string): string {
 function source(message: boolean, brief: boolean): PlanningIntentSource {
   return message && brief ? 'mixed' : message ? 'message' : brief ? 'brief' : null;
 }
-function literalOptions(text: string, catalog: Literal[]) {
+function literalOptions(text: string, catalog: Literal[], excludedCatalog: Literal[] = []) {
   const mentions: { value: string; index: number; end: number; negated: boolean }[] = [];
+  // A country name nested inside a known city is not a second geography.
+  // Preserve offsets so alternatives and negations still require confirmation.
+  const excludedSpans = excludedCatalog.flatMap((entry) => {
+    const pattern = new RegExp(
+      `(?<![\\p{L}\\p{N}_])(?:${entry.aliases.map(escaped).join('|')})(?![\\p{L}\\p{N}_])`,
+      'giu',
+    );
+    return [...text.matchAll(pattern)].map((match) => ({
+      start: match.index!,
+      end: match.index! + match[0].length,
+    }));
+  });
   for (const entry of catalog) {
     const pattern = new RegExp(
       `(?<![\\p{L}\\p{N}_])(?:${entry.aliases.map(escaped).join('|')})(?![\\p{L}\\p{N}_])`,
       'giu',
     );
     for (const match of text.matchAll(pattern)) {
+      if (
+        excludedSpans.some(
+          (span) => match.index! >= span.start && match.index! + match[0].length <= span.end,
+        )
+      )
+        continue;
       const prefix =
         text
           .slice(Math.max(0, match.index! - 40), match.index!)
@@ -219,7 +246,7 @@ function derive(dto: AssistantMessageDto, brief: string): PlanningRetrievalInten
   const labeledCities = labelOptions(text, cityLabels, 80);
   const labeledCountries = labelOptions(text, countryLabels, 80);
   const literalCities = literalOptions(text, cities);
-  const literalCountries = literalOptions(text, countries);
+  const literalCountries = literalOptions(text, countries, cities);
   const cityOptions = labeledCities.present
     ? {
         values: labeledCities.values.map((value) => canonicalLabel(value, cities)),

@@ -7,6 +7,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { findMarket } from '../common/supported-markets';
 import { DatabaseService } from '../common/database.service';
 import { EmailCodeService } from '../auth/email-code.service';
 import { MembershipEntity } from '../auth/entities/membership.entity';
@@ -26,6 +27,8 @@ import { normalizeEmailIdentity } from '../auth/email-identity';
 import { UserIdentityService } from '../auth/user-identity.service';
 import type { OrganizationRole } from '../capabilities/organization-roles';
 import type { EntityManager, EntityTarget, ObjectLiteral, Repository } from 'typeorm';
+import { preparePartnerTermsAcceptance } from './terms/partner-terms.catalog';
+import { persistPartnerTermsAcceptance } from './partner-terms.service';
 import { OrganizationCreationRequestEntity } from './entities/organization-creation-request.entity';
 
 const ASSIGNABLE_ROLES_BY_ORG_TYPE: Record<string, readonly OrganizationRole[]> = {
@@ -175,9 +178,12 @@ export class OrgsService {
       );
     }
     const name = dto.name.trim();
-    const country = dto.country.trim();
+    const country = findMarket(dto.country)?.name ?? dto.country.trim();
     if (!name) throw new BadRequestException('Organization name is required');
     if (country.length < 2) throw new BadRequestException('Country is required');
+
+    if (dto.type !== 'media_partner' && dto.partnerTerms)
+      throw new BadRequestException('Partner terms apply only to media partners');
 
     return this.db.transaction(async (manager) => {
       const orgs = await this.repository(OrganizationEntity, manager);
@@ -211,12 +217,16 @@ export class OrgsService {
         }
       }
 
+      const terms =
+        dto.type === 'media_partner'
+          ? preparePartnerTermsAcceptance(dto.partnerTerms, dto.defaultLocale ?? 'en')
+          : undefined;
       const org = await orgs.save(
         orgs.create({
           name,
           type: dto.type,
           country,
-          defaultCurrency: dto.defaultCurrency ?? 'NGN',
+          defaultCurrency: dto.defaultCurrency ?? findMarket(country)?.currency ?? 'NGN',
           defaultLocale: dto.defaultLocale ?? 'en',
           status: 'active',
           allowedEmailDomains: dto.allowedEmailDomains,
@@ -246,6 +256,7 @@ export class OrgsService {
         },
         manager,
       );
+      if (terms) await persistPartnerTermsAcceptance(manager, actorUserId, org, terms);
       if (dto.onboardingKey) {
         const requests = await this.repository(OrganizationCreationRequestEntity, manager);
         await requests.save(
@@ -267,7 +278,8 @@ export class OrgsService {
     actorUserId: string,
   ): Promise<OrganizationEntity> {
     const name = dto.name?.trim();
-    const country = dto.country?.trim();
+    const country =
+      dto.country === undefined ? undefined : (findMarket(dto.country)?.name ?? dto.country.trim());
     if (dto.name !== undefined && !name) {
       throw new BadRequestException('Organization name is required');
     }

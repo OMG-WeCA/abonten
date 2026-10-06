@@ -69,11 +69,11 @@ is scaffolded in the initialization phase.
 
 ## 2. Product Vision
 
-**Vision statement.** *Abonten makes outdoor advertising in West & Central Africa as
+**Vision statement.** _Abonten makes outdoor advertising in West & Central Africa as
 discoverable, plannable, and accountable as digital — without leaving the realities of the
-street behind.*
+street behind._
 
-**Name.** "Abonten" draws from the Akan (Twi) word for *outdoors* / *in the open* — a name that
+**Name.** "Abonten" draws from the Akan (Twi) word for _outdoors_ / _in the open_ — a name that
 sits naturally in the region and signals the product's focus: the open-air, outdoor media
 channel.
 
@@ -206,17 +206,17 @@ Operator of the Abonten platform itself (OMG WeCA product/ops staff). Organizati
 
 Within each organization, users hold a **role** that scopes their actions:
 
-| Role | Typical org type | Scope |
-| --- | --- | --- |
-| `org_owner` | any | Full control of the organization, billing, members. |
-| `org_admin` | any | Manage members and most resources; no billing control. |
-| `inventory_manager` | media_partner | Create/edit sites, rate cards, availability, POP. |
-| `field_operator` | media_partner | Capture POP photos and condition reports (mobile). |
-| `planner` | agency | Search, plan, reserve, book, export. |
-| `planner_admin` | agency | Manage agency team and client links. |
-| `client_viewer` | brand | Read-only campaign + POP monitoring. |
-| `client_admin` | brand | Manage brand team, link to agency/client accounts. |
-| `platform_admin` | platform | Cross-tenant administration and marketplace quality. |
+| Role                | Typical org type | Scope                                                  |
+| ------------------- | ---------------- | ------------------------------------------------------ |
+| `org_owner`         | any              | Full control of the organization, billing, members.    |
+| `org_admin`         | any              | Manage members and most resources; no billing control. |
+| `inventory_manager` | media_partner    | Create/edit sites, rate cards, availability, POP.      |
+| `field_operator`    | media_partner    | Capture POP photos and condition reports (mobile).     |
+| `planner`           | agency           | Search, plan, reserve, book, export.                   |
+| `planner_admin`     | agency           | Manage agency team and client links.                   |
+| `client_viewer`     | brand            | Read-only campaign + POP monitoring.                   |
+| `client_admin`      | brand            | Manage brand team, link to agency/client accounts.     |
+| `platform_admin`    | platform         | Cross-tenant administration and marketplace quality.   |
 
 > Roles and permissions are defined as a capability map in code (see §9). The table above is the
 > authoritative intent; the implementation must enforce it server-side on every request.
@@ -274,14 +274,15 @@ station panels), 3D and spectacular displays, and tri-vision panels.
    level. Enrichment records also carry a `data_class` (`demo` | `production`): demo-class rows
    are excluded from production reads, planning surfaces, and any model input, and are labelled
    wherever they render.
-5. **Reference photos.** `front` assets require `captured_at` at upload; UI guidance warns when a
+5. **Reference photos.** `front` assets require a known `captured_at` before listing; upload may retain an
+   explicitly unknown date for later correction. UI guidance warns when a
    supplied capture date is older than 12 months. Unknown capture dates are left empty rather
    than invented.
 6. **Entry plausibility checks (server-enforced).** Orientation within 0–359°; positive viewing
    distance and elevation; illumination hours matched against a time-range pattern; coordinates
    inside the declared country's bounding box when the country is one of Nigeria, Ghana, or
    Cameroon.
-7. **Deliberate deferrals (approved):** geo-fenced polygon *capture* stays V1 (the column, DTO and
+7. **Deliberate deferrals (approved):** geo-fenced polygon _capture_ stays V1 (the column, DTO and
    storage are live; the map-drawing UI is not); booking calendars/holds stay V1
    per §5.6/§6.2; viewing angle, traffic exposure, and regulatory class stay V1 with provenance (they are model inputs for the
    measurement phase, not capture blockers for the inventory product).
@@ -302,6 +303,39 @@ listed site with missing booking details needs correction before it is presented
 the later agency booking flow.
 
 **Lifecycle / states.**
+
+**Demo trust and bilingual-market amendment (2026-10-06).** Registration, editing,
+onboarding and buyer discovery support Nigeria, Ghana, Benin, Côte d'Ivoire and
+Cameroon consistently, in English and French. Country-specific currency defaults
+are NGN, GHS, XOF, XOF and XAF; country coverage does not imply enrichment coverage.
+Typed addresses are checked against the submitted WGS84 pin through an existing
+authorized geocoding integration when configured. Only an unambiguous, country-
+consistent, sufficiently precise result beyond the documented tolerance can cause
+automatic reviewed-and-rejected publication, with actionable correction and
+resubmission guidance. Missing, failed or ambiguous lookup remains unable to verify,
+never a confirmed mismatch. Location decisions and inputs are persisted and audited;
+changed location inputs invalidate earlier verification. An inconclusive check keeps
+the submission unpublished for ordinary review rather than silently listing it.
+
+Reference-media uploads extract available EXIF location and capture time without
+inventing absent metadata. Browser on-site capture records device location, accuracy,
+time and an explicitly declared capture method; these remain evidence, not proof of
+independent verification. Missing GPS/time is visible and can be explained. Media
+admission is bounded and checks actual bytes; parsing is inert. Actual LED-board
+videos are separate inventory evidence from campaign creative, are available in buyer
+inspection, and do not autoplay. Media stays in object storage and remains tenant-
+controlled before authorized marketplace publication.
+
+Partner terms are immutable versioned content with an affirmative, authorized-
+representative acceptance event tied to the exact content digest, locale, organization,
+user and UTC time. The supplied Abonten draft is a review version; production
+activation requires explicit approval and an operator-controlled activation setting.
+Local preview may exercise the signup acceptance flow without presenting the draft
+as approved or legally active. The terms require accurate inventory and authentic
+media, authority to supply, prompt corrections and the supplied operational periods;
+no registration details, governing law, fees or legal compliance facts are invented.
+English/French interfaces, validation and authentication emails follow the selected
+locale and preserve entered work on recoverable failures.
 
 ```
 draft → pending_review → approved → listed → (suspended) → decommissioned
@@ -333,7 +367,7 @@ duplicate detection.
 
 ### 5.2 Site Metadata Enrichment
 
-**Purpose.** Turn a bare site record into a *plannable* asset by enriching it with the data
+**Purpose.** Turn a bare site record into a _plannable_ asset by enriching it with the data
 planners and KPI models need: traffic, visibility, audience, and context.
 
 **Geographic context foundation (V1 amendment, 2026-09-30).** Nigeria and Ghana
@@ -713,7 +747,7 @@ API-first access per organization.
 
 **SiteAsset** (media)
 `id`, `site_id` (or `face_id`), `kind` (`front` | `context` | `night` | `diagram`), `storage_ref`,
-`captured_at` (required for `front`; §5.1), audit.
+`captured_at` (required for `front` at listing, unknown allowed at storage; §5.1), audit.
 
 **SiteMetadata** (enrichment, §5.2)
 `id`, `site_id`, `dimension` (`traffic` | `visibility` | `audience` | `poi` | `illumination` |
@@ -867,7 +901,7 @@ Platform ──< AuditLog, ReferenceData, ReportRun (cross-tenant, admin-scoped)
 
 ### 8.1 Scalability & market coverage
 
-- Designed for WeCA scale: start with Nigeria, Ghana, Cameroon; architect to extend to 23+
+- Designed for WeCA scale: start with Nigeria, Ghana, Benin, Côte d’Ivoire and Cameroon; architect to extend to 23+
   partner markets without schema changes (markets, currencies, locales are reference data).
 - Support tens of thousands of sites, hundreds of organizations, and high daily POP volume;
   search and map queries remain fast via spatial indexing (PostGIS) and pre-computed
@@ -953,7 +987,7 @@ web, and mobile.
 **Cross-cutting.** Shared contracts/types package generated from OpenAPI; a central config and
 feature-flag service; structured logging with request IDs; database migrations as versioned code.
 
-> The stack is a *direction*, not a final commitment. This spec phase does not scaffold code or
+> The stack is a _direction_, not a final commitment. This spec phase does not scaffold code or
 > pin dependency versions; that decision is made at implementation kickoff.
 
 ---
@@ -1010,40 +1044,40 @@ Goal: automation, audience-grade measurement, and ecosystem integration across 2
 
 Outdoor-advertising terms relevant to the WeCA market.
 
-| Term | Meaning |
-| --- | --- |
-| **OOH / DOOH** | Out-of-Home advertising; Digital Out-of-Home (LED/programmatic screens). |
-| **Billboard / Hoarding** | Large outdoor panel displaying advertising; "hoarding" is common WeCA usage. |
-| **Spectacular** | A large, often custom-built, illuminated display, usually in prime locations. |
-| **Wall wrap / Mural** | Advertising applied directly to a building wall; may be painted (mural). |
-| **Street furniture** | Bus shelters, kiosks, benches, and similar municipal-scale ad surfaces. |
-| **Transit media** | Ads on buses, taxis, trains, and transit stations. |
-| **Tri-vision** | A panel with rotating prismatic slats showing three creatives in rotation. |
-| **3D display** | A display with three-dimensional sculpted or layered elements. |
-| **Face** | A single bookable viewing surface of a panel; a structure may have several faces. |
-| **Front-lit / Back-lit / Edge-lit** | Illumination styles for static panels; LED implies the panel itself emits light. |
-| **Orientation / Facing** | The compass direction a face points toward, affecting which traffic sees it. |
-| **AADT** | Average Annual Daily Traffic — vehicles per day past a site; a key exposure input. |
-| **Visibility score** | Composite measure of how clearly and long a panel can be seen. |
-| **OTS / Impressions** | Opportunity-to-See; estimated number of times the ad is potentially seen. |
-| **Reach** | The number/percentage of the audience exposed at least once. |
-| **Frequency** | Average times an exposed individual sees the ad. |
-| **GRP / TRP** | Gross/Target Rating Points — reach × frequency expressed as a percentage of a universe. |
-| **CPM** | Cost per thousand impressions. |
-| **CPRP** | Cost per rating point. |
-| **Flight** | The scheduled run period of a campaign on a site or set of sites. |
-| **POP / Proof of Performance** | Evidence (usually dated, geotagged photos) that a booked ad is live and intact. |
-| **Rate card** | A vendor's published prices for inventory. |
-| **Hold / Reservation** | A time-boxed reservation of inventory pending confirmation. |
-| **Blackout** | Dates a site is unavailable (maintenance, permits, seasonal). |
-| **KPI** | Key Performance Indicator (impressions, reach, frequency, compliance, etc.). |
-| **SEC** | Socio-Economic Classification used in audience segmentation. |
-| **MIPAN** | Media Independent Practitioners Association of Nigeria. |
-| **ARCON / APCON** | Advertising Regulatory Council of Nigeria (formerly APCON). |
-| **LASAA** | Lagos State Signage & Advertisement Agency (outdoor permits in Lagos). |
-| **RECMA** | Independent agency that ranks media agencies by volume/activity. |
-| **NDPR** | Nigeria Data Protection Regulation. |
-| **WeCA** | West & Central Africa — the platform's home region. |
+| Term                                | Meaning                                                                                 |
+| ----------------------------------- | --------------------------------------------------------------------------------------- |
+| **OOH / DOOH**                      | Out-of-Home advertising; Digital Out-of-Home (LED/programmatic screens).                |
+| **Billboard / Hoarding**            | Large outdoor panel displaying advertising; "hoarding" is common WeCA usage.            |
+| **Spectacular**                     | A large, often custom-built, illuminated display, usually in prime locations.           |
+| **Wall wrap / Mural**               | Advertising applied directly to a building wall; may be painted (mural).                |
+| **Street furniture**                | Bus shelters, kiosks, benches, and similar municipal-scale ad surfaces.                 |
+| **Transit media**                   | Ads on buses, taxis, trains, and transit stations.                                      |
+| **Tri-vision**                      | A panel with rotating prismatic slats showing three creatives in rotation.              |
+| **3D display**                      | A display with three-dimensional sculpted or layered elements.                          |
+| **Face**                            | A single bookable viewing surface of a panel; a structure may have several faces.       |
+| **Front-lit / Back-lit / Edge-lit** | Illumination styles for static panels; LED implies the panel itself emits light.        |
+| **Orientation / Facing**            | The compass direction a face points toward, affecting which traffic sees it.            |
+| **AADT**                            | Average Annual Daily Traffic — vehicles per day past a site; a key exposure input.      |
+| **Visibility score**                | Composite measure of how clearly and long a panel can be seen.                          |
+| **OTS / Impressions**               | Opportunity-to-See; estimated number of times the ad is potentially seen.               |
+| **Reach**                           | The number/percentage of the audience exposed at least once.                            |
+| **Frequency**                       | Average times an exposed individual sees the ad.                                        |
+| **GRP / TRP**                       | Gross/Target Rating Points — reach × frequency expressed as a percentage of a universe. |
+| **CPM**                             | Cost per thousand impressions.                                                          |
+| **CPRP**                            | Cost per rating point.                                                                  |
+| **Flight**                          | The scheduled run period of a campaign on a site or set of sites.                       |
+| **POP / Proof of Performance**      | Evidence (usually dated, geotagged photos) that a booked ad is live and intact.         |
+| **Rate card**                       | A vendor's published prices for inventory.                                              |
+| **Hold / Reservation**              | A time-boxed reservation of inventory pending confirmation.                             |
+| **Blackout**                        | Dates a site is unavailable (maintenance, permits, seasonal).                           |
+| **KPI**                             | Key Performance Indicator (impressions, reach, frequency, compliance, etc.).            |
+| **SEC**                             | Socio-Economic Classification used in audience segmentation.                            |
+| **MIPAN**                           | Media Independent Practitioners Association of Nigeria.                                 |
+| **ARCON / APCON**                   | Advertising Regulatory Council of Nigeria (formerly APCON).                             |
+| **LASAA**                           | Lagos State Signage & Advertisement Agency (outdoor permits in Lagos).                  |
+| **RECMA**                           | Independent agency that ranks media agencies by volume/activity.                        |
+| **NDPR**                            | Nigeria Data Protection Regulation.                                                     |
+| **WeCA**                            | West & Central Africa — the platform's home region.                                     |
 
 ---
 

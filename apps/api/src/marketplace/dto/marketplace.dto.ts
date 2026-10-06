@@ -1,11 +1,20 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { canonicalCountry } from '../../common/supported-markets';
 import { IsDateString, IsNumber, IsOptional, IsString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class MarketplaceQueryDto {
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @IsNumber() @Type(() => Number) page?: number;
-  @ApiPropertyOptional({ default: 20 }) @IsOptional() @IsNumber() @Type(() => Number) limit?: number;
-  @ApiPropertyOptional() @IsOptional() @IsString() country?: string;
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  limit?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }: { value: unknown }) => canonicalCountry(value))
+  country?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() city?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() market?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() format?: string;
