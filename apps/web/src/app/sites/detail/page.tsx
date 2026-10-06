@@ -74,6 +74,8 @@ import {
 import { SUPPORTED_MARKETS, findMarket } from '../../../lib/markets';
 import { SUPPORTED_CURRENCIES } from '../../../lib/currencies';
 import { metadataFacts, metadataLink } from '../../../lib/site-metadata-display';
+import { displayDateOnly, displayNumber, displayUtcTimestamp } from '../../../lib/locale-format';
+import { agencyEvidenceText, agencyEvidenceUnit } from '../../../lib/agency-evidence-locale';
 import { formatArea, formatMoney, parseAmount, parseDecimal } from '../../../lib/number-format';
 import { getSitesCopy, type SiteLocale } from '../../../lib/sites-locale';
 import { plausibilityErrors } from '../../../lib/sites-plausibility';
@@ -565,7 +567,7 @@ function DetailsSection({
     [copy.detail.formatLabel, prettyFormat(site.format, locale)],
     [
       copy.detail.dimsLabel,
-      `${site.width ?? '—'} × ${site.height ?? '—'} ${site.units ?? ''}`.trim(),
+      `${site.width != null ? displayNumber(site.width, locale) : '—'} × ${site.height != null ? displayNumber(site.height, locale) : '—'} ${site.units ? agencyEvidenceUnit(site.units, locale === 'fr' ? 'fr' : 'en') : ''}`.trim(),
     ],
     [copy.detail.areaLabel, formatArea(site.area, site.units, locale)],
     [copy.detail.coordsLabel, `${site.latitude}, ${site.longitude}`],
@@ -577,16 +579,24 @@ function DetailsSection({
       copy.detail.illuminationLabel,
       `${prettyIllumination(site.illuminationType, locale)}${site.illuminationHours ? ` · ${site.illuminationHours}` : ''}`,
     ],
-    [copy.detail.orientationLabel, site.orientationDeg != null ? `${site.orientationDeg}°` : '—'],
+    [
+      copy.detail.orientationLabel,
+      site.orientationDeg != null ? `${displayNumber(site.orientationDeg, locale)}°` : '—',
+    ],
     [
       copy.detail.viewingDistanceLabel,
-      site.viewingDistance != null ? `${site.viewingDistance} m` : '—',
+      site.viewingDistance != null ? `${displayNumber(site.viewingDistance, locale)} m` : '—',
     ],
-    [copy.detail.elevationLabel, site.elevation != null ? `${site.elevation} m` : '—'],
+    [
+      copy.detail.elevationLabel,
+      site.elevation != null ? `${displayNumber(site.elevation, locale)} m` : '—',
+    ],
     [copy.detail.permitLabel, site.permitRef ?? copy.detail.permitNone],
     [
       copy.detail.permitExpiryLabel,
-      site.permitExpiresAt ? String(site.permitExpiresAt).slice(0, 10) : copy.detail.permitNone,
+      site.permitExpiresAt
+        ? displayDateOnly(String(site.permitExpiresAt), locale)
+        : copy.detail.permitNone,
     ],
   ];
 
@@ -1000,9 +1010,11 @@ function DetailsSection({
                     className={inputClass}
                   />
                   <datalist id="provenanceSourcesDetail">
-                    <option value="Google Maps street view" />
-                    <option value="Site visit" />
-                    <option value="Survey plan" />
+                    <option
+                      value={locale === 'fr' ? 'Vue de rue Google Maps' : 'Google Maps street view'}
+                    />
+                    <option value={locale === 'fr' ? 'Visite du site' : 'Site visit'} />
+                    <option value={locale === 'fr' ? 'Plan de relevé' : 'Survey plan'} />
                   </datalist>
                 </Field>
                 <Field label={copy.register.provenanceMethod} htmlFor="dProvMethod">
@@ -1580,7 +1592,8 @@ function FacesSection({
                     <p className="text-sm font-bold">
                       {face.faceLabel}
                       <span className="ml-2 font-medium text-muted">
-                        {face.width} × {face.height} {face.units} ·{' '}
+                        {displayNumber(face.width, locale)} × {displayNumber(face.height, locale)}{' '}
+                        {agencyEvidenceUnit(face.units, locale === 'fr' ? 'fr' : 'en')} ·{' '}
                         {formatArea(face.area, face.units, locale)}
                       </span>
                     </p>
@@ -1590,13 +1603,15 @@ function FacesSection({
                         ? ` · ${copy.detail.facePrintable}: ${face.printableArea}`
                         : ''}
                       {isDigital && face.spotLengthSeconds != null
-                        ? ` · ${copy.detail.spotLength} ${face.spotLengthSeconds}s / ${copy.detail.loopLength} ${face.loopLengthSeconds ?? '—'}s`
+                        ? ` · ${copy.detail.spotLength} ${displayNumber(face.spotLengthSeconds, locale)} s / ${copy.detail.loopLength} ${face.loopLengthSeconds != null ? displayNumber(face.loopLengthSeconds, locale) : '—'} s`
                         : ''}
                     </p>
                     {(face.bleedMm != null || face.substrate || face.fileRequirements) && (
                       <p className="mt-1 text-xs text-muted">
                         {[
-                          face.bleedMm != null ? `${copy.detail.bleed} ${face.bleedMm} mm` : '',
+                          face.bleedMm != null
+                            ? `${copy.detail.bleed} ${displayNumber(face.bleedMm, locale)} mm`
+                            : '',
                           face.substrate ? `${copy.detail.substrate}: ${face.substrate}` : '',
                           face.fileRequirements
                             ? `${copy.detail.fileRequirements}: ${face.fileRequirements}`
@@ -2080,7 +2095,7 @@ function RatesSection({
                   ? `${copy.detail.rateScope}: ${site.faces.find((face) => face.id === card.faceId)?.faceLabel ?? '—'}`
                   : copy.detail.rateAllFaces}
                 {card.minBookingDays
-                  ? ` · ${copy.detail.minBookingDays}: ${card.minBookingDays}`
+                  ? ` · ${copy.detail.minBookingDays}: ${displayNumber(card.minBookingDays, locale)}`
                   : ''}
               </p>
               <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
@@ -2104,14 +2119,14 @@ function RatesSection({
                 <p className="mt-1 text-xs text-muted">
                   {copy.detail.seasonalHeading}:{' '}
                   {(card.seasonalRules as { rules?: SeasonalRule[] }).rules
-                    ?.map((rule) => `${rule.label} ×${rule.multiplier}`)
+                    ?.map((rule) => `${rule.label} ×${displayNumber(rule.multiplier, locale)}`)
                     .join(', ') || '—'}
                 </p>
               )}
               <p className="mt-1 text-xs text-muted">
-                {copy.detail.effectiveFrom} {card.effectiveFrom.slice(0, 10)}
+                {copy.detail.effectiveFrom} {displayDateOnly(card.effectiveFrom, locale)}
                 {card.effectiveTo
-                  ? ` · ${copy.detail.effectiveTo} ${card.effectiveTo.slice(0, 10)}`
+                  ? ` · ${copy.detail.effectiveTo} ${displayDateOnly(card.effectiveTo, locale)}`
                   : ''}
               </p>
             </li>
@@ -2342,7 +2357,9 @@ function MetadataSection({
               className="rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm"
             >
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-bold">{record.dimension}</span>
+                <span className="font-bold">
+                  {agencyEvidenceUnit(record.dimension, locale === 'fr' ? 'fr' : 'en')}
+                </span>
                 <span className="rounded-full bg-muted/15 px-2 py-0.5 text-[11px] font-semibold text-muted">
                   {verificationLabel(record.verification, copy)}
                 </span>
@@ -2393,22 +2410,28 @@ function MetadataSection({
                 )}
                 {record.method && (
                   <span>
-                    {copy.detail.metadataMethod}: {record.method}
+                    {copy.detail.metadataMethod}:{' '}
+                    {agencyEvidenceText(record.method, locale === 'fr' ? 'fr' : 'en')}
                   </span>
                 )}
                 {record.confidence != null && (
                   <span>
-                    {copy.detail.metadataConfidence}: {Math.round(record.confidence * 100)}%
+                    {copy.detail.metadataConfidence}:{' '}
+                    {displayNumber(record.confidence, locale, {
+                      style: 'percent',
+                      maximumFractionDigits: 0,
+                    })}
                   </span>
                 )}
                 {record.collectedAt && (
                   <span>
-                    {copy.detail.metadataCollected}: {formatDate(record.collectedAt, locale)}
+                    {copy.detail.metadataCollected}:{' '}
+                    {displayUtcTimestamp(record.collectedAt, locale)}
                   </span>
                 )}
                 {record.expiresAt && (
                   <span>
-                    {copy.detail.metadataExpires}: {formatDate(record.expiresAt, locale)}
+                    {copy.detail.metadataExpires}: {displayUtcTimestamp(record.expiresAt, locale)}
                   </span>
                 )}
               </p>
@@ -2434,16 +2457,6 @@ function verificationLabel(
     default:
       return copy.detail.verificationUnverified;
   }
-}
-
-function formatDate(dateIso: string, locale: SiteLocale | undefined): string {
-  const when = new Date(dateIso);
-  if (Number.isNaN(when.getTime())) return dateIso;
-  return new Intl.DateTimeFormat(locale === 'fr' ? 'fr-FR' : 'en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  }).format(when);
 }
 
 // ----------------------------------------------------------------- location
@@ -2474,7 +2487,7 @@ function MapSection({
         <div className="contents">
           <dt className="text-muted">{copy.detail.orientationLabel}</dt>
           <dd className="font-medium">
-            {site.orientationDeg != null ? `${site.orientationDeg}°` : '—'}
+            {site.orientationDeg != null ? `${displayNumber(site.orientationDeg, locale)}°` : '—'}
           </dd>
         </div>
       </dl>

@@ -26,6 +26,9 @@ import {
   type summarizeBudget,
 } from '../../lib/agency-planning';
 import type { ShortlistFace } from './AgencyDashboard';
+import { agencyEvidenceText } from '../../lib/agency-evidence-locale';
+import { parseAmount } from '../../lib/number-format';
+import { displayDateOnly, displayNumber, displayUtcTimestamp } from '../../lib/locale-format';
 import { money } from './BoardDetail';
 
 interface PlannerProps {
@@ -258,7 +261,7 @@ export function AgencyPlanner(props: PlannerProps) {
             .map((pair) => {
               const a = shortlist.find((item) => item.site.id === pair.fromSiteId)?.site.name;
               const b = shortlist.find((item) => item.site.id === pair.toSiteId)?.site.name;
-              return `${a} ↔ ${b}: ${pair.value == null ? t('Unavailable', 'Indisponible') : `${pair.value.toFixed(2)} km`} (${t('straight-line', 'à vol d’oiseau')}).`;
+              return `${a} ↔ ${b}: ${pair.value == null ? t('Unavailable', 'Indisponible') : `${displayNumber(pair.value, locale, { maximumFractionDigits: 2 })} km`} (${t('straight-line', 'à vol d’oiseau')}).`;
             })
             .join('\n');
       }
@@ -314,7 +317,7 @@ export function AgencyPlanner(props: PlannerProps) {
     }
   };
   const subtotal = summary.totals[currency] ?? 0;
-  const budgetAmount = Number(budget);
+  const budgetAmount = parseAmount(budget) ?? NaN;
   const hasBudget =
     budget.trim() !== '' &&
     Number.isFinite(budgetAmount) &&
@@ -402,10 +405,7 @@ export function AgencyPlanner(props: PlannerProps) {
           <label className="agency-field">
             <span>{t('Media budget', 'Budget média')}</span>
             <input
-              type="number"
-              min="1"
-              max="1000000000000"
-              step="any"
+              type="text"
               inputMode="decimal"
               value={budget}
               onChange={(event) => onBudget(event.target.value)}
@@ -432,7 +432,12 @@ export function AgencyPlanner(props: PlannerProps) {
                   'The planner supports budgets up to 1,000,000,000,000. Enter a smaller amount.',
                   'L’assistant prend en charge les budgets jusqu’à 1 000 000 000 000. Saisissez un montant inférieur.',
                 )
-              : t('Enter a budget greater than zero.', 'Saisissez un budget supérieur à zéro.')}
+              : !Number.isFinite(budgetAmount)
+                ? t(
+                    'Enter an unambiguous amount, for example 3000000.50 or 3 000 000,50.',
+                    'Saisissez un montant sans ambiguïté, par exemple 3000000.50 ou 3 000 000,50.',
+                  )
+                : t('Enter a budget greater than zero.', 'Saisissez un budget supérieur à zéro.')}
           </p>
         )}
         <p className="agency-flight-caption">
@@ -441,7 +446,7 @@ export function AgencyPlanner(props: PlannerProps) {
                 'Choose valid flight dates in Flight & filters.',
                 'Choisissez des dates valides dans Dates et filtres.',
               )
-            : `${props.window.startDate} → ${props.window.endDate} · ${t('end exclusive', 'fin exclusive')}`}
+            : `${displayDateOnly(props.window.startDate, locale)} → ${displayDateOnly(props.window.endDate, locale)} · ${t('end exclusive', 'fin exclusive')}`}
         </p>
         {brief && (
           <div className="agency-brief">
@@ -473,9 +478,17 @@ export function AgencyPlanner(props: PlannerProps) {
             <details open={!briefConfirmed}>
               <summary>{t('Review extracted text', 'Vérifier le texte extrait')}</summary>
               <label className="agency-field">
-                <span className="sr-only">{t('Extracted brief text', 'Texte extrait')}</span>
+                <span>
+                  {t(
+                    'Extracted document text · original document language',
+                    'Texte extrait du document · langue du document original',
+                  )}
+                </span>
                 <textarea
-                  aria-label={t('Extracted brief text', 'Texte extrait')}
+                  aria-label={t(
+                    'Extracted document text · original document language',
+                    'Texte extrait du document · langue du document original',
+                  )}
                   value={briefText}
                   maxLength={60000}
                   onChange={(event) => {
@@ -488,7 +501,7 @@ export function AgencyPlanner(props: PlannerProps) {
                 />
               </label>
               {brief.warnings.map((warning) => (
-                <p key={warning}>{warning}</p>
+                <p key={warning}>{agencyEvidenceText(warning, locale)}</p>
               ))}
               <p>
                 {t(
@@ -499,7 +512,8 @@ export function AgencyPlanner(props: PlannerProps) {
               {briefText === brief.text && brief.constraints.budget != null && (
                 <p>
                   <b>
-                    {t('Detected budget', 'Budget détecté')}: {brief.constraints.budget}{' '}
+                    {t('Detected budget', 'Budget détecté')}:{' '}
+                    {displayNumber(brief.constraints.budget, locale)}{' '}
                     {brief.constraints.currency ??
                       t('· currency needs confirmation', '· devise à confirmer')}
                   </b>
@@ -605,7 +619,7 @@ export function AgencyPlanner(props: PlannerProps) {
                   </button>
                   {estimate.status === 'unavailable' && (
                     <p role="status" className="agency-form-error">
-                      {estimate.reason}
+                      {agencyEvidenceText(estimate.reason, locale)}
                     </p>
                   )}
                 </div>
@@ -731,7 +745,12 @@ export function AgencyPlanner(props: PlannerProps) {
                   {shortlist.find((item) => item.site.id === pair.fromSiteId)?.site.name} ↔{' '}
                   {shortlist.find((item) => item.site.id === pair.toSiteId)?.site.name}
                 </span>
-                <b>{pair.value == null ? '—' : pair.value.toFixed(2)} km</b>
+                <b>
+                  {pair.value == null
+                    ? '—'
+                    : displayNumber(pair.value, locale, { maximumFractionDigits: 2 })}{' '}
+                  km
+                </b>
               </div>
             ))}
             {distances.length > 50 && (
@@ -751,26 +770,29 @@ export function AgencyPlanner(props: PlannerProps) {
             {estimates.map(
               (estimate) =>
                 estimate.status === 'ready' && (
-                  <p key={estimate.faceId}>
-                    {estimate.provenance} {money(estimate.unitRate, estimate.currency, locale)} ×{' '}
-                    {estimate.quantity}{' '}
-                    {estimate.basis === 'perDay' ? t('days', 'jours') : t('weeks', 'semaines')}.
-                    {estimate.availabilityCheckedAt && (
-                      <>
-                        {' '}
-                        {t('Availability checked', 'Disponibilité vérifiée')}:{' '}
-                        {new Date(estimate.availabilityCheckedAt).toLocaleString(locale, {
-                          timeZone: 'UTC',
-                        })}{' '}
-                        UTC.
-                      </>
-                    )}
-                  </p>
+                  <div key={estimate.faceId}>
+                    <p>
+                      {agencyEvidenceText(estimate.provenance, locale)}{' '}
+                      {money(estimate.unitRate, estimate.currency, locale)} ×{' '}
+                      {displayNumber(estimate.quantity, locale)}{' '}
+                      {estimate.basis === 'perDay' ? t('days', 'jours') : t('weeks', 'semaines')}.
+                      {estimate.availabilityCheckedAt && (
+                        <>
+                          {' '}
+                          {t('Availability checked', 'Disponibilité vérifiée')}:{' '}
+                          {displayUtcTimestamp(estimate.availabilityCheckedAt, locale)}.
+                        </>
+                      )}
+                    </p>
+                    {estimate.assumptions.map((assumption) => (
+                      <p key={assumption}>{agencyEvidenceText(assumption, locale)}</p>
+                    ))}
+                  </div>
                 ),
             )}
             {summary.uncheckedCount > 0 && (
               <p>
-                {summary.uncheckedCount}{' '}
+                {displayNumber(summary.uncheckedCount, locale)}{' '}
                 {t(
                   'faces still require an availability check.',
                   'faces nécessitent un contrôle de disponibilité.',
@@ -835,7 +857,8 @@ export function AgencyPlanner(props: PlannerProps) {
                 'Detected constraints — confirm before applying:',
                 'Contraintes détectées — confirmer avant application :',
               )}{' '}
-              {suggested.budget ?? '—'} {suggested.currency ?? ''}
+              {suggested.budget != null ? displayNumber(suggested.budget, locale) : '—'}{' '}
+              {suggested.currency ?? ''}
             </p>
             <button className="agency-secondary-button" onClick={() => apply(suggested)}>
               {t('Apply budget & currency', 'Appliquer budget et devise')}
@@ -1006,7 +1029,11 @@ function ReplyFacts({
               >
                 <strong>{site.name}</strong>
               </button>
-              <p>{reference.reason}</p>
+              <p>
+                {reply.mode === 'local'
+                  ? agencyEvidenceText(reference.reason, locale)
+                  : reference.reason}
+              </p>
               {face.faceLabel && (
                 <p>
                   {t('Face', 'Face')} {face.faceLabel}
@@ -1026,12 +1053,13 @@ function ReplyFacts({
               {face.estimate.status === 'ready' && (
                 <small>
                   {money(face.estimate.amount, face.estimate.currency, locale)} /{' '}
-                  {face.estimate.days} {t('days', 'jours')}
+                  {displayNumber(face.estimate.days, locale)} {t('days', 'jours')}
                 </small>
               )}
               {face.estimate.status === 'unavailable' && (
                 <p>
-                  {t('Price unavailable', 'Tarif indisponible')} : {face.estimate.reason}
+                  {t('Price unavailable', 'Tarif indisponible')} :{' '}
+                  {agencyEvidenceText(face.estimate.reason, locale)}
                 </p>
               )}
             </div>
@@ -1043,7 +1071,9 @@ function ReplyFacts({
           <strong>{t('To clarify', 'À préciser')}</strong>
           <ul>
             {reply.questions!.map((question, index) => (
-              <li key={index}>{question}</li>
+              <li key={index}>
+                {reply.mode === 'local' ? agencyEvidenceText(question, locale) : question}
+              </li>
             ))}
           </ul>
         </div>
@@ -1052,12 +1082,12 @@ function ReplyFacts({
         <details>
           <summary>{t('Checked planning facts', 'Données de planification vérifiées')}</summary>
           <p>
-            {t('Checked', 'Vérifiées')} :{' '}
-            {new Date(facts.checkedAt).toLocaleString(locale, { timeZone: 'UTC' })} UTC
+            {t('Checked', 'Vérifiées')} : {displayUtcTimestamp(facts.checkedAt, locale)}
           </p>
           {facts.window && (
             <p>
-              {facts.window.startDate} → {facts.window.endDate} ·{' '}
+              {displayDateOnly(facts.window.startDate, locale)} →{' '}
+              {displayDateOnly(facts.window.endDate, locale)} ·{' '}
               {t('end exclusive', 'fin exclusive')}
             </p>
           )}
@@ -1095,19 +1125,20 @@ function ReplyFacts({
                 <>
                   <p>
                     {money(face.estimate.amount, face.estimate.currency, locale)} /{' '}
-                    {face.estimate.days} {t('days', 'jours')} ·{' '}
+                    {displayNumber(face.estimate.days, locale)} {t('days', 'jours')} ·{' '}
                     {money(face.estimate.unitRate, face.estimate.currency, locale)} ×{' '}
-                    {face.estimate.quantity}{' '}
+                    {displayNumber(face.estimate.quantity, locale)}{' '}
                     {face.estimate.basis === 'perDay' ? t('days', 'jours') : t('weeks', 'semaines')}
                   </p>
-                  <p>{face.estimate.provenance}</p>
+                  <p>{agencyEvidenceText(face.estimate.provenance, locale)}</p>
                   {face.estimate.assumptions.map((assumption, index) => (
-                    <p key={index}>{assumption}</p>
+                    <p key={index}>{agencyEvidenceText(assumption, locale)}</p>
                   ))}
                 </>
               ) : (
                 <p>
-                  {t('Price unavailable', 'Tarif indisponible')} : {face.estimate.reason}
+                  {t('Price unavailable', 'Tarif indisponible')} :{' '}
+                  {agencyEvidenceText(face.estimate.reason, locale)}
                 </p>
               )}
             </div>
@@ -1135,7 +1166,7 @@ function ReplyFacts({
             )}
           </p>
           {facts.assumptions.map((assumption, index) => (
-            <p key={index}>{assumption}</p>
+            <p key={index}>{agencyEvidenceText(assumption, locale)}</p>
           ))}
         </details>
       )}

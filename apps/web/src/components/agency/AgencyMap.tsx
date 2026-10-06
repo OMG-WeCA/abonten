@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LayerGroup, Map as LeafletMap, Marker, TileLayer } from 'leaflet';
 import { Compass, LocateFixed, MapPin, Minus, Plus, RotateCw } from 'lucide-react';
+import { displayNumber } from '../../lib/locale-format';
 import { straightLineDistanceKm } from '../../lib/agency-planning';
 import {
   LOCAL_REVIEW_OSM_MAP,
@@ -209,7 +210,7 @@ export function AgencyMap({
       const shortlistIndex = shortlistIds.indexOf(site.id);
       const selected = selectedId === site.id;
       const state = `${selected ? 'selected' : shortlistIndex >= 0 ? 'shortlisted' : 'registered'}:${shortlistIndex}`;
-      const label = `${site.name} · ${selected ? labels.selected : shortlistIndex >= 0 ? `${labels.shortlisted} ${shortlistIndex + 1}` : labels.registered}`;
+      const label = `${site.name} · ${selected ? labels.selected : shortlistIndex >= 0 ? `${labels.shortlisted} ${displayNumber(shortlistIndex + 1, locale, { maximumFractionDigits: 0 })}` : labels.registered}`;
       let entry = markersRef.current.get(site.id);
       if (!entry || entry.state !== state) {
         const pin = document.createElement('span');
@@ -217,7 +218,10 @@ export function AgencyMap({
         pin.setAttribute('aria-hidden', 'true');
         const board = document.createElement('span');
         board.className = 'agency-map-pin-board';
-        if (shortlistIndex >= 0) board.textContent = String(shortlistIndex + 1);
+        if (shortlistIndex >= 0)
+          board.textContent = displayNumber(shortlistIndex + 1, locale, {
+            maximumFractionDigits: 0,
+          });
         else {
           const slots = document.createElement('span');
           slots.className = 'agency-map-pin-slots';
@@ -306,7 +310,7 @@ export function AgencyMap({
     const second = sites.find((site) => site.id === shortlistIds[1] && validPoint(site));
     if (first && second) {
       const label = document.createElement('span');
-      label.textContent = `1 → 2 · ${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(straightLineDistanceKm(first, second)!)} km ${labels.straightLine}`;
+      label.textContent = `1 → 2 · ${displayNumber(straightLineDistanceKm(first, second)!, locale, { maximumFractionDigits: 2 })} km ${labels.straightLine}`;
       label.title = fr
         ? 'Calcul géodésique à partir des coordonnées enregistrées'
         : 'Geodesic calculation from registered coordinates';

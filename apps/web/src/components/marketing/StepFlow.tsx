@@ -16,7 +16,15 @@ const colsMap: Record<number, string> = {
   4: 'md:grid-cols-4',
 };
 
-export function StepFlow({ steps, className = '' }: { steps: Step[]; className?: string }) {
+export function StepFlow({
+  steps,
+  className = '',
+  locale = 'en',
+}: {
+  steps: Step[];
+  className?: string;
+  locale?: 'en' | 'fr';
+}) {
   const cols = colsMap[steps.length] ?? 'md:grid-cols-3';
   return (
     <Reveal variant="up">
@@ -39,7 +47,7 @@ export function StepFlow({ steps, className = '' }: { steps: Step[]; className?:
               <span
                 className={`mt-4 block text-sm font-bold uppercase tracking-wider ${accentText[accent]}`}
               >
-                Step {String(i + 1).padStart(2, '0')}
+                {locale === 'fr' ? 'Étape' : 'Step'} {String(i + 1).padStart(2, '0')}
               </span>
               <h3 className="mt-1 text-xl font-extrabold uppercase tracking-tight text-foreground">
                 {step.title}

@@ -91,6 +91,7 @@ export function MarketingPage({
       <Section id="how-it-works" variant="surface" size="lg">
         <SectionHeading eyebrow={copy.how} title={page.workflowTitle} accent="blue" />
         <StepFlow
+          locale={locale}
           steps={page.steps.map(([title, body], index) => ({
             title,
             body,

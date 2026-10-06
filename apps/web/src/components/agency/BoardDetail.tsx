@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { ArrowUpRight, ImageOff, Loader2, Plus, X } from 'lucide-react';
 import type { SiteGeographicContext } from '@abonten/contracts/enrichment';
+import { agencyEvidenceText, agencyEvidenceUnit } from '../../lib/agency-evidence-locale';
+import { displayDateOnly, displayNumber, displayUtcTimestamp } from '../../lib/locale-format';
 import { apiFetch } from '../../lib/api';
 import { assetDisplay, type SiteDetail, type SiteFace } from '../../lib/sites-api';
 import { getGeographicContext, sourceWebUrl } from '../../lib/geographic-context';
@@ -81,8 +83,7 @@ export function BoardDetail({
   const observation =
     context?.traffic.status !== 'unavailable' ? context?.traffic.value?.[0] : null;
   const unknown = t('Not recorded', 'Non renseigné');
-  const n = (value: number) =>
-    new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value);
+  const n = (value: number) => displayNumber(value, locale);
   const value = (input: number | null | undefined, suffix: string) =>
     typeof input === 'number' && Number.isFinite(input) ? `${n(input)}${suffix}` : unknown;
   return (
@@ -133,8 +134,10 @@ export function BoardDetail({
         <div className="agency-board-body">
           <p className="agency-spec-line">
             {prettyFormat(site.format, locale)} ·{' '}
-            {face ? `${face.width} × ${face.height} ${face.units}` : unknown} ·{' '}
-            {prettyIllumination(site.illuminationType, locale)}
+            {face
+              ? `${n(face.width)} × ${n(face.height)} ${agencyEvidenceUnit(face.units, locale)}`
+              : unknown}{' '}
+            · {prettyIllumination(site.illuminationType, locale)}
           </p>
           <label className="agency-field">
             <span>{t('Viewing face', 'Face')}</span>
@@ -160,8 +163,8 @@ export function BoardDetail({
             </strong>
             <span>
               {estimate?.status === 'ready'
-                ? `${estimate.days} ${t('days · media estimate', 'jours · estimation média')}`
-                : estimate?.reason}
+                ? `${n(estimate.days)} ${t('days · media estimate', 'jours · estimation média')}`
+                : estimate?.reason && agencyEvidenceText(estimate.reason, locale)}
             </span>
           </div>
           {estimate?.status === 'ready' && (
@@ -224,8 +227,14 @@ export function BoardDetail({
                         </p>
                       ))}
                     <p>
-                      {t('Effective', 'Applicable')} : {card.effectiveFrom.slice(0, 10)} –{' '}
-                      {card.effectiveTo?.slice(0, 10) || t('no recorded end', 'fin non renseignée')}
+                      {t(
+                        'Effective (UTC dates, end inclusive)',
+                        'Applicable (dates UTC, fin inclusive)',
+                      )}{' '}
+                      : {displayDateOnly(card.effectiveFrom, locale)} –{' '}
+                      {card.effectiveTo
+                        ? displayDateOnly(card.effectiveTo, locale)
+                        : t('no recorded end', 'fin non renseignée')}
                     </p>
                     <p>
                       {t('Source rate card', 'Grille tarifaire source')} : {card.id}
@@ -267,7 +276,7 @@ export function BoardDetail({
               <span>{t('Observed traffic', 'Trafic observé')}</span>
               <strong>
                 {observation?.count != null
-                  ? `${n(observation.count)} ${observation.unit}`
+                  ? `${n(observation.count)} ${agencyEvidenceUnit(observation.unit, locale)}`
                   : contextState === 'loading'
                     ? t('Loading…', 'Chargement…')
                     : contextState === 'error'
@@ -277,8 +286,10 @@ export function BoardDetail({
             </div>
             {observation && (
               <p>
-                {observation.observedFrom} – {observation.observedTo} ·{' '}
-                {n(observation.durationMinutes)} min · {observation.direction}.{' '}
+                {displayUtcTimestamp(observation.observedFrom, locale)} –{' '}
+                {displayUtcTimestamp(observation.observedTo, locale)} ·{' '}
+                {n(observation.durationMinutes)} min ·{' '}
+                {agencyEvidenceUnit(observation.direction, locale)}.{' '}
                 {context?.traffic.provenance?.attribution}
               </p>
             )}
@@ -321,57 +332,72 @@ export function BoardDetail({
             </p>
             <div className="agency-source">
               <strong>{t('Visibility evidence', 'Preuves de visibilité')}</strong>
-              {visibility.reason && <p>{visibility.reason}</p>}
+              {visibility.reason && <p>{agencyEvidenceText(visibility.reason, locale)}</p>}
               {visibility.warnings.map((warning) => (
-                <p key={warning}>{warning}</p>
+                <p key={warning}>{agencyEvidenceText(warning, locale)}</p>
               ))}
               {visibility.provenance && 'recordId' in visibility.provenance && (
                 <p>
                   {visibility.provenance.source || unknown} ·{' '}
-                  {visibility.provenance.method || unknown} ·{' '}
-                  {visibility.provenance.verification || unknown} ·{' '}
-                  {visibility.freshness.collectedAt?.slice(0, 10) || unknown}
+                  {visibility.provenance.method
+                    ? agencyEvidenceText(visibility.provenance.method, locale)
+                    : unknown}{' '}
+                  ·{' '}
+                  {visibility.provenance.verification
+                    ? agencyEvidenceUnit(visibility.provenance.verification, locale)
+                    : unknown}{' '}
+                  ·{' '}
+                  {visibility.freshness.collectedAt
+                    ? displayUtcTimestamp(visibility.freshness.collectedAt, locale)
+                    : unknown}
                 </p>
               )}
-              <p>{enrichment.structure.viewingAngle.reason}</p>
+              <p>
+                {enrichment.structure.viewingAngle.reason &&
+                  agencyEvidenceText(enrichment.structure.viewingAngle.reason, locale)}
+              </p>
             </div>
             {site.metadata
               .filter((record) => record.dataClass !== 'demo')
               .map((record) => (
                 <div className="agency-source" key={record.id}>
                   <strong>
-                    {record.dimension} · {record.verification || t('Unverified', 'Non vérifié')}
+                    {agencyEvidenceUnit(record.dimension, locale)} ·{' '}
+                    {record.verification
+                      ? agencyEvidenceUnit(record.verification, locale)
+                      : t('Unverified', 'Non vérifié')}
                   </strong>
                   <p>
-                    {record.source || unknown} · {record.method || unknown} ·{' '}
-                    {record.collectedAt?.slice(0, 10) || unknown}
+                    {record.source || unknown} ·{' '}
+                    {record.method ? agencyEvidenceText(record.method, locale) : unknown} ·{' '}
+                    {record.collectedAt ? displayUtcTimestamp(record.collectedAt, locale) : unknown}
                   </p>
                   <p>
                     {t('Confidence', 'Confiance')}:{' '}
                     {record.confidence == null
                       ? unknown
-                      : `${Math.round(record.confidence * 100)}%`}
+                      : new Intl.NumberFormat(locale, {
+                          style: 'percent',
+                          maximumFractionDigits: 0,
+                        }).format(record.confidence)}
                     .{' '}
                     {record.expiresAt
-                      ? `${t('Expires', 'Expiration')}: ${record.expiresAt.slice(0, 10)}`
+                      ? `${t('Expires', 'Expiration')}: ${displayUtcTimestamp(record.expiresAt, locale)}`
                       : ''}
                   </p>
                 </div>
               ))}
             {estimate?.status === 'ready' && (
               <div className="agency-source">
-                <p>{estimate.provenance}</p>
+                <p>{agencyEvidenceText(estimate.provenance, locale)}</p>
                 {estimate.availabilityCheckedAt && (
                   <p>
                     {t('Availability checked', 'Disponibilité vérifiée')}:{' '}
-                    {new Date(estimate.availabilityCheckedAt).toLocaleString(locale, {
-                      timeZone: 'UTC',
-                    })}{' '}
-                    UTC.
+                    {displayUtcTimestamp(estimate.availabilityCheckedAt, locale)}.
                   </p>
                 )}
                 {estimate.assumptions.map((assumption) => (
-                  <p key={assumption}>{assumption}</p>
+                  <p key={assumption}>{agencyEvidenceText(assumption, locale)}</p>
                 ))}
               </div>
             )}
@@ -423,7 +449,9 @@ export function BoardDetail({
               )}
             </p>
           )}
-        {canPlan && !eligibility.eligible && <p role="status">{eligibility.reason}</p>}
+        {canPlan && !eligibility.eligible && (
+          <p role="status">{agencyEvidenceText(eligibility.reason, locale)}</p>
+        )}
         <button
           className="agency-primary-button"
           onClick={onAdd}
@@ -494,8 +522,11 @@ function BoardPhoto({ site, locale }: { site: SiteDetail; locale: 'en' | 'fr' })
       {src && !failed && (
         <figcaption>
           {locale === 'fr' ? 'Photo de référence' : 'Reference photo'} ·{' '}
-          {asset?.capturedAt?.slice(0, 10) ||
-            (locale === 'fr' ? 'date inconnue' : 'capture date unknown')}
+          {asset?.capturedAt
+            ? displayDateOnly(asset.metadata?.time?.declaredDate || asset.capturedAt, locale)
+            : locale === 'fr'
+              ? 'date inconnue'
+              : 'capture date unknown'}
         </figcaption>
       )}
     </figure>

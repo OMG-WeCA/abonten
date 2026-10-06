@@ -2,7 +2,12 @@
 
 // Shared UI for the partner sites workflow. Visual language matches the account
 // surfaces (WorkspaceFrame): rounded-xl cards, border-border, primary accents.
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import type {
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from 'react';
 import { useEffect, useState } from 'react';
 import { ImageOff, X } from 'lucide-react';
 import { getSitesCopy } from '../../lib/sites-locale';
@@ -54,10 +59,18 @@ const statusStyles: Record<SiteStatus, string> = {
   decommissioned: 'bg-muted/15 text-muted line-through decoration-muted/50',
 };
 
-export function StatusBadge({ status, locale }: { status: SiteStatus; locale: SiteLocale | undefined }) {
+export function StatusBadge({
+  status,
+  locale,
+}: {
+  status: SiteStatus;
+  locale: SiteLocale | undefined;
+}) {
   const copy = getSitesCopy(locale);
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ${statusStyles[status] ?? statusStyles.draft}`}>
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ${statusStyles[status] ?? statusStyles.draft}`}
+    >
       {copy.status[status] ?? status}
     </span>
   );
@@ -92,6 +105,13 @@ export function prettyFormat(format: string, locale: SiteLocale | undefined): st
   if (key === 'static') return copy.register.formatStatic;
   if (key === 'digital_led') return copy.register.formatLed;
   if (key === '3d') return copy.register.format3d;
+  const labels: Record<string, [string, string]> = {
+    tri_vision: ['Tri-vision', 'Trivision'],
+    mural: ['Mural', 'Mural'],
+    transit: ['Transit', 'Transport'],
+    street_furniture: ['Street furniture', 'Mobilier urbain'],
+  };
+  if (labels[key]) return labels[key][locale === 'fr' ? 1 : 0];
   return format.replace(/[_-]+/g, ' ');
 }
 
@@ -120,8 +140,11 @@ export function AssetThumb({
     );
   }
   return (
-    
-    <img src={src} alt={alt} className={`${size} shrink-0 rounded-lg border border-border ${fit ?? 'object-cover'}`} />
+    <img
+      src={src}
+      alt={alt}
+      className={`${size} shrink-0 rounded-lg border border-border ${fit ?? 'object-cover'}`}
+    />
   );
 }
 

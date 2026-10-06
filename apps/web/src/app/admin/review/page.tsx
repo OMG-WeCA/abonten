@@ -3,6 +3,9 @@
 import { AlertTriangle, ChevronDown, ExternalLink, Loader2, ShieldCheck, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { displayNumber } from '../../../lib/locale-format';
+import { formatArea } from '../../../lib/number-format';
+import { agencyEvidenceUnit } from '../../../lib/agency-evidence-locale';
 import { ApiError } from '../../../lib/api';
 
 /** Fill a single {{label}} placeholder used by confirm-dialog copy. */
@@ -254,7 +257,7 @@ export default function ReviewQueuePage() {
                     {prettyFormat(site.format, profile?.locale)}
                   </span>
                   {site.width != null && site.height != null
-                    ? ` · ${site.width}×${site.height}${site.units ? ` ${site.units}` : ''}`
+                    ? ` · ${displayNumber(site.width, profile?.locale)} × ${displayNumber(site.height, profile?.locale)}${site.units ? ` ${agencyEvidenceUnit(site.units, profile?.locale === 'fr' ? 'fr' : 'en')}` : ''}`
                     : ''}
                 </span>
               </span>
@@ -356,12 +359,12 @@ export default function ReviewQueuePage() {
                         ],
                         [
                           copy.detail.dimsLabel,
-                          `${detail.data.width ?? '—'} × ${detail.data.height ?? '—'} ${detail.data.units ?? ''}`.trim(),
+                          `${detail.data.width != null ? displayNumber(detail.data.width, profile?.locale) : '—'} × ${detail.data.height != null ? displayNumber(detail.data.height, profile?.locale) : '—'} ${detail.data.units ? agencyEvidenceUnit(detail.data.units, profile?.locale === 'fr' ? 'fr' : 'en') : ''}`.trim(),
                         ],
                         [
                           copy.detail.areaLabel,
                           detail.data.area != null
-                            ? `${detail.data.area} ${detail.data.units ?? ''}`.trim()
+                            ? formatArea(detail.data.area, detail.data.units, profile?.locale)
                             : '—',
                         ],
                         [
@@ -394,7 +397,7 @@ export default function ReviewQueuePage() {
                           : detail.data.faces
                               .map(
                                 (face) =>
-                                  `${face.faceLabel} (${face.width}×${face.height} ${face.units})`,
+                                  `${face.faceLabel} (${displayNumber(face.width, profile?.locale)} × ${displayNumber(face.height, profile?.locale)} ${agencyEvidenceUnit(face.units, profile?.locale === 'fr' ? 'fr' : 'en')})`,
                               )
                               .join(', ')}
                       </dd>
@@ -407,7 +410,10 @@ export default function ReviewQueuePage() {
                           : detail.data.rateCards
                               .map(
                                 (card) =>
-                                  `${card.currency} · ${Object.values(card.rates).filter(Boolean).join(' / ')}`,
+                                  `${card.currency} · ${Object.values(card.rates)
+                                    .filter(Boolean)
+                                    .map((value) => displayNumber(value!, profile?.locale))
+                                    .join(' / ')}`,
                               )
                               .join(', ')}
                       </dd>
@@ -434,7 +440,7 @@ export default function ReviewQueuePage() {
                           >
                             <AuthAssetThumb
                               display={assetDisplay(asset)}
-                              alt={`${site.name} — ${asset.kind}`}
+                              alt={`${site.name} — ${({ front: copy.register.photoFront, context: copy.register.photoContext, night: copy.register.photoNight, diagram: copy.register.photoDiagram, board_video: profile?.locale === 'fr' ? 'Vidéo du panneau' : 'Board video' } as Record<string, string>)[asset.kind] ?? asset.kind}`}
                               size="h-28 w-40"
                             />
                           </button>

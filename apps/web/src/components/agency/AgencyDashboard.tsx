@@ -53,7 +53,11 @@ import { buildPlannerSelection } from '../../lib/planner-selection';
 import { AgencyMap } from './AgencyMap';
 import { BoardDetail, money } from './BoardDetail';
 import { AgencyPlanner } from './AgencyPlanner';
+import { prettyFormat } from '../sites/sites-ui';
 import { getSiteOptions } from '../../lib/agency-api';
+import { agencyEvidenceText } from '../../lib/agency-evidence-locale';
+import { parseAmount } from '../../lib/number-format';
+import { displayNumber } from '../../lib/locale-format';
 import './agency.css';
 
 export interface ShortlistFace {
@@ -104,7 +108,7 @@ export function AgencyDashboard() {
               : 'Marketplace access required'}
           </h1>
           <button className="agency-secondary-button mt-4" onClick={() => router.push('/settings')}>
-            Settings
+            {auth.profile?.locale === 'fr' ? 'Paramètres' : 'Settings'}
           </button>
         </div>
       </div>
@@ -465,7 +469,7 @@ function AgencyWorkspace() {
     [window, availability, currency],
   );
   const estimates = useMemo(() => shortlist.map(estimateFor), [shortlist, estimateFor]);
-  const budgetAmount = Number(budget);
+  const budgetAmount = parseAmount(budget) ?? NaN;
   const validBudget =
     budget.trim() !== '' &&
     Number.isFinite(budgetAmount) &&
@@ -625,7 +629,7 @@ function AgencyWorkspace() {
         proposal.length
           ? t(
               `Shortlisted ${proposal.length} boards by lowest published media cost. ${failed ? `${failed} boards could not be checked.` : ''}`,
-              `${proposal.length} panneaux sélectionnés par coût média croissant.`,
+              `${displayNumber(proposal.length, locale, { maximumFractionDigits: 0 })} panneaux sélectionnés par coût média croissant.${failed ? ` ${displayNumber(failed, locale, { maximumFractionDigits: 0 })} panneaux n’ont pas pu être vérifiés.` : ''}`,
             )
           : t(
               'No checked faces fit this budget, currency and flight. Adjust the constraints.',
@@ -792,7 +796,9 @@ function AgencyWorkspace() {
         >
           <ClipboardList size={22} />
           <span>{t('Shortlist', 'Sélection')}</span>
-          {shortlist.length > 0 && <b>{shortlist.length}</b>}
+          {shortlist.length > 0 && (
+            <b>{displayNumber(shortlist.length, locale, { maximumFractionDigits: 0 })}</b>
+          )}
         </button>
         <span className="agency-rail-spacer" />
         <button onClick={() => router.push('/settings')}>
@@ -823,7 +829,7 @@ function AgencyWorkspace() {
           <span>
             {loadState === 'loading'
               ? t('Loading listed boards…', 'Chargement des panneaux…')
-              : `${boards.length}${total > boards.length ? ` / ${total}` : ''} ${t('listed boards', 'panneaux publiés')} · ${planningDays(window) ?? '—'} ${t('day flight', 'jours')}`}
+              : `${displayNumber(boards.length, locale, { maximumFractionDigits: 0 })}${total > boards.length ? ` / ${displayNumber(total, locale, { maximumFractionDigits: 0 })}` : ''} ${t('listed boards', 'panneaux publiés')} · ${planningDays(window) == null ? '—' : displayNumber(planningDays(window)!, locale, { maximumFractionDigits: 0 })} ${t('day flight', 'jours')}`}
           </span>
         </div>
         {filterOpen && (
@@ -876,7 +882,7 @@ function AgencyWorkspace() {
                     'street_furniture',
                   ].map((item) => (
                     <option key={item} value={item}>
-                      {item.replaceAll('_', ' ')}
+                      {prettyFormat(item, locale)}
                     </option>
                   ))}
                 </select>
@@ -955,7 +961,9 @@ function AgencyWorkspace() {
                   <span>
                     <strong>{board.name}</strong>
                     <small>
-                      {board.code} · {board.city} · {board.faceCount} {t('faces', 'faces')}
+                      {board.code} · {board.city} ·{' '}
+                      {displayNumber(Number(board.faceCount), locale, { maximumFractionDigits: 0 })}{' '}
+                      {t('faces', 'faces')}
                     </small>
                   </span>
                   <ChevronDown size={14} className="-rotate-90" />
@@ -1070,7 +1078,10 @@ function AgencyWorkspace() {
             setRecommending(false);
           }}
           canRecommend={validBudget && validWindow && loadState === 'ready' && !restoringDraft}
-          notice={[notice, draftNotice].filter(Boolean).join(' ')}
+          notice={[notice, draftNotice]
+            .filter(Boolean)
+            .map((value) => agencyEvidenceText(value, locale))
+            .join(' ')}
         />
         <div className="agency-plan-bar">
           <ClipboardList size={21} />
@@ -1159,7 +1170,7 @@ function AgencyWorkspace() {
           </p>
         )}
         <p className="sr-only" role="status" aria-live="polite">
-          {notice}
+          {agencyEvidenceText(notice, locale)}
         </p>
       </main>
     </div>
