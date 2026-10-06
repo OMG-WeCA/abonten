@@ -84,6 +84,30 @@ describe('localized API errors', () => {
     );
     assert.equal(result.message, 'Code de connexion incorrect ou expiré');
   });
+  it('explains capture timezone and incomplete GPS failures in French without losing the correction', () => {
+    for (const [message, expected] of [
+      [
+        'Capture times need a timezone; a calendar date may be supplied without a time.',
+        /fuseau horaire.*date seule/,
+      ],
+      [
+        'Device capture needs a timestamp with timezone; GPS latitude, longitude and accuracy must be supplied together when available.',
+        /latitude, la longitude et la précision GPS/,
+      ],
+      [
+        'GPS fix time needs complete device GPS and a timezone.',
+        /latitude, la longitude, la précision GPS et un fuseau horaire/,
+      ],
+    ] as const) {
+      const error = new BadRequestException(message);
+      assert.match(String(localizeHttpError(error, 'fr').message), expected);
+      assert.equal(localizeHttpError(error, 'en').message, message);
+    }
+    assert.match(
+      localizedErrorMessage('deviceAccuracyMeters must not be greater than 100000', 400),
+      /précision GPS en mètres.*100000/,
+    );
+  });
   it('preserves the terms content-change code and actionable French reaffirmation guidance', () => {
     const result = localizeHttpError(
       new ConflictException({

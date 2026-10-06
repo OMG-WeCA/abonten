@@ -95,8 +95,12 @@ const messages: Record<string, string> = {
     'La validation vidéo est indisponible. Conservez votre fichier et réessayez après le rétablissement du service.',
   'Media processing is busy. Keep your file and retry shortly.':
     'Le traitement des médias est occupé. Conservez votre fichier et réessayez bientôt.',
-  'Device capture requires latitude, longitude, GPS accuracy and capture time together.':
-    'La capture sur place nécessite latitude, longitude, précision GPS et date de prise ensemble.',
+  'Capture times need a timezone; a calendar date may be supplied without a time.':
+    'Indiquez le fuseau horaire de la prise de vue ; une date seule peut être fournie sans heure.',
+  'Device capture needs a timestamp with timezone; GPS latitude, longitude and accuracy must be supplied together when available.':
+    'La capture sur place nécessite une date et une heure avec fuseau horaire ; fournissez ensemble la latitude, la longitude et la précision GPS lorsqu’elles sont disponibles.',
+  'GPS fix time needs complete device GPS and a timezone.':
+    'L’heure du relevé GPS nécessite la latitude, la longitude, la précision GPS et un fuseau horaire.',
   'Use a valid capture date that is not in the future.':
     'Utilisez une date de prise valide qui n’est pas dans le futur.',
   'Board recordings are only available for digital LED inventory.':
@@ -192,6 +196,11 @@ const fields: Record<string, string> = {
   capturedAt: 'date de prise',
   captureMethod: 'méthode de capture',
   captureAccuracy: 'précision GPS',
+  deviceLatitude: 'latitude du relevé GPS',
+  deviceLongitude: 'longitude du relevé GPS',
+  deviceAccuracyMeters: 'précision GPS en mètres',
+  deviceCapturedAt: 'date et heure de capture',
+  deviceLocationRecordedAt: 'date et heure du relevé GPS',
   termsVersion: 'version des conditions',
   termsLanguage: 'langue des conditions',
   representativeName: 'nom du représentant',
