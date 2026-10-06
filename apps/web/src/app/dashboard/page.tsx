@@ -15,7 +15,7 @@ import { WorkspaceFrame } from '../../components/account/WorkspaceFrame';
 import { useAuth } from '../../components/auth/AuthProvider';
 import { useLocale } from '../../components/LocaleProvider';
 import { getAccountCopy } from '../../lib/account-locale';
-import { AgencyDashboard } from '../../components/agency/AgencyDashboard';
+import { AgencyHome } from '../../components/agency/AgencyHome';
 import { marketLabel } from '../../lib/markets';
 
 const workspaceIcons = {
@@ -38,7 +38,12 @@ export default function DashboardPage() {
     activeOrganization?.type === 'media_partner' && capabilities.includes('POP_CAPTURE');
   const isPlatformAdmin = capabilities.includes('PLATFORM_ADMIN');
 
-  if (type === 'agency') return <AgencyDashboard />;
+  if (type === 'agency')
+    return (
+      <WorkspaceFrame current="dashboard">
+        <AgencyHome key={activeOrganization?.organizationId} />
+      </WorkspaceFrame>
+    );
 
   if (type === 'media_partner')
     return (

@@ -14,6 +14,7 @@ import { GeographicContext1720000000009 } from './migrations/1720000000009-Geogr
 import { SiteLocationVerification1760000001000 } from './migrations/1760000001000-SiteLocationVerification';
 import { InventoryMediaEvidence1760000002000 } from './migrations/1760000002000-InventoryMediaEvidence';
 import { PartnerTermsAcceptance1760000003000 } from './migrations/1760000003000-PartnerTermsAcceptance';
+import { PersonalPlanningDrafts1760000004000 } from './migrations/1760000004000-PersonalPlanningDrafts';
 
 // DataSource used by the migration CLI / `pnpm migration:run|revert|generate`.
 // The runtime app uses DatabaseModule's lazy, migration-only DataSource with
@@ -38,6 +39,7 @@ export const AppDataSource = new DataSource({
     SiteLocationVerification1760000001000,
     InventoryMediaEvidence1760000002000,
     PartnerTermsAcceptance1760000003000,
+    PersonalPlanningDrafts1760000004000,
   ],
   migrationsRun: false,
   logging: ['error', 'migration'],

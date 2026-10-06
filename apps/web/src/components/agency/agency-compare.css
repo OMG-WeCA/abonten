@@ -1,0 +1,294 @@
+.agency-compare {
+  min-width: 0;
+  width: 100%;
+  padding: 28px;
+  color: var(--color-foreground);
+  background: var(--color-background);
+}
+.agency-compare-heading,
+.agency-compare-actions,
+.agency-compare-flight,
+.agency-compare-single {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.agency-compare-heading {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.agency-compare-heading h1 {
+  margin: 6px 0;
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+.agency-compare-intro,
+.agency-compare-disclaimer {
+  color: var(--color-muted);
+  line-height: 1.65;
+}
+.agency-compare-flight {
+  margin: 22px 0;
+  padding: 13px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  font-weight: 600;
+}
+.agency-compare-flight small {
+  color: var(--color-muted);
+  font-weight: 400;
+}
+.agency-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.agency-compare-card {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface-2);
+  overflow: hidden;
+}
+.agency-compare-card-heading {
+  min-height: 154px;
+  padding: 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+.agency-compare-face-tag {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+.agency-compare-card-heading h2 {
+  margin: 10px 0 5px;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.agency-compare-card-heading p {
+  margin: 0 0 8px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.agency-compare-format {
+  font-size: 12px;
+  font-weight: 600;
+}
+.agency-compare-price {
+  min-height: 158px;
+  padding: 20px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.agency-compare-label {
+  display: block;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.agency-compare-price > strong {
+  display: block;
+  margin: 8px 0;
+  font-size: 25px;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+.agency-compare-price > p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.agency-compare-facts {
+  margin: 0;
+}
+.agency-compare-fact {
+  min-height: 98px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+.agency-compare-fact dt {
+  margin-bottom: 8px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.agency-compare-fact dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.agency-compare-fact small {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.agency-compare-availability {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.agency-compare-availability::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-warning);
+}
+.agency-compare-availability.is-available::before {
+  background: var(--color-success);
+}
+.agency-compare-availability.is-unavailable::before {
+  background: var(--color-error);
+}
+.agency-compare-evidence {
+  margin-top: 10px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.agency-compare-evidence summary {
+  min-height: 44px;
+  padding: 10px 0;
+  cursor: pointer;
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.agency-compare-evidence p {
+  margin: 7px 0;
+}
+.agency-compare-evidence ul {
+  margin: 9px 0 0;
+  padding-left: 17px;
+}
+.agency-compare-evidence li + li {
+  margin-top: 5px;
+}
+.agency-compare-evidence code {
+  font: inherit;
+}
+.agency-compare-card-footer {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.agency-compare-card-footer p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.agency-compare-card-footer .agency-secondary-button {
+  justify-content: center;
+}
+.agency-compare-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  background: transparent;
+  border: 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.agency-compare-remove:hover {
+  color: var(--color-error);
+}
+.agency-compare-disclaimer {
+  margin: 20px 0 0;
+  font-size: 12px;
+}
+.agency-compare-single {
+  justify-content: space-between;
+  margin-bottom: 18px;
+  padding: 14px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  font-size: 13px;
+}
+.agency-compare-single p {
+  margin: 0;
+  line-height: 1.6;
+}
+.agency-compare-single button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agency-compare-empty {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 18px;
+  padding: 70px 20px;
+  text-align: center;
+  border: 1px dashed var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+.agency-compare-empty > svg {
+  color: var(--color-muted);
+}
+.agency-compare-empty h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 700;
+}
+.agency-compare-empty p {
+  margin: 0;
+  max-width: 520px;
+  color: var(--color-muted);
+  line-height: 1.7;
+}
+.agency-compare :is(h1, h2, p, dd, small, code, span, li) {
+  overflow-wrap: anywhere;
+}
+.agency-compare :is(button, summary):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .agency-compare {
+    padding: 18px 14px;
+  }
+  .agency-compare-heading {
+    gap: 18px;
+  }
+  .agency-compare-actions {
+    width: 100%;
+  }
+  .agency-compare-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+  .agency-compare-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .agency-compare-card-heading,
+  .agency-compare-price {
+    min-height: 0;
+  }
+  .agency-compare-flight {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .agency-compare-empty {
+    padding: 48px 16px;
+  }
+}
+
+.agency-compare button {
+  min-height: 44px;
+}

@@ -3,6 +3,7 @@
 // at this stage — no DB-level foreign keys in the initial migration, per SPEC §6
 // "logical outline, not a physical schema").
 export { PartnerTermsAcceptanceEntity } from './partner-terms-acceptance.entity';
+export { PlanningDraftEntity } from './planning-draft.entity';
 export { OrganizationEntity } from './organization.entity';
 export { EnrichmentImportEntity } from './enrichment-import.entity';
 export { EnrichmentFeatureEntity } from './enrichment-feature.entity';
@@ -35,6 +36,7 @@ export { RefreshTokenEntity } from '../../auth/entities/refresh-token.entity';
 export { OrganizationCreationRequestEntity } from '../../orgs/entities/organization-creation-request.entity';
 
 import { PartnerTermsAcceptanceEntity } from './partner-terms-acceptance.entity';
+import { PlanningDraftEntity } from './planning-draft.entity';
 import { OrganizationEntity } from './organization.entity';
 import { EnrichmentImportEntity } from './enrichment-import.entity';
 import { EnrichmentFeatureEntity } from './enrichment-feature.entity';
@@ -68,6 +70,7 @@ import { OrganizationCreationRequestEntity } from '../../orgs/entities/organizat
 
 /** All entities, for DataSource / DatabaseModule registration. */
 export const ENTITIES = [
+  PlanningDraftEntity,
   PartnerTermsAcceptanceEntity,
   OrganizationEntity,
   EnrichmentImportEntity,

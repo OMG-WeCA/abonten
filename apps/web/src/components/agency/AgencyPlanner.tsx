@@ -1,4 +1,5 @@
 'use client';
+import { useUnsavedNavigation } from '../../lib/unsaved-navigation';
 
 import { useEffect, useRef, useState } from 'react';
 import { Check, FileText, Loader2, Minus, Paperclip, Send, Sparkles, X } from 'lucide-react';
@@ -89,6 +90,13 @@ export function AgencyPlanner(props: PlannerProps) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  useUnsavedNavigation(
+    !!brief || !!message.trim() || messages.length > 0 || uploading,
+    t(
+      'Your document and conversation are only kept in this planner. Leave this page? Plan controls and selected faces stay in this tab; documents and conversation will be cleared.',
+      'Votre document et votre conversation restent uniquement dans ce planificateur. Quitter cette page ? Les paramètres et faces restent dans cet onglet ; le document et la conversation seront effacés.',
+    ),
+  );
   const [chatting, setChatting] = useState(false);
   const [failedMessage, setFailedMessage] = useState<string | null>(null);
   const [suggested, setSuggested] = useState<BriefConstraints | null>(null);
@@ -334,15 +342,15 @@ export function AgencyPlanner(props: PlannerProps) {
         <div className="agency-planner-title">
           <Sparkles size={20} className="text-primary" />
           <div>
-            <h2 id="planner-heading">{t('Plan with Abonten', 'Planifier avec Abonten')}</h2>
+            <h2 id="planner-heading">{t('Planning assistant', 'Assistant de planification')}</h2>
             <p>
               {statusError || (status !== null && !assistantUsable)
                 ? t('Planner connection unavailable', 'Connexion à l’assistant indisponible')
                 : external
-                  ? `${t('OpenAI configured', 'OpenAI configuré')} · gpt-6-luna`
+                  ? t('Chat uses OpenAI', 'Conversation avec OpenAI')
                   : status === null
                     ? t('Checking planner connection…', 'Vérification de la connexion…')
-                    : t('Local planning help · AI not connected', 'Aide locale · IA non connectée')}
+                    : t('AI chat is not connected', 'La conversation IA n’est pas connectée')}
             </p>
           </div>
         </div>
@@ -374,8 +382,8 @@ export function AgencyPlanner(props: PlannerProps) {
         {external && (
           <p className="agency-assistant-disclosure">
             {t(
-              'Chat messages, recent conversation and current planning context are sent to OpenAI. Uploaded briefs stay local unless you allow sharing below.',
-              'Les messages, la conversation récente et le contexte de planification sont envoyés à OpenAI. Les documents restent locaux sauf autorisation ci-dessous.',
+              'When you send a message, OpenAI receives your messages and current plan. Sharing brief text needs your permission below.',
+              'À chaque envoi, OpenAI reçoit vos messages et le plan en cours. Le partage du texte du document nécessite votre autorisation ci-dessous.',
             )}
           </p>
         )}
@@ -387,20 +395,6 @@ export function AgencyPlanner(props: PlannerProps) {
             )}
           </p>
         )}
-        <div className="agency-planner-intro">
-          <p>
-            {t(
-              'A better view of your next campaign.',
-              'Une meilleure vue de votre prochaine campagne.',
-            )}
-          </p>
-          <span>
-            {t(
-              'Explore boards, set your constraints, and build a defensible shortlist.',
-              'Explorez les panneaux, définissez vos contraintes et construisez votre sélection.',
-            )}
-          </span>
-        </div>
         <div className="agency-budget-inputs">
           <label className="agency-field">
             <span>{t('Media budget', 'Budget média')}</span>
@@ -568,8 +562,8 @@ export function AgencyPlanner(props: PlannerProps) {
                 <p>
                   {briefConfirmed
                     ? t(
-                        'Only the confirmed text is shared when you send a message. The original file stays local. Editing, replacing or removing the brief clears consent and the conversation.',
-                        'Seul le texte confirmé est partagé à l’envoi d’un message. Le fichier original reste local. Modifier, remplacer ou retirer le document réinitialise l’autorisation et la conversation.',
+                        'OpenAI receives only the confirmed text when you send a message. The file is not sent to OpenAI. Editing or removing the brief clears permission and chat.',
+                        'OpenAI reçoit uniquement le texte confirmé à l’envoi d’un message, jamais le fichier. Modifier ou retirer le document efface l’autorisation et la conversation.',
                       )
                     : t(
                         'Confirm the extracted text before allowing sharing with OpenAI.',
@@ -652,17 +646,11 @@ export function AgencyPlanner(props: PlannerProps) {
           </div>
         ) : (
           <div className="agency-empty-shortlist">
-            <MapPinIcon />
-            <p>
-              {t(
-                'Start with a place. Build a plan.',
-                'Commencez par un lieu. Construisez un plan.',
-              )}
-            </p>
+            <p>{t('No faces selected', 'Aucune face sélectionnée')}</p>
             <span>
               {t(
-                'Select a board on the map to inspect its faces and published rates.',
-                'Sélectionnez un panneau sur la carte pour voir ses faces et tarifs.',
+                'Open a board on the map or in Boards, then add a face to your shortlist.',
+                'Ouvrez un panneau sur la carte ou dans Panneaux, puis ajoutez une face à votre sélection.',
               )}
             </span>
           </div>
@@ -693,8 +681,8 @@ export function AgencyPlanner(props: PlannerProps) {
         )}
         <p className="agency-assumption-note">
           {t(
-            'Uses the current map filters. Selects one available face per board by lowest published media cost. Replaces your draft; no audience optimization or reservation.',
-            'Utilise les filtres actuels. Sélectionne une face disponible par panneau selon le coût média croissant. Remplace le brouillon ; sans optimisation d’audience ni réservation.',
+            'Uses your filters and published rates to select one available face per board, starting with the lowest media cost. Replaces your shortlist without reserving boards.',
+            'Selon vos filtres et les tarifs publiés, retient une face disponible par panneau, en commençant par le coût média le plus bas. Remplace votre sélection sans réserver les panneaux.',
           )}
         </p>
         {props.notice && (
@@ -707,11 +695,10 @@ export function AgencyPlanner(props: PlannerProps) {
             <span>{t('Opportunity to see', 'Occasions de voir')}</span>
             <span className="agency-data-badge">{t('Not estimated', 'Non estimé')}</span>
           </div>
-          <strong>—</strong>
           <p>
             {t(
-              'Budget and location planning work without traffic data. Exposure estimates need suitable traffic evidence and an approved exposure model.',
-              'La planification du budget et des emplacements fonctionne sans données de trafic. Les estimations d’exposition nécessitent des observations adaptées et un modèle d’exposition approuvé.',
+              'Exposure estimates need suitable traffic data and an approved model. You can still compare locations and media costs.',
+              'L’estimation de l’exposition nécessite des données de trafic adaptées et un modèle approuvé. Vous pouvez comparer les emplacements et les coûts média.',
             )}
           </p>
           <details>
@@ -898,7 +885,7 @@ export function AgencyPlanner(props: PlannerProps) {
         {uploading && (
           <p role="status">
             <Loader2 size={14} className="animate-spin" />
-            {t('Reading brief locally…', 'Lecture locale du document…')}
+            {t('Reading brief…', 'Lecture du document…')}
             <button onClick={cancelUpload} className="agency-text-button">
               {t('Cancel upload', 'Annuler l’import')}
             </button>
@@ -960,8 +947,8 @@ export function AgencyPlanner(props: PlannerProps) {
                 'Messages et contexte envoyés à OpenAI · documents avec autorisation',
               )
             : t(
-                'Briefs: PDF, PPTX, XLSX, DOCX, text · extracted locally',
-                'Documents : PDF, PPTX, XLSX, DOCX, texte · extraction locale',
+                'Briefs: PDF, PPTX, XLSX, DOCX and text · processed by Abonten',
+                'Documents : PDF, PPTX, XLSX, DOCX et texte · traités par Abonten',
               )}
         </p>
         {!props.canPlan && (
@@ -1171,13 +1158,5 @@ function ReplyFacts({
         </details>
       )}
     </div>
-  );
-}
-
-function MapPinIcon() {
-  return (
-    <span className="agency-empty-icon">
-      <Sparkles size={24} />
-    </span>
   );
 }

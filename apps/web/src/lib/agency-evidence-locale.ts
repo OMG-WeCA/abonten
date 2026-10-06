@@ -5,6 +5,10 @@ import { displayUiText } from './display-ui-text';
 
 const frenchText = new Map<string, string>([
   [
+    'Draft restored. Board details are checked again; documents and chat are not saved.',
+    'Brouillon restauré. Les données des panneaux sont revérifiées ; les documents et la conversation ne sont pas enregistrés.',
+  ],
+  [
     'Choose valid start and exclusive end dates.',
     'Choisissez des dates de début et de fin exclusive valides.',
   ],

@@ -6,12 +6,15 @@ import { MarketplaceModule } from '../marketplace/marketplace.module';
 import { BriefAdmissionInterceptor } from './brief-admission.interceptor';
 import { BriefExtractionService } from './brief-extraction.service';
 import { OpenAiPlannerProvider } from './openai-planner.provider';
+import { PlanningDraftsController } from './planning-drafts.controller';
+import { PlanningDraftsService } from './planning-drafts.service';
 
 @Module({
   imports: [MarketplaceModule, InventoryModule],
-  controllers: [PlanningController],
+  controllers: [PlanningController, PlanningDraftsController],
   providers: [
     PlanningService,
+    PlanningDraftsService,
     BriefExtractionService,
     BriefAdmissionInterceptor,
     OpenAiPlannerProvider,

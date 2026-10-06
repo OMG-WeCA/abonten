@@ -9,6 +9,7 @@ import {
   Landmark as LandmarkIcon,
   LayoutGrid,
   LogOut,
+  Map,
   RefreshCw,
   Settings2,
   ShieldCheck,
@@ -118,7 +119,7 @@ export function WorkspaceFrame({
             </span>
           </button>
 
-          <label className="relative min-w-0 flex-1 sm:max-w-xs">
+          <label className="relative order-3 min-w-0 basis-full sm:order-none sm:flex-1 sm:basis-auto sm:max-w-xs">
             <span className="sr-only">{copy.workspace.activeOrganization}</span>
             <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <select
@@ -136,7 +137,10 @@ export function WorkspaceFrame({
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           </label>
 
-          <nav className="ml-auto flex items-center gap-1" aria-label={copy.workspace.navigation}>
+          <nav
+            className="ml-auto flex shrink-0 items-center gap-1 [&>button]:min-h-11 [&>button]:min-w-11"
+            aria-label={copy.workspace.navigation}
+          >
             <button
               type="button"
               onClick={() => {
@@ -152,6 +156,21 @@ export function WorkspaceFrame({
               <LayoutGrid className="h-4 w-4" />
               <span className="hidden sm:inline">{copy.workspace.home}</span>
             </button>
+            {activeOrganization.type === 'agency' && capabilities.includes('MARKETPLACE_VIEW') && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmUnsavedNavigation()) router.push('/planner');
+                }}
+                aria-label={locale === 'fr' ? 'Ouvrir le planificateur' : 'Open planner'}
+                className="flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold text-muted transition hover:bg-surface hover:text-foreground sm:px-3"
+              >
+                <Map className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {locale === 'fr' ? 'Planifier' : 'Planner'}
+                </span>
+              </button>
+            )}
             {canSeeSites && (
               <button
                 type="button"

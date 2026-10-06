@@ -150,5 +150,11 @@
   "Multi-disk, ZIP64 or oversized Office archives are not supported.": "Les archives Office multivolumes, ZIP64 ou trop volumineuses ne sont pas prises en charge. Exportez le document à nouveau.",
   "The file does not match its Office document format.": "Le contenu du fichier ne correspond pas à son format Office. Exportez le document à nouveau.",
   "XML declarations with external entities are not accepted.": "Les déclarations XML contenant des entités externes ne sont pas acceptées. Utilisez un export texte.",
-  "Excel worksheet name is missing. Export the workbook again.": "Le nom d’une feuille Excel est manquant. Exportez le classeur à nouveau."
+  "Excel worksheet name is missing. Export the workbook again.": "Le nom d’une feuille Excel est manquant. Exportez le classeur à nouveau.",
+  "Invalid personal planning draft.": "Vérifiez le nom, les dates, les contrôles et les identifiants du brouillon personnel.",
+  "Active agency membership and planning capabilities required.": "Une adhésion active à une agence et les droits de planification sont requis.",
+  "Personal planning draft not found.": "Brouillon personnel de planification introuvable.",
+  "This draft save request was already used for different content.": "Cette demande d’enregistrement a déjà été utilisée pour un contenu différent.",
+  "You have reached the personal planning draft limit.": "Vous avez atteint la limite de brouillons personnels de planification.",
+  "This draft changed elsewhere. Reload it before saving.": "Ce brouillon a été modifié ailleurs. Rechargez-le avant de l’enregistrer."
 }

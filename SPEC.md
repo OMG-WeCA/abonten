@@ -525,6 +525,26 @@ the flight and explicit visibility/model assumptions. Short observations and
 residential population cannot create daily exposure estimates. Missing inputs
 leave OTS unavailable; no deduplicated reach, frequency or GRPs are fabricated.
 
+**Agency work continuity (2026-10-06 amendment).** The agency dashboard is a
+workspace home with a primary start-plan action, direct marketplace access,
+personal saved planning drafts, and actionable checks derived from those drafts.
+The full-screen location-intelligence planner remains first-class on its own route.
+Personal planning drafts are durable, scoped to the signed-in user and agency,
+and exposed through the versioned planning API. A draft stores a bounded name,
+flight, country/search/format controls, budget/currency and at most 100 face/site
+identifiers. It stores no uploaded document, extracted brief, conversation,
+sharing consent, quoted price, availability, enrichment snapshot or reservation.
+Saving and updating are authorized and audited; optimistic revisions prevent
+silent overwrites. These drafts are planning interest, not commercial campaigns.
+Resume rechecks current authorized inventory and availability, preserves unknown
+and unresolved facts, and does not claim complete budget fit after partial load.
+The existing unsaved tab draft remains recoverable until explicitly replaced.
+Comparison uses the selected faces' current specifications, costs, units, periods,
+availability and provenance; geographic context is never audience exposure.
+Dashboard attention items state the precise underlying missing control, stale
+flight or failed recheck and open the relevant correction journey. Empty saved
+work is an invitation to make a real plan, never invented campaigns or metrics.
+
 **Key user stories.**
 
 - As a planner, I can draw a polygon over Lagos and see all bookable billboards inside it with KPI

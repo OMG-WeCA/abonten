@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Building2,
+  ArrowLeftRight,
+  Home,
+  Save,
   ChevronDown,
   ClipboardList,
   Layers,
@@ -34,6 +37,7 @@ import {
   summarizeDraftBudget,
   MAX_DRAFT_FACES,
   type AgencyDraftFace,
+  type AgencyDraft,
 } from '../../lib/agency-draft';
 import {
   getAgencySite as getBoard,
@@ -58,7 +62,26 @@ import { prettyFormat } from '../sites/sites-ui';
 import { getSiteOptions } from '../../lib/agency-api';
 import { agencyEvidenceText } from '../../lib/agency-evidence-locale';
 import { parseAmount } from '../../lib/number-format';
+import { confirmUnsavedNavigation, useUnsavedNavigation } from '../../lib/unsaved-navigation';
 import { displayNumber } from '../../lib/locale-format';
+import { displayUiText } from '../../lib/display-ui-text';
+import {
+  getPlanningDraft,
+  createPlanningDraft,
+  updatePlanningDraft,
+  type SavedAgencyPlanningDraft,
+} from '../../lib/planning-drafts-api';
+import {
+  loadPlanningWorkSession,
+  savePlanningWorkSession,
+  planningDraftSignature,
+  orderPlanningFaces,
+  type PlanningWorkSession,
+} from '../../lib/planning-work-session';
+import { PlanningDraftDialog } from './PlanningDraftDialog';
+import { PlanningReplacementDialog } from './PlanningReplacementDialog';
+import { AgencyCompare } from './AgencyCompare';
+import './agency-compare.css';
 import './agency.css';
 
 export interface ShortlistFace {
@@ -99,15 +122,24 @@ export function AgencyDashboard() {
       />
     );
   if (access !== 'ready' || !auth.activeOrganization) return <AccountLoading locale={locale} />;
-  if (!auth.capabilities.includes('MARKETPLACE_VIEW'))
+  if (auth.activeOrganization.type !== 'agency' || !auth.capabilities.includes('MARKETPLACE_VIEW'))
     return (
       <div className="grid min-h-screen place-items-center bg-background p-6">
         <div>
           <h1 className="text-2xl font-bold">
-            {locale === 'fr' ? 'Accès au marché requis' : 'Marketplace access required'}
+            {auth.activeOrganization.type !== 'agency'
+              ? locale === 'fr'
+                ? 'Choisissez un espace agence pour planifier'
+                : 'Choose an agency workspace to plan'
+              : locale === 'fr'
+                ? 'Accès au marché requis'
+                : 'Marketplace access required'}
           </h1>
-          <button className="agency-secondary-button mt-4" onClick={() => router.push('/settings')}>
-            {locale === 'fr' ? 'Paramètres' : 'Settings'}
+          <button
+            className="agency-secondary-button mt-4"
+            onClick={() => router.push('/dashboard')}
+          >
+            {locale === 'fr' ? 'Retour à l’accueil' : 'Back to workspace home'}
           </button>
         </div>
       </div>
@@ -154,7 +186,7 @@ function AgencyWorkspace() {
   const [options, setOptions] = useState<Record<string, OptionSnapshot>>({});
   const [shortlist, setShortlist] = useState<ShortlistFace[]>([]);
   const shortlistSiteIds = [...new Set(shortlist.map((item) => item.site.id))].sort().join(',');
-  const [panel, setPanel] = useState<'map' | 'inventory'>('map');
+  const [panel, setPanel] = useState<'map' | 'inventory' | 'compare'>('map');
   const [plannerOpen, setPlannerOpen] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -169,16 +201,81 @@ function AgencyWorkspace() {
   const [restoringDraft, setRestoringDraft] = useState(false);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [unrestoredFaces, setUnrestoredFaces] = useState<AgencyDraftFace[]>([]);
+  const [unavailableDraftFaces, setUnavailableDraftFaces] = useState<AgencyDraftFace[]>([]);
   const pendingDraftRef = useRef<AgencyDraftFace[]>([]);
+  const draftFaceOrderRef = useRef<string[]>([]);
   const draftRestoreRef = useRef<AbortController | null>(null);
   const [draftNotice, setDraftNotice] = useState('');
   const [draftSaved, setDraftSaved] = useState(false);
   const initializedDraftRef = useRef(false);
-
+  const lifecycleRef = useRef(true);
   useEffect(() => {
-    if (initializedDraftRef.current) return;
-    initializedDraftRef.current = true;
-    const stored = loadAgencyDraft(userId, orgId);
+    lifecycleRef.current = true;
+    return () => {
+      lifecycleRef.current = false;
+    };
+  }, []);
+  const initialSignatureRef = useRef(
+    planningDraftSignature({
+      version: 1,
+      window,
+      country,
+      query,
+      format,
+      budget,
+      currency,
+      faces: [],
+    }),
+  );
+  const [workMeta, setWorkMeta] = useState<PlanningWorkSession | null>(null);
+  const [metaSaved, setMetaSaved] = useState(true);
+  const [workEpoch, setWorkEpoch] = useState(0);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const savePendingRef = useRef(false);
+  const saveSnapshotRef = useRef<{
+    name: string;
+    draft: AgencyDraft;
+    clientRequestId: string;
+  } | null>(null);
+  const [planName, setPlanName] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [saveConflict, setSaveConflict] = useState(false);
+  const [replayPending, setReplayPending] = useState(false);
+  const [resumeState, setResumeState] = useState<'loading' | 'error' | 'ready'>('loading');
+  const [resumeRetry, setResumeRetry] = useState(0);
+  const [replacement, setReplacement] = useState<{
+    draft: AgencyDraft | null;
+    record?: SavedAgencyPlanningDraft;
+  } | null>(null);
+  const comparisonReturnRef = useRef(false);
+  const comparisonFocusRef = useRef<string | null>(null);
+  const routeIntentRef = useRef<{ view: string; focus: string }>({ view: '', focus: '' });
+  const setMeta = (meta: PlanningWorkSession) => {
+    setWorkMeta(meta);
+    setMetaSaved(savePlanningWorkSession(userId, orgId, meta));
+  };
+  const applyWork = (
+    stored: AgencyDraft | null,
+    record?: SavedAgencyPlanningDraft,
+    newPlan = false,
+  ) => {
+    recommendationRef.current?.abort();
+    draftRestoreRef.current?.abort();
+    setRestoringDraft(false);
+    setRecommending(false);
+    pendingDraftRef.current = [];
+    draftFaceOrderRef.current = [];
+    setUnrestoredFaces([]);
+    setUnavailableDraftFaces([]);
+    saveSnapshotRef.current = null;
+    setReplayPending(false);
+    setShortlist([]);
+    setOptions({});
+    setSelectedId(null);
+    setNotice('');
+    setDraftNotice('');
+    setWorkEpoch((epoch) => epoch + 1);
     if (stored) {
       setWindow(stored.window);
       setCountry(stored.country);
@@ -187,15 +284,110 @@ function AgencyWorkspace() {
       setBudget(stored.budget);
       setCurrency(stored.currency);
       pendingDraftRef.current = stored.faces;
+      draftFaceOrderRef.current = stored.faces.map((ref) => ref.faceId);
       setUnrestoredFaces(stored.faces);
-      setDraftNotice(
-        locale === 'fr'
-          ? 'Brouillon de cet onglet restauré. Les données sont revérifiées ; document et conversation sont réinitialisés.'
-          : 'This tab’s draft restored. Board facts are checked again; brief and conversation start fresh.',
-      );
     }
+    const meta: PlanningWorkSession = record
+      ? {
+          recordId: record.id,
+          revision: record.revision,
+          name: record.name,
+          clientRequestId: crypto.randomUUID(),
+          savedSignature: planningDraftSignature(record.draft),
+        }
+      : ((!newPlan ? loadPlanningWorkSession(userId, orgId) : null) ?? {
+          name: '',
+          clientRequestId: crypto.randomUUID(),
+          initialSignature: initialSignatureRef.current,
+        });
+    setMeta(meta);
+    setPlanName(meta.name);
     setDraftReady(true);
-  }, [orgId, userId, locale]);
+    setResumeState('ready');
+    if (meta.pendingCreate) {
+      saveSnapshotRef.current = { ...meta.pendingCreate, clientRequestId: meta.clientRequestId };
+      setReplayPending(true);
+      setPlanName(meta.pendingCreate.name);
+    }
+    if (stored && (stored.faces.length || stored.budget || stored.query || stored.format))
+      setDraftNotice(
+        'Draft restored. Board details are checked again; documents and chat are not saved.',
+      );
+  };
+
+  useEffect(() => {
+    if (initializedDraftRef.current) return;
+    initializedDraftRef.current = true;
+    const controller = new AbortController();
+    const params = new URLSearchParams(globalThis.location.search);
+    routeIntentRef.current = { view: params.get('view') ?? '', focus: params.get('focus') ?? '' };
+    const stored = loadAgencyDraft(userId, orgId);
+    const priorMeta = loadPlanningWorkSession(userId, orgId);
+    const unsaved =
+      !!stored &&
+      (!!priorMeta?.pendingCreate ||
+        planningDraftSignature(stored) !==
+          (priorMeta?.savedSignature ?? priorMeta?.initialSignature));
+    const target = params.get('draft');
+    if (target) {
+      setResumeState('loading');
+      void getPlanningDraft(orgId, target, controller.signal).then(
+        (record) => {
+          if (controller.signal.aborted) return;
+          if (
+            unsaved &&
+            (priorMeta?.recordId !== target ||
+              planningDraftSignature(stored!) !== planningDraftSignature(record.draft))
+          ) {
+            setReplacement({ draft: record.draft, record });
+            setResumeState('ready');
+          } else applyWork(record.draft, record);
+        },
+        () => {
+          if (!controller.signal.aborted) setResumeState('error');
+        },
+      );
+    } else if (params.get('new') === '1') {
+      if (unsaved) {
+        setReplacement({ draft: null });
+        setResumeState('ready');
+      } else {
+        setMeta({
+          name: '',
+          clientRequestId: crypto.randomUUID(),
+          initialSignature: initialSignatureRef.current,
+        });
+        setDraftReady(true);
+        setResumeState('ready');
+      }
+    } else applyWork(stored);
+    return () => {
+      controller.abort();
+      initializedDraftRef.current = false;
+    };
+    // Route page keys this workspace by query; locale changes never reinitialize work.
+  }, [orgId, userId, resumeRetry]);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    const intent = routeIntentRef.current;
+    if (intent.view === 'compare') {
+      setPanel('compare');
+      setPlannerOpen(false);
+    } else if (intent.view === 'inventory') {
+      setPanel('inventory');
+      setPlannerOpen(false);
+    } else if (intent.view === 'shortlist') setPlannerOpen(true);
+    if (intent.focus === 'flight') setFilterOpen(true);
+    if (intent.focus === 'budget') setPlannerOpen(true);
+    const timer = globalThis.setTimeout(() => {
+      if (intent.focus === 'budget')
+        document.querySelector<HTMLInputElement>('[data-testid="agency-planner"] input')?.focus();
+      if (intent.focus === 'flight')
+        document.querySelector<HTMLInputElement>('.agency-filters input[type="date"]')?.focus();
+    }, 100);
+    return () => globalThis.clearTimeout(timer);
+  }, [draftReady]);
 
   useEffect(() => {
     if (!draftReady || !pendingDraftRef.current.length) return;
@@ -207,8 +399,8 @@ function AgencyWorkspace() {
     void (async () => {
       const restored: ShortlistFace[] = [];
       const failed: AgencyDraftFace[] = [];
+      const unavailable: AgencyDraftFace[] = [];
       const snapshots: Record<string, OptionSnapshot> = {};
-      let removed = 0;
       const sites = [...new Set(references.map((item) => item.siteId))];
       for (let start = 0; start < sites.length; start += 4) {
         if (controller.signal.aborted) return;
@@ -226,7 +418,7 @@ function AgencyWorkspace() {
               for (const ref of refs) {
                 const face = site.faces.find((item) => item.id === ref.faceId);
                 if (!face || !face.bookable) {
-                  removed++;
+                  unavailable.push(ref);
                   continue;
                 }
                 restored.push({ site, faceId: ref.faceId, pricingCurrency: ref.pricingCurrency });
@@ -234,7 +426,7 @@ function AgencyWorkspace() {
             } catch (error) {
               if (controller.signal.aborted) return;
               if (error instanceof ApiError && [403, 404].includes(error.status))
-                removed += refs.length;
+                unavailable.push(...refs);
               else failed.push(...refs);
             }
           }),
@@ -246,24 +438,28 @@ function AgencyWorkspace() {
         const item = restoredById.get(ref.faceId);
         return item ? [item] : [];
       });
-      setShortlist((current) => [
-        ...new globalThis.Map([...current, ...ordered].map((item) => [item.faceId, item])).values(),
-      ]);
+      setShortlist((current) =>
+        orderPlanningFaces(
+          [
+            ...new globalThis.Map(
+              [...current, ...ordered].map((item) => [item.faceId, item]),
+            ).values(),
+          ],
+          draftFaceOrderRef.current,
+        ),
+      );
       setOptions((current) => ({ ...current, ...snapshots }));
-      pendingDraftRef.current = failed;
-      setUnrestoredFaces(failed);
-      if (failed.length || removed)
-        setDraftNotice(
-          locale === 'fr'
-            ? `${failed.length} faces restent à vérifier ; ${removed} faces supprimées ou inaccessibles retirées. Document et conversation réinitialisés.`
-            : `${failed.length} draft faces still need loading; ${removed} deleted or inaccessible faces removed. Brief and conversation start fresh.`,
-        );
+      const unresolvedIds = new Set([...failed, ...unavailable].map((ref) => ref.faceId));
+      const unresolved = references.filter((ref) => unresolvedIds.has(ref.faceId));
+      pendingDraftRef.current = unresolved;
+      setUnrestoredFaces(unresolved);
+      setUnavailableDraftFaces(unavailable);
       setRestoringDraft(false);
     })();
     return () => controller.abort();
     // Retry loads unresolved identifiers using the current controls, while a
     // flight change is independently rechecked by the shortlist effect below.
-  }, [draftReady, restoreAttempt, orgId]);
+  }, [draftReady, restoreAttempt, orgId, workEpoch]);
 
   useEffect(() => {
     if (!draftReady) return;
@@ -276,14 +472,17 @@ function AgencyWorkspace() {
         format,
         budget,
         currency,
-        faces: [
-          ...shortlist.map((item) => ({
-            siteId: item.site.id,
-            faceId: item.faceId,
-            ...(item.pricingCurrency ? { pricingCurrency: item.pricingCurrency } : {}),
-          })),
-          ...unrestoredFaces,
-        ],
+        faces: orderPlanningFaces(
+          [
+            ...shortlist.map((item) => ({
+              siteId: item.site.id,
+              faceId: item.faceId,
+              ...(item.pricingCurrency ? { pricingCurrency: item.pricingCurrency } : {}),
+            })),
+            ...unrestoredFaces,
+          ],
+          draftFaceOrderRef.current,
+        ),
       }),
     );
   }, [
@@ -423,11 +622,27 @@ function AgencyWorkspace() {
   );
   useEffect(() => {
     const handle = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (
+        event.key === 'Escape' &&
+        !event.defaultPrevented &&
+        !document.querySelector('dialog[open]')
+      ) {
         setSelectedId(null);
         setFilterOpen(false);
         setAccountOpen(false);
-        setPanel('map');
+        if (comparisonReturnRef.current) {
+          setPanel('compare');
+          setPlannerOpen(false);
+          comparisonReturnRef.current = false;
+          globalThis.requestAnimationFrame(() => {
+            if (comparisonFocusRef.current)
+              document
+                .querySelector<HTMLButtonElement>(
+                  `[data-face-id="${comparisonFocusRef.current}"] button`,
+                )
+                ?.focus();
+          });
+        }
       }
     };
     globalThis.addEventListener('keydown', handle);
@@ -514,7 +729,10 @@ function AgencyWorkspace() {
       !draftFaceEligibility(detail, face, window, availability(detail.id, faceId)).eligible
     )
       return;
-    if (shortlist.length + unrestoredFaces.length >= MAX_DRAFT_FACES) {
+    if (
+      shortlist.length + unrestoredFaces.length >= MAX_DRAFT_FACES &&
+      !unrestoredFaces.some((ref) => ref.faceId === faceId)
+    ) {
       setNotice(
         t(
           'This draft holds up to 100 faces. Remove a face before adding another.',
@@ -523,19 +741,26 @@ function AgencyWorkspace() {
       );
       return;
     }
+    if (!draftFaceOrderRef.current.includes(faceId)) draftFaceOrderRef.current.push(faceId);
+    pendingDraftRef.current = pendingDraftRef.current.filter((ref) => ref.faceId !== faceId);
+    setUnrestoredFaces((refs) => refs.filter((ref) => ref.faceId !== faceId));
+    setUnavailableDraftFaces((refs) => refs.filter((ref) => ref.faceId !== faceId));
     setShortlist((items) =>
       items.some((item) => item.faceId === faceId)
         ? items
-        : [
-            ...items,
-            {
-              site: detail,
-              faceId,
-              ...(selectedEstimate?.status === 'ready'
-                ? { pricingCurrency: selectedEstimate.currency }
-                : {}),
-            },
-          ],
+        : orderPlanningFaces(
+            [
+              ...items,
+              {
+                site: detail,
+                faceId,
+                ...(selectedEstimate?.status === 'ready'
+                  ? { pricingCurrency: selectedEstimate.currency }
+                  : {}),
+              },
+            ],
+            draftFaceOrderRef.current,
+          ),
     );
     setNotice(t('Face added to your draft shortlist.', 'Face ajoutée à votre sélection.'));
   };
@@ -620,9 +845,11 @@ function AgencyWorkspace() {
           remaining -= candidate.cost;
         }
       // Explicit action replaces the draft; a cancelled or stale request never does.
+      draftFaceOrderRef.current = proposal.map((item) => item.faceId);
       setShortlist(proposal);
       pendingDraftRef.current = [];
       setUnrestoredFaces([]);
+      setUnavailableDraftFaces([]);
       setPlannerOpen(true);
       setNotice(
         proposal.length
@@ -641,7 +868,7 @@ function AgencyWorkspace() {
   };
 
   const switchTo = async (id: string) => {
-    if (id === orgId) return;
+    if (id === orgId || !confirmUnsavedNavigation()) return;
     setSwitching(true);
     setActionError('');
     try {
@@ -662,10 +889,251 @@ function AgencyWorkspace() {
     setRecommending(false);
     setShortlist([]);
     pendingDraftRef.current = [];
+    draftFaceOrderRef.current = [];
     setUnrestoredFaces([]);
+    setUnavailableDraftFaces([]);
     setDraftNotice('');
     setNotice(t('Draft shortlist cleared.', 'Sélection effacée.'));
   };
+  const removeUnavailableSelections = () => {
+    const missing = new Set(unavailableDraftFaces.map((ref) => ref.faceId));
+    draftFaceOrderRef.current = draftFaceOrderRef.current.filter((id) => !missing.has(id));
+    pendingDraftRef.current = pendingDraftRef.current.filter((ref) => !missing.has(ref.faceId));
+    setUnrestoredFaces((refs) => refs.filter((ref) => !missing.has(ref.faceId)));
+    setUnavailableDraftFaces([]);
+  };
+  const removeSelection = (id: string) => {
+    draftFaceOrderRef.current = draftFaceOrderRef.current.filter((face) => face !== id);
+    pendingDraftRef.current = pendingDraftRef.current.filter((ref) => ref.faceId !== id);
+    setShortlist((items) => items.filter((item) => item.faceId !== id));
+    setUnrestoredFaces((refs) => refs.filter((ref) => ref.faceId !== id));
+    setUnavailableDraftFaces((refs) => refs.filter((ref) => ref.faceId !== id));
+  };
+  const currentDraft: AgencyDraft = {
+    version: 1,
+    window,
+    country,
+    query,
+    format,
+    budget,
+    currency,
+    faces: orderPlanningFaces(
+      [
+        ...shortlist.map((item) => ({
+          siteId: item.site.id,
+          faceId: item.faceId,
+          ...(item.pricingCurrency ? { pricingCurrency: item.pricingCurrency } : {}),
+        })),
+        ...unrestoredFaces,
+      ],
+      draftFaceOrderRef.current,
+    ),
+  };
+  const currentSignature = planningDraftSignature(currentDraft);
+  const hasAccountSave = !!workMeta?.recordId;
+  const hasSavedChanges =
+    hasAccountSave &&
+    (currentSignature !== workMeta?.savedSignature || planName.trim() !== workMeta?.name);
+  useUnsavedNavigation(
+    saveBusy,
+    t(
+      'A plan save is still pending. Leave this page? You can retry the same save from this tab.',
+      'L’enregistrement est encore en cours. Quitter cette page ? Vous pouvez réessayer ce même enregistrement depuis cet onglet.',
+    ),
+  );
+  const saveWork = async (asNew = false) => {
+    if (savePendingRef.current || !canPlan || !draftReady) return;
+    if (!planName.trim() || planName.trim().length > 80) {
+      setSaveError('name');
+      return;
+    }
+    if (!validWindow) {
+      setSaveError('dates');
+      return;
+    }
+    savePendingRef.current = true;
+    setSaveBusy(true);
+    setSaveError('');
+    setSaveConflict(false);
+    const meta: PlanningWorkSession = asNew
+      ? {
+          name: planName.trim(),
+          clientRequestId: crypto.randomUUID(),
+          initialSignature: initialSignatureRef.current,
+        }
+      : (workMeta ?? {
+          name: planName.trim(),
+          clientRequestId: crypto.randomUUID(),
+          initialSignature: initialSignatureRef.current,
+        });
+    if (asNew) {
+      saveSnapshotRef.current = null;
+      setReplayPending(false);
+    }
+    const snapshot = !meta.recordId
+      ? (saveSnapshotRef.current ?? {
+          name: planName.trim(),
+          draft: currentDraft,
+          clientRequestId: meta.clientRequestId,
+        })
+      : { name: planName.trim(), draft: currentDraft, clientRequestId: meta.clientRequestId };
+    if (!meta.recordId) {
+      saveSnapshotRef.current = snapshot;
+      setMeta({
+        ...meta,
+        name: snapshot.name,
+        pendingCreate: { name: snapshot.name, draft: snapshot.draft },
+      });
+    }
+    try {
+      const record = meta.recordId
+        ? await updatePlanningDraft(orgId, meta.recordId, {
+            name: snapshot.name,
+            draft: snapshot.draft,
+            revision: meta.revision!,
+          })
+        : await createPlanningDraft(orgId, {
+            name: snapshot.name,
+            draft: snapshot.draft,
+            clientRequestId: snapshot.clientRequestId,
+          });
+      if (!lifecycleRef.current) return;
+      const latest = loadPlanningWorkSession(userId, orgId);
+      if (latest && latest.clientRequestId !== meta.clientRequestId) return;
+      setMeta({
+        recordId: record.id,
+        revision: record.revision,
+        name: record.name,
+        clientRequestId: meta.clientRequestId,
+        savedSignature: planningDraftSignature(record.draft),
+      });
+      setPlanName(record.name);
+      saveSnapshotRef.current = null;
+      setReplayPending(false);
+      setSaveOpen(false);
+      setNotice(
+        t(
+          'Planning draft saved to your account. Prices and availability will be checked when you resume.',
+          'Brouillon de plan enregistré dans votre compte. Les prix et la disponibilité seront revérifiés à la reprise.',
+        ),
+      );
+    } catch (error) {
+      if (!lifecycleRef.current) return;
+      if (error instanceof ApiError) {
+        setSaveError(error.message);
+        setSaveConflict(error.status === 409 && !!meta.recordId);
+      } else setSaveError('connection');
+      if (!meta.recordId) setReplayPending(!(error instanceof ApiError && error.status < 500));
+      if (!meta.recordId && error instanceof ApiError && error.status < 500) {
+        saveSnapshotRef.current = null;
+        setMeta(meta);
+      }
+    } finally {
+      savePendingRef.current = false;
+      if (lifecycleRef.current) setSaveBusy(false);
+    }
+  };
+  const openLatest = async () => {
+    if (!workMeta?.recordId) return;
+    setSaveBusy(true);
+    try {
+      const record = await getPlanningDraft(orgId, workMeta.recordId);
+      if (lifecycleRef.current) {
+        setReplacement({ draft: record.draft, record });
+        setSaveOpen(false);
+      }
+    } catch (error) {
+      if (lifecycleRef.current)
+        setSaveError(error instanceof ApiError ? error.message : 'connection');
+    } finally {
+      if (lifecycleRef.current) setSaveBusy(false);
+    }
+  };
+  const closeDetail = () => {
+    setSelectedId(null);
+    if (comparisonReturnRef.current) {
+      setPanel('compare');
+      setPlannerOpen(false);
+      comparisonReturnRef.current = false;
+      globalThis.requestAnimationFrame(() => {
+        if (comparisonFocusRef.current)
+          document
+            .querySelector<HTMLButtonElement>(
+              `[data-face-id="${comparisonFocusRef.current}"] button`,
+            )
+            ?.focus();
+      });
+    }
+  };
+  const saveProblem =
+    saveError === 'name'
+      ? t(
+          'Choose a plan name of up to 80 characters.',
+          'Choisissez un nom de plan de 80 caractères maximum.',
+        )
+      : saveError === 'dates'
+        ? t(
+            'Choose a valid flight before saving.',
+            'Choisissez des dates valides avant d’enregistrer.',
+          )
+        : saveError === 'connection'
+          ? t(
+              'The save response did not arrive. Your work remains here; retry the same save.',
+              'La réponse n’est pas arrivée. Votre travail reste ici ; réessayez ce même enregistrement.',
+            )
+          : displayUiText(saveError, locale);
+  if (!draftReady && replacement)
+    return (
+      <div className="agency-work-loading">
+        <h1>{t('Open planning workspace', 'Ouvrir le planificateur')}</h1>
+        <p>{t('Choose which draft to continue.', 'Choisissez le brouillon à poursuivre.')}</p>
+        <PlanningReplacementDialog
+          locale={locale}
+          onContinue={() => {
+            applyWork(replacement.draft, replacement.record, !replacement.record);
+            setReplacement(null);
+          }}
+          onCancel={() => {
+            setReplacement(null);
+            router.replace('/dashboard');
+          }}
+        />
+      </div>
+    );
+  if (!draftReady)
+    return (
+      <div className="agency-work-loading">
+        <h1>{t('Open planning workspace', 'Ouvrir le planificateur')}</h1>
+        {resumeState === 'loading' ? (
+          <p role="status">
+            <Loader2 className="animate-spin" />
+            {t('Loading your saved controls…', 'Chargement de vos paramètres…')}
+          </p>
+        ) : (
+          <div role="alert">
+            <p>
+              {t(
+                'The saved plan could not be opened. Your existing tab work is untouched.',
+                'Le plan enregistré n’a pas pu être ouvert. Votre travail dans cet onglet est conservé.',
+              )}
+            </p>
+            <button
+              className="agency-secondary-button"
+              onClick={() => {
+                initializedDraftRef.current = false;
+                setResumeState('loading');
+                setResumeRetry((value) => value + 1);
+              }}
+            >
+              {t('Retry', 'Réessayer')}
+            </button>
+          </div>
+        )}
+        <button className="agency-secondary-button" onClick={() => router.push('/dashboard')}>
+          {t('Back to workspace home', 'Retour à l’accueil')}
+        </button>
+      </div>
+    );
   return (
     <div className="agency-workspace" data-selected={Boolean(selectedId)} data-panel={panel}>
       <header className="agency-toolbar">
@@ -675,6 +1143,15 @@ function AgencyWorkspace() {
           </span>
           abonten
         </Link>
+        <button
+          className="agency-icon-button agency-home-link"
+          onClick={() => {
+            if (confirmUnsavedNavigation()) router.push('/dashboard');
+          }}
+          aria-label={t('Workspace home', 'Accueil agence')}
+        >
+          <Home size={18} />
+        </button>
         <label className="agency-org">
           <span className="sr-only">{t('Active organization', 'Organisation active')}</span>
           <Building2 size={16} />
@@ -740,6 +1217,18 @@ function AgencyWorkspace() {
           <LanguageSwitcher />
         </div>
         <button
+          className="agency-toolbar-button agency-save-control"
+          disabled={!canPlan || !draftReady || saveBusy}
+          onClick={() => {
+            setSaveError('');
+            setSaveConflict(false);
+            setSaveOpen(true);
+          }}
+        >
+          <Save size={17} />
+          <span>{t('Save plan', 'Enregistrer')}</span>
+        </button>
+        <button
           className="agency-icon-button agency-theme-toggle"
           onClick={toggle}
           aria-label={t('Switch theme', 'Changer de thème')}
@@ -762,7 +1251,42 @@ function AgencyWorkspace() {
             <div className="agency-menu-language">
               <LanguageSwitcher />
             </div>
-            <button onClick={() => router.push('/settings')}>
+            <button
+              onClick={() => {
+                if (confirmUnsavedNavigation()) router.push('/dashboard');
+              }}
+            >
+              <Home size={17} />
+              {t('Workspace home', 'Accueil agence')}
+            </button>
+            <button
+              disabled={!canPlan || !draftReady || saveBusy}
+              onClick={() => {
+                setSaveError('');
+                setSaveConflict(false);
+                setSaveOpen(true);
+                setAccountOpen(false);
+              }}
+            >
+              <Save size={17} />
+              {t('Save plan', 'Enregistrer le plan')}
+            </button>
+            <button
+              onClick={() => {
+                setPanel('compare');
+                setPlannerOpen(false);
+                setSelectedId(null);
+                setAccountOpen(false);
+              }}
+            >
+              <ArrowLeftRight size={17} />
+              {t('Compare shortlist', 'Comparer la sélection')}
+            </button>
+            <button
+              onClick={() => {
+                if (confirmUnsavedNavigation()) router.push('/settings');
+              }}
+            >
               <Settings2 size={17} />
               {t('Settings', 'Réglages')}
             </button>
@@ -770,7 +1294,12 @@ function AgencyWorkspace() {
               {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
               {t('Switch theme', 'Changer de thème')}
             </button>
-            <button onClick={() => void signOut().then(() => router.replace('/sign-in'))}>
+            <button
+              onClick={() => {
+                if (confirmUnsavedNavigation())
+                  void signOut().then(() => router.replace('/sign-in'));
+              }}
+            >
               <LogOut size={17} />
               {t('Sign out', 'Déconnexion')}
             </button>
@@ -778,6 +1307,14 @@ function AgencyWorkspace() {
         )}
       </header>
       <nav className="agency-rail" aria-label={t('Agency workspace', 'Espace agence')}>
+        <button
+          onClick={() => {
+            if (confirmUnsavedNavigation()) router.push('/dashboard');
+          }}
+        >
+          <Home size={21} />
+          <span>{t('Home', 'Accueil')}</span>
+        </button>
         <button className={panel === 'map' ? 'is-active' : ''} onClick={() => setPanel('map')}>
           <Map size={22} />
           <span>{t('Map', 'Carte')}</span>
@@ -795,7 +1332,8 @@ function AgencyWorkspace() {
         <button
           className={plannerOpen ? 'is-active' : ''}
           onClick={() => {
-            setPlannerOpen(!plannerOpen);
+            setPlannerOpen(panel === 'compare' || !plannerOpen);
+            setPanel('map');
             setSelectedId(null);
           }}
         >
@@ -806,11 +1344,30 @@ function AgencyWorkspace() {
           )}
         </button>
         <span className="agency-rail-spacer" />
-        <button onClick={() => router.push('/settings')}>
+        <button
+          className={panel === 'compare' ? 'is-active' : ''}
+          onClick={() => {
+            setPanel('compare');
+            setPlannerOpen(false);
+            setSelectedId(null);
+          }}
+        >
+          <ArrowLeftRight size={21} />
+          <span>{t('Compare', 'Comparer')}</span>
+        </button>
+        <button
+          onClick={() => {
+            if (confirmUnsavedNavigation()) router.push('/settings');
+          }}
+        >
           <Settings2 size={21} />
           <span>{t('Settings', 'Réglages')}</span>
         </button>
-        <button onClick={() => void signOut().then(() => router.replace('/sign-in'))}>
+        <button
+          onClick={() => {
+            if (confirmUnsavedNavigation()) void signOut().then(() => router.replace('/sign-in'));
+          }}
+        >
           <LogOut size={21} />
           <span>{t('Sign out', 'Déconnexion')}</span>
         </button>
@@ -827,10 +1384,7 @@ function AgencyWorkspace() {
           locale={locale}
         />
         <div className="agency-map-heading">
-          <span className="agency-eyebrow">
-            {t('LOCATION INTELLIGENCE', 'INTELLIGENCE GÉOGRAPHIQUE')}
-          </span>
-          <p>{t('Find your next vantage point.', 'Trouvez votre prochain point de vue.')}</p>
+          <p>{t('Explore billboard locations', 'Trouver des panneaux')}</p>
           <span>
             {loadState === 'loading'
               ? t('Loading listed boards…', 'Chargement des panneaux…')
@@ -989,7 +1543,7 @@ function AgencyWorkspace() {
           <section className="agency-board agency-panel agency-detail-state">
             <button
               className="agency-icon-button"
-              onClick={() => setSelectedId(null)}
+              onClick={closeDetail}
               aria-label={t('Close board details', 'Fermer les détails')}
             >
               <X size={18} />
@@ -1035,23 +1589,77 @@ function AgencyWorkspace() {
             availability={availability(detail.id, faceId)}
             onRetryAvailability={() => setRetry((attempt) => attempt + 1)}
             onAdd={add}
-            onClose={() => setSelectedId(null)}
+            onClose={closeDetail}
           />
         )}
-        {!plannerOpen && (
+        {panel === 'compare' && (
+          <div className="agency-comparison-container">
+            {unrestoredFaces.length > 0 && (
+              <div className="agency-compare-unresolved" role="status">
+                <p>
+                  {t(
+                    'Some selected faces could not be loaded. This comparison is incomplete.',
+                    'Certaines faces n’ont pas pu être chargées. Cette comparaison est incomplète.',
+                  )}
+                </p>
+                <button
+                  className="agency-secondary-button"
+                  disabled={restoringDraft}
+                  onClick={() => setRestoreAttempt((attempt) => attempt + 1)}
+                >
+                  {t('Retry selected faces', 'Recharger les faces choisies')}
+                </button>
+                {unavailableDraftFaces.length > 0 && (
+                  <button
+                    className="agency-secondary-button"
+                    disabled={restoringDraft}
+                    onClick={removeUnavailableSelections}
+                  >
+                    {t('Remove unavailable selections', 'Retirer les sélections indisponibles')}
+                  </button>
+                )}
+              </div>
+            )}
+            <AgencyCompare
+              unresolvedCount={unrestoredFaces.length}
+              shortlist={shortlist}
+              estimates={estimates}
+              availabilityFor={availability}
+              window={window}
+              locale={locale}
+              onOpen={(siteId, id) => {
+                select(siteId, id);
+                comparisonReturnRef.current = true;
+                comparisonFocusRef.current = id;
+              }}
+              onRemove={removeSelection}
+              onBrowse={() => {
+                setPanel('inventory');
+                setPlannerOpen(false);
+              }}
+              onBack={() => {
+                setPanel('map');
+                setPlannerOpen(true);
+              }}
+            />
+          </div>
+        )}
+        {!plannerOpen && panel !== 'compare' && (
           <button
             className="agency-planner-launch"
             onClick={() => {
               setPlannerOpen(true);
+              setPanel('map');
               setSelectedId(null);
             }}
           >
             <Sparkles size={20} />
-            {t('Plan with Abonten', 'Planifier avec Abonten')}
+            {t('Open planning assistant', 'Ouvrir l’assistant')}
           </button>
         )}
         <AgencyPlanner
-          open={plannerOpen}
+          key={workEpoch}
+          open={plannerOpen && panel !== 'compare'}
           orgId={orgId}
           locale={locale}
           canPlan={canPlan}
@@ -1073,7 +1681,7 @@ function AgencyWorkspace() {
           summary={summary}
           distances={distances}
           onSelect={select}
-          onRemove={(id) => setShortlist((items) => items.filter((item) => item.faceId !== id))}
+          onRemove={removeSelection}
           onClear={clear}
           onClose={() => setPlannerOpen(false)}
           onRecommend={() => void recommend()}
@@ -1083,7 +1691,16 @@ function AgencyWorkspace() {
             setRecommending(false);
           }}
           canRecommend={validBudget && validWindow && loadState === 'ready' && !restoringDraft}
-          notice={[notice, draftNotice]
+          notice={[
+            notice,
+            draftNotice,
+            unrestoredFaces.length > 0
+              ? t(
+                  `${unrestoredFaces.length} selected faces remain unresolved, including ${unavailableDraftFaces.length} unavailable selections. The full draft’s budget fit is unknown. Retry loading, or explicitly remove unavailable selections in Compare.`,
+                  `${unrestoredFaces.length} faces choisies restent à vérifier, dont ${unavailableDraftFaces.length} sélections indisponibles. Le respect du budget global reste inconnu. Rechargez-les ou retirez explicitement les sélections indisponibles dans Comparer.`,
+                )
+              : '',
+          ]
             .filter(Boolean)
             .map((value) => agencyEvidenceText(value, locale))
             .join(' ')}
@@ -1103,13 +1720,30 @@ function AgencyWorkspace() {
               : '—'}
           </b>
           <small>
-            {draftSaved
-              ? t('Saved in this tab · ', 'Enregistré dans cet onglet · ')
-              : t('Draft not saved in this tab · ', 'Brouillon non enregistré dans cet onglet · ')}
+            {hasAccountSave
+              ? hasSavedChanges
+                ? t('Changes kept in this tab · ', 'Changements conservés dans cet onglet · ')
+                : t('Saved to your account · ', 'Enregistré dans votre compte · ')
+              : draftSaved
+                ? t('Saved in this tab · ', 'Enregistré dans cet onglet · ')
+                : t(
+                    'Draft not saved in this tab · ',
+                    'Brouillon non enregistré dans cet onglet · ',
+                  )}
             {summary.remaining != null
               ? `${money(Math.abs(summary.remaining), currency, locale)} ${summary.remaining < 0 ? t('over budget', 'de dépassement') : t('remaining', 'restants')}`
               : t('Published media estimates', 'Estimations média publiées')}
           </small>
+          <button
+            className="agency-secondary-button"
+            onClick={() => {
+              setPanel('compare');
+              setPlannerOpen(false);
+              setSelectedId(null);
+            }}
+          >
+            {t('Compare', 'Comparer')}
+          </button>
           {unrestoredFaces.length > 0 && (
             <button
               className="agency-secondary-button"
@@ -1173,6 +1807,50 @@ function AgencyWorkspace() {
               <X size={15} />
             </button>
           </p>
+        )}
+        {hasAccountSave && (
+          <div className="agency-working-title" title={planName}>
+            {planName}
+            {hasSavedChanges && (
+              <span> · {t('Unsaved changes', 'Changements non enregistrés')}</span>
+            )}
+          </div>
+        )}
+        {!metaSaved && (
+          <div className="agency-storage-warning" role="alert">
+            {t(
+              'This browser cannot preserve save retries across reloads. Keep this page open until saving completes; your account’s saved plans remain available.',
+              'Ce navigateur ne peut pas conserver les nouvelles tentatives après rechargement. Gardez cette page ouverte jusqu’à la fin ; les plans enregistrés dans votre compte restent disponibles.',
+            )}
+          </div>
+        )}
+        {saveOpen && (
+          <PlanningDraftDialog
+            name={planName}
+            onName={setPlanName}
+            onSubmit={() => void saveWork()}
+            onClose={() => setSaveOpen(false)}
+            busy={saveBusy}
+            error={saveProblem}
+            conflict={saveConflict}
+            replayPending={replayPending}
+            onSaveAsNew={() => void saveWork(true)}
+            onOpenLatest={() => void openLatest()}
+            locale={locale}
+          />
+        )}
+        {replacement && (
+          <PlanningReplacementDialog
+            locale={locale}
+            onContinue={() => {
+              applyWork(replacement.draft, replacement.record, !replacement.record);
+              setReplacement(null);
+            }}
+            onCancel={() => {
+              setReplacement(null);
+              if (!draftReady) router.replace('/dashboard');
+            }}
+          />
         )}
         <p className="sr-only" role="status" aria-live="polite">
           {agencyEvidenceText(notice, locale)}
