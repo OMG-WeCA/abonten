@@ -87,6 +87,18 @@ describe('fixed OpenAI planner transport using synthetic providers only', () => 
       assert.equal(body.text.format.type, 'json_schema');
       assert.equal(body.text.format.strict, true);
       assert.equal(body.text.format.schema.additionalProperties, false);
+      const properties = body.text.format.schema.properties;
+      assert.equal(properties.recommendations.maxItems, 12);
+      assert.equal(properties.questions.maxItems, 5);
+      assert.equal(properties.recommendations.items.properties.siteId.format, 'uuid');
+      assert.equal(new RegExp(properties.message.pattern).test('x'.repeat(4001)), false);
+      assert.equal(new RegExp(properties.questions.items.pattern).test('x'.repeat(501)), false);
+      assert.equal(
+        new RegExp(properties.recommendations.items.properties.reason.pattern).test(
+          'x'.repeat(1001),
+        ),
+        false,
+      );
       assert.match(body.instructions, /untrusted DATA/);
       assert.match(body.instructions, /Never claim a reservation/);
       assert.equal(body.input[0].role, 'assistant');

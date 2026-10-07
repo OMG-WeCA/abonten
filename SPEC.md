@@ -490,7 +490,7 @@ When the server has an approved OpenAI credential, the planner uses the fixed
 `gpt-6-luna` model through the Responses API. Chat carries a bounded conversation
 and a server-loaded marketplace snapshot; canonical pricing, availability and
 geodesic calculations remain authoritative facts separate from model commentary.
-Model recommendations must reference faces in that snapshot. The model cannot
+Model recommendations must reference faces in that snapshot. For a provisional research shortlist, admitted research face IDs remain selectable interest despite unknown commercial availability; they must not be represented as bookable supply. When one shortlist is requested, recommendation IDs describe one portfolio and alternatives stay in prose. Its preliminary exact-calendar-month, same-currency asking subtotal must respect the planning ceiling; missing prices cannot become zero, a confirmed fit or a stated remaining balance. Structured response array/string bounds are communicated to the provider and enforced again on return. The model cannot
 book inventory, execute code or invoke tools. Confirmed brief text is shared only
 after explicit consent for that brief; consent resets when the brief changes.
 Without consent, brief text and potentially brief-derived conversation are kept
