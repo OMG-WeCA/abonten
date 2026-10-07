@@ -364,7 +364,18 @@ export function AgencyPlanner(props: PlannerProps) {
       if (!controller.signal.aborted) setChatting(false);
     }
   };
-  const hasDemo = shortlist.some(({ site }) => site.isDemo);
+  const hasDemo = shortlist.some(
+    ({ site, faceId }) =>
+      site.isDemo &&
+      estimates.some(
+        (estimate) =>
+          estimate.siteId === site.id &&
+          estimate.faceId === faceId &&
+          estimate.status === 'ready' &&
+          estimate.amount > 0 &&
+          (summary.totals[estimate.currency] ?? 0) >= estimate.amount,
+      ),
+  );
   const subtotal = summary.totals[currency] ?? 0;
   const budgetAmount = parseAmount(budget) ?? NaN;
   const hasBudget =
@@ -1199,9 +1210,17 @@ export function ReplyFacts({
           )}
           <p>
             {t('Current draft media cost', 'Coût média du brouillon actuel')}
-            {facts.sites.some((site) => site.isDemo) && (
-              <> · {t('Includes DEMO costs', 'Comprend des coûts DEMO')}</>
-            )}{' '}
+            {facts.sites.some(
+              (site) =>
+                site.isDemo &&
+                site.faces.some(
+                  (face) =>
+                    face.selected &&
+                    face.estimate.status === 'ready' &&
+                    face.estimate.amount > 0 &&
+                    (facts.budget.totals[face.estimate.currency] ?? 0) >= face.estimate.amount,
+                ),
+            ) && <> · {t('Includes DEMO costs', 'Comprend des coûts DEMO')}</>}{' '}
             :{' '}
             {Object.entries(facts.budget.totals)
               .map(([code, amount]) => money(amount, code, locale))

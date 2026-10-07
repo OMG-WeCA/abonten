@@ -17,6 +17,7 @@ import {
   selectionDistances,
   summarizeBudget,
   summarizeResearchPrices,
+  type FaceCostEstimate,
 } from './agency-planning';
 
 const window = { startDate: '2026-10-01', endDate: '2026-10-08' };
@@ -769,4 +770,100 @@ test('legacy openai replies cannot repeat raw reasons or questions without the n
   const html = renderToStaticMarkup(<ReplyFacts reply={reply} locale="en" onSelect={noop} />);
   assert.ok(!html.includes('HALLUCINATED'));
   assert.ok(html.includes('KING OF MARINA 2.0'));
+});
+
+test('current draft DEMO cost label requires a selected priced contribution, not retrieved inventory', () => {
+  const demo = { ...site, isDemo: true };
+  const monthly = { startDate: '2026-11-01', endDate: '2026-12-01' };
+  const price = estimateFaceCost(demo, demo.faces[0], monthly, 'NGN', {
+    status: 'available',
+    window: monthly,
+  });
+  assert.equal(price.status, 'ready');
+  for (const locale of ['en', 'fr'] as const) {
+    for (const scenario of [
+      { selected: false, priced: true, included: false },
+      { selected: true, priced: false, included: false },
+      { selected: true, priced: true, included: false },
+      { selected: true, priced: true, included: true },
+    ]) {
+      const reply = canonicalReplyFixture(locale, 22000000, false);
+      const estimate: FaceCostEstimate = scenario.priced
+        ? price
+        : {
+            status: 'unavailable',
+            siteId: demo.id,
+            faceId: demo.faces[0].id,
+            reason: 'No published rate covers this flight.',
+          };
+      reply.facts!.sites.push({
+        siteId: demo.id,
+        name: demo.name,
+        city: 'Lagos',
+        country: 'Nigeria',
+        latitude: demo.latitude,
+        longitude: demo.longitude,
+        isDemo: true,
+        faces: [
+          {
+            faceId: demo.faces[0].id,
+            selected: scenario.selected,
+            availability: 'available',
+            estimate,
+          },
+        ],
+      });
+      reply.facts!.budget = summarizeBudget(scenario.included ? [estimate] : []);
+      const html = renderToStaticMarkup(
+        <ReplyFacts reply={reply} locale={locale} onSelect={noop} />,
+      );
+      const draft = html.slice(html.indexOf('data-testid="current-draft-facts"'));
+      assert.equal(
+        draft.includes(locale === 'fr' ? 'Comprend des coûts DEMO' : 'Includes DEMO costs'),
+        scenario.included,
+        JSON.stringify(scenario),
+      );
+    }
+  }
+});
+
+test('shortlist DEMO cost label stays absent until its ready estimate contributes to the displayed subtotal', () => {
+  const demo = { ...site, isDemo: true };
+  const price = estimateFaceCost(demo, demo.faces[0], window, 'NGN', availability);
+  assert.equal(price.status, 'ready');
+  for (const locale of ['en', 'fr'] as const)
+    for (const included of [false, true]) {
+      const html = renderToStaticMarkup(
+        <AgencyPlanner
+          contextMayContainBrief={false}
+          onBriefContext={noop}
+          open
+          orgId="synthetic-org"
+          locale={locale}
+          canPlan
+          window={window}
+          budget="2000"
+          onBudget={noop}
+          currency="NGN"
+          onCurrency={noop}
+          shortlist={[{ site: demo, faceId: demo.faces[0].id }]}
+          estimates={[price]}
+          summary={summarizeBudget(included ? [price] : [])}
+          distances={[]}
+          onSelect={noop}
+          onRemove={noop}
+          onClear={noop}
+          onClose={noop}
+          onRecommend={noop}
+          recommending={false}
+          onCancelRecommendation={noop}
+          canRecommend
+          notice=""
+        />,
+      );
+      assert.equal(
+        html.includes(locale === 'fr' ? 'Comprend des coûts DEMO' : 'Includes DEMO costs'),
+        included,
+      );
+    }
 });

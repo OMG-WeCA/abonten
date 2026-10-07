@@ -606,6 +606,9 @@ explicitly sourced city/country facts; neighborhoods and subarea coverage remain
 unknown unless separately evidenced. The canonical accepted summary describes only
 the returned recommendations, including a coherent empty summary when withheld.
 Raw model text cannot invent costs, source facts, geographic coverage or availability.
+Cost inclusion labels refer only to selected faces contributing priced estimates
+to the displayed draft subtotal; retrieved but unselected or unpriced DEMO records
+must not label a real-only or empty draft as including DEMO costs.
 
 **Key user stories.**
 
