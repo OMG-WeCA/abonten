@@ -318,7 +318,7 @@ test('research comparison keeps advertised monthly rate apart from flight quotes
     ...site,
     isResearchReference: true,
     commerciallyBookable: false,
-    faces: [{ ...site.faces[0], bookable: false }],
+    faces: [{ ...site.faces[0], faceLabel: 'Reported display', bookable: false }],
     rateCards: [],
     metadata: [],
     researchProvenance: {
@@ -342,6 +342,9 @@ test('research comparison keeps advertised monthly rate apart from flight quotes
   for (const locale of ['en', 'fr'] as const) {
     const html = render(props({ locale, shortlist: [{ site: reference, faceId: 'face-A' }] }));
     assert.ok(html.includes(locale === 'fr' ? 'SOURCE PUBLIQUE' : 'RESEARCH'));
+    assert.ok(html.includes(locale === 'fr' ? 'Support publié' : 'Reported display'));
+    assert.ok(html.includes(locale === 'fr' ? 'face Support publié' : 'face Reported display'));
+    if (locale === 'fr') assert.ok(!html.includes('Reported display'));
     assert.ok(html.includes(locale === 'fr' ? '/ mois' : '/ month'));
     assert.ok(html.includes(locale === 'fr' ? 'Non confirmée' : 'Not confirmed'));
     assert.ok(

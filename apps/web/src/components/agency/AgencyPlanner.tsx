@@ -38,7 +38,7 @@ import {
   ResearchPriceBaseline,
   ResearchReferenceFacts,
 } from './ResearchReferenceFacts';
-import { researchAskingPrice } from '../../lib/research-reference';
+import { researchAskingPrice, researchFaceLabel } from '../../lib/research-reference';
 
 interface PlannerProps {
   open: boolean;
@@ -146,8 +146,11 @@ export function AgencyPlanner(props: PlannerProps) {
   useEffect(() => {
     const thread = threadRef.current;
     if (thread && (messages.length > 0 || chatting)) {
-      thread.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-      thread.scrollTo({ top: thread.scrollHeight, behavior: 'instant' });
+      const latest = chatting
+        ? thread.querySelector<HTMLElement>('[role="status"]')
+        : thread.querySelector<HTMLElement>('.agency-chat-message:last-child');
+      // Open a long reply at its narrative, before its expandable evidence.
+      latest?.scrollIntoView({ block: 'start', behavior: 'instant' });
     }
   }, [messages, chatting]);
   const cancelUpload = () => {
@@ -619,8 +622,12 @@ export function AgencyPlanner(props: PlannerProps) {
                             <ResearchBadge locale={locale} />{' '}
                           </>
                         )}
-                        {item.site.faces.find((face) => face.id === item.faceId)?.faceLabel} ·{' '}
-                        {item.site.city}
+                        {researchFaceLabel(
+                          item.site.faces.find((face) => face.id === item.faceId)?.faceLabel,
+                          item.site.isResearchReference,
+                          locale,
+                        )}{' '}
+                        · {item.site.city}
                       </small>
                     </span>
                     <em>
@@ -1084,7 +1091,7 @@ function ReplyFacts({
                 type="button"
                 className="agency-text-button"
                 onClick={() => onSelect(site.siteId, face.faceId)}
-                aria-label={`${t('View board', 'Voir le panneau')} ${site.name}${face.faceLabel ? ` · ${t('Face', 'Face')} ${face.faceLabel}` : ''}`}
+                aria-label={`${t('View board', 'Voir le panneau')} ${site.name}${face.faceLabel ? ` · ${t('Face', 'Face')} ${researchFaceLabel(face.faceLabel, site.isResearchReference, locale)}` : ''}`}
               >
                 <strong>
                   {site.name} {site.isDemo && <span className="agency-data-badge">DEMO</span>}
@@ -1098,7 +1105,8 @@ function ReplyFacts({
               </p>
               {face.faceLabel && (
                 <p>
-                  {t('Face', 'Face')} {face.faceLabel}
+                  {t('Face', 'Face')}{' '}
+                  {researchFaceLabel(face.faceLabel, site.isResearchReference, locale)}
                 </p>
               )}
               <p
@@ -1203,7 +1211,9 @@ function ReplyFacts({
                 <strong>
                   {site.name} {site.isDemo && <span className="agency-data-badge">DEMO</span>}
                   {site.isResearchReference && <ResearchBadge locale={locale} />}
-                  {face.faceLabel ? ` · ${t('Face', 'Face')} ${face.faceLabel}` : ''}
+                  {face.faceLabel
+                    ? ` · ${t('Face', 'Face')} ${researchFaceLabel(face.faceLabel, site.isResearchReference, locale)}`
+                    : ''}
                 </strong>
               </p>
               <p>{availabilityLabel(face.availability, site.isDemo, site.isResearchReference)}</p>

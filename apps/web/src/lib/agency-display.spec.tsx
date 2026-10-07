@@ -9,7 +9,7 @@ import { prettyFormat } from '../components/sites/sites-ui';
 import { GeographicContextSnapshot } from '../components/sites/GeographicContextPanel';
 import type { ContextMetric, SiteGeographicContext } from '@abonten/contracts/enrichment';
 import type { SiteDetail } from './sites-api';
-import { researchSourceUrl, researchAskingPrice } from './research-reference';
+import { researchSourceUrl, researchAskingPrice, researchFaceLabel } from './research-reference';
 import {
   estimateFaceCost,
   selectionDistances,
@@ -340,7 +340,16 @@ const researched: SiteDetail = {
   isResearchReference: true,
   commerciallyBookable: false,
   ownershipKind: 'agency_curated_reference',
-  faces: [{ ...site.faces[0], width: 15.36, height: 6.72, units: 'm', bookable: false }],
+  faces: [
+    {
+      ...site.faces[0],
+      faceLabel: 'Reported display',
+      width: 15.36,
+      height: 6.72,
+      units: 'm',
+      bookable: false,
+    },
+  ],
   rateCards: [],
   assets: [],
   metadata: [],
@@ -386,6 +395,8 @@ test('real research details preserve source monthly price, uncertainty and refer
     );
     assert.ok(html.includes(locale === 'fr' ? 'SOURCE PUBLIQUE' : 'RESEARCH'));
     assert.ok(html.includes('KING OF MARINA 2.0'));
+    assert.ok(html.includes(locale === 'fr' ? 'Support publié' : 'Reported display'));
+    if (locale === 'fr') assert.ok(!html.includes('Reported display'));
     assert.ok(html.includes('NGN'));
     assert.ok(html.includes(locale === 'fr' ? '/ mois' : '/ month'));
     assert.ok(html.includes('https://elev8.com.ng/king-of-marina/'));
@@ -549,6 +560,8 @@ test('planner selection shows research monthly asking prices and approximate pub
       );
       assert.ok(html.includes(locale === 'fr' ? 'SOURCE PUBLIQUE' : 'RESEARCH'));
       assert.ok(html.includes(locale === 'fr' ? '/ mois' : '/ month'));
+      assert.ok(html.includes(locale === 'fr' ? 'Support publié' : 'Reported display'));
+      if (locale === 'fr') assert.ok(!html.includes('Reported display'));
       assert.ok(
         html.includes(
           locale === 'fr' ? 'Sous-total média mensuel publié' : 'Advertised monthly media subtotal',
@@ -572,5 +585,20 @@ test('planner selection shows research monthly asking prices and approximate pub
       if (partial)
         assert.ok(!html.includes(locale === 'fr' ? 'réserve sans devis' : 'unquoted reserve'));
     }
+  }
+});
+
+test('only the controlled research face label is localized', () => {
+  assert.equal(researchFaceLabel('Reported display', true, 'fr'), 'Support publié');
+  assert.equal(researchFaceLabel('Reported display', true, 'en'), 'Reported display');
+  assert.equal(researchFaceLabel('Reported display', false, 'fr'), 'Reported display');
+  for (const label of [
+    'Operator face A',
+    'reported display',
+    'Display supplied by partner',
+    null,
+    undefined,
+  ]) {
+    assert.equal(researchFaceLabel(label, true, 'fr'), label);
   }
 });

@@ -20,6 +20,7 @@ import { displayDateOnly, displayNumber, displayUtcTimestamp } from '../../lib/l
 import { formatMoney } from '../../lib/number-format';
 import { marketLabel } from '../../lib/markets';
 import { prettyFormat, prettyIllumination } from '../sites/sites-ui';
+import { researchFaceLabel } from '../../lib/research-reference';
 
 export interface AgencyCompareProps {
   shortlist: Array<{ site: SiteDetail; faceId: string; pricingCurrency?: string }>;
@@ -208,7 +209,7 @@ function CompareFace({
       <header className="agency-compare-card-heading">
         <span className="agency-compare-face-tag">
           {!site.isDemo && <>{t('Face', 'Face')} </>}
-          {face?.faceLabel ?? faceId}
+          {researchFaceLabel(face?.faceLabel, site.isResearchReference, locale) ?? faceId}
         </span>
         <h2 id={headingId}>{site.name}</h2>
         <p>
@@ -401,7 +402,7 @@ function CompareFace({
           type="button"
           className="agency-secondary-button"
           onClick={() => onOpen(site.id, faceId)}
-          aria-label={`${t('Open board', 'Ouvrir le panneau')} ${site.name}, ${t('face', 'face')} ${face?.faceLabel ?? faceId}`}
+          aria-label={`${t('Open board', 'Ouvrir le panneau')} ${site.name}, ${t('face', 'face')} ${researchFaceLabel(face?.faceLabel, site.isResearchReference, locale) ?? faceId}`}
         >
           {t('Open board details', 'Ouvrir les détails')}
           <ArrowUpRight size={16} />
@@ -410,7 +411,7 @@ function CompareFace({
           type="button"
           className="agency-compare-remove"
           onClick={() => onRemove(faceId)}
-          aria-label={`${t('Remove face', 'Retirer la face')} ${face?.faceLabel ?? faceId}, ${site.name}`}
+          aria-label={`${t('Remove face', 'Retirer la face')} ${researchFaceLabel(face?.faceLabel, site.isResearchReference, locale) ?? faceId}, ${site.name}`}
         >
           <Trash2 size={14} />
           {t('Remove from shortlist', 'Retirer de la sélection')}

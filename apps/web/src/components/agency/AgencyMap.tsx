@@ -47,16 +47,30 @@ function motionAllowed(): boolean {
 }
 
 function mapPadding(map: LeafletMap, hasSelection: boolean) {
-  const width = map.getSize().x;
-  if (width < 900) {
+  // Match the UI breakpoint: map width excludes the desktop navigation rail.
+  if (window.matchMedia('(max-width: 899px)').matches) {
     return {
       paddingTopLeft: [36, 48] as [number, number],
       paddingBottomRight: [36, 90] as [number, number],
     };
   }
+  const rectangle = map.getContainer().getBoundingClientRect();
+  const stage = map.getContainer().closest('.agency-map-stage');
+  const visible = (selector: string) => {
+    const element = stage?.querySelector<HTMLElement>(selector);
+    const bounds = element?.getBoundingClientRect();
+    return bounds && bounds.width > 0 && bounds.height > 0 ? bounds : null;
+  };
+  const card = hasSelection ? visible('.agency-board') : null;
+  const planner = visible('.agency-planner');
+  const controls = visible('.agency-map-controls');
+  // Include the full 44px pin, its stem and a gap, rather than only its anchor.
+  const left = card ? Math.max(70, card.right - rectangle.left + 32) : 70;
+  const right = planner ? Math.max(36, rectangle.right - planner.left + 32) : 36;
+  const bottom = controls ? Math.max(135, rectangle.bottom - controls.top + 14) : 135;
   return {
-    paddingTopLeft: [hasSelection ? Math.min(365, width * 0.27) : 70, 70] as [number, number],
-    paddingBottomRight: [Math.min(440, width * 0.33), 135] as [number, number],
+    paddingTopLeft: [left, 70] as [number, number],
+    paddingBottomRight: [right, bottom] as [number, number],
   };
 }
 
@@ -173,7 +187,17 @@ export function AgencyMap({
           attributes: true,
           attributeFilter: ['data-theme'],
         });
-        resizeObserver = new ResizeObserver(() => map.invalidateSize({ animate: false }));
+        resizeObserver = new ResizeObserver(() => {
+          map.invalidateSize({ animate: false });
+          const selected = sitesRef.current.find(
+            (site) => site.id === selectedRef.current && validPoint(site),
+          );
+          if (selected)
+            map.panInside([selected.latitude, selected.longitude], {
+              ...mapPadding(map, true),
+              animate: false,
+            });
+        });
         resizeObserver.observe(canvasRef.current);
         // Cached module imports can batch ready=false/true during retry. The new
         // instance must still rebuild every marker, path and viewport effect.

@@ -19,6 +19,7 @@ import { projectPlanningEnrichment } from '../../lib/agency-enrichment';
 import { AuthBoardVideo, MediaEvidence } from '../sites/BoardMedia';
 import { GeographicContextContent } from '../sites/GeographicContextPanel';
 import { prettyFormat, prettyIllumination } from '../sites/sites-ui';
+import { researchFaceLabel } from '../../lib/research-reference';
 
 export function BoardDetail({
   site,
@@ -160,7 +161,7 @@ export function BoardDetail({
                 .filter((item) => item.bookable || site.isResearchReference)
                 .map((item: SiteFace) => (
                   <option key={item.id} value={item.id}>
-                    {item.faceLabel}
+                    {researchFaceLabel(item.faceLabel, site.isResearchReference, locale)}
                   </option>
                 ))}
             </select>

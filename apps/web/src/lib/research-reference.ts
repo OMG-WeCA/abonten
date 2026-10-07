@@ -2,6 +2,17 @@ import type { ResearchProvenance } from '../../../api/src/common/research-invent
 import { formatMoney } from './number-format';
 import { PLANNING_CURRENCIES } from './agency-planning';
 
+/** Only this importer-owned label is translated; source and user labels remain verbatim. */
+export function researchFaceLabel(
+  label: string | null | undefined,
+  isResearchReference: boolean | undefined,
+  locale: 'en' | 'fr',
+) {
+  return isResearchReference && locale === 'fr' && label === 'Reported display'
+    ? 'Support publié'
+    : label;
+}
+
 /** Imported links are untrusted metadata; keep source navigation HTTPS-only. */
 export function researchSourceUrl(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
