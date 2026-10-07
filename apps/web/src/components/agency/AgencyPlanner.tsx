@@ -867,8 +867,12 @@ export function AgencyPlanner(props: PlannerProps) {
         {(messages.length > 0 || chatting || failedMessage !== null) && (
           <div className="agency-section-row agency-chat-heading">
             <h3>{t('Conversation', 'Conversation')}</h3>
-            <button className="agency-text-button" onClick={resetConversation}>
-              {t('Clear conversation', 'Effacer la conversation')}
+            <button
+              className="agency-text-button"
+              onClick={resetConversation}
+              aria-label={t('Clear conversation', 'Effacer la conversation')}
+            >
+              {t('Clear conversation', 'Effacer')}
             </button>
           </div>
         )}
