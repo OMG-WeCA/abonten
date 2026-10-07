@@ -1,3 +1,4 @@
+import type { ResearchProvenance } from '../../../api/src/common/research-inventory';
 import { apiJson } from './api';
 import type { SiteDetail } from './sites-api';
 import type {
@@ -5,6 +6,7 @@ import type {
   PlanningWindow,
   selectionDistances,
   summarizeBudget,
+  summarizeResearchPrices,
 } from './agency-planning';
 
 export interface BriefConstraints {
@@ -68,6 +70,7 @@ export interface PlannerRequest {
   message: string;
   locale?: 'en' | 'fr';
   briefText?: string;
+  contextRequiresBriefConsent?: boolean;
   shareBriefWithProvider?: boolean;
   history?: { role: 'user' | 'assistant'; content: string }[];
   context?: PlannerContext;
@@ -80,6 +83,9 @@ export interface PlannerFacts {
   filters?: NonNullable<PlannerContext['filters']>;
   selectionTruncated?: boolean;
   sites: {
+    isResearchReference?: boolean;
+    researchProvenance?: ResearchProvenance | null;
+    ownershipKind?: 'agency_curated_reference';
     isDemo?: boolean;
     commerciallyBookable?: boolean;
     demoProvenance?: string;
@@ -98,6 +104,7 @@ export interface PlannerFacts {
     }[];
   }[];
   budget: ReturnType<typeof summarizeBudget>;
+  researchPrices?: ReturnType<typeof summarizeResearchPrices>;
   distances: ReturnType<typeof selectionDistances>;
   ots: null;
   reach: null;
@@ -105,15 +112,18 @@ export interface PlannerFacts {
 }
 
 export interface SiteOptions {
+  isResearchReference?: boolean;
+  researchProvenance?: ResearchProvenance | null;
+  ownershipKind?: 'agency_curated_reference';
   isDemo?: boolean;
   commerciallyBookable?: boolean;
   demoProvenance?: string;
-  availabilityKind?: 'synthetic_planning_sample';
+  availabilityKind?: 'synthetic_planning_sample' | 'research_unconfirmed';
   siteId: string;
   startDate: string;
   endDate: string;
   checkedAt: string;
-  faces: { faceId: string; available: boolean }[];
+  faces: { faceId: string; available: boolean | null }[];
   reservation: false;
 }
 
@@ -181,6 +191,9 @@ export interface AgencyMarketplaceQuery {
 }
 
 export interface AgencyMarketplaceSite {
+  isResearchReference?: boolean;
+  researchProvenance?: ResearchProvenance | null;
+  ownershipKind?: 'agency_curated_reference';
   isDemo?: boolean;
   commerciallyBookable?: boolean;
   demoProvenance?: string;

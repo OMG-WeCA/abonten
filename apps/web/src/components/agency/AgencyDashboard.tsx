@@ -91,7 +91,7 @@ export interface ShortlistFace {
 }
 interface OptionSnapshot {
   checkedAt: string;
-  faces: Array<{ faceId: string; available: boolean }>;
+  faces: Array<{ faceId: string; available: boolean | null }>;
   window: PlanningWindow;
 }
 
@@ -172,6 +172,7 @@ function AgencyWorkspace() {
   const [country, setCountry] = useState(org?.country ?? '');
   const [query, setQuery] = useState('');
   const [format, setFormat] = useState('');
+  const [briefDerivedContext, setBriefDerivedContext] = useState(false);
   const [budget, setBudget] = useState('');
   const [currency, setCurrency] = useState(org?.defaultCurrency || 'NGN');
   const [boards, setBoards] = useState<MarketplaceBoard[]>([]);
@@ -282,6 +283,7 @@ function AgencyWorkspace() {
       setQuery(stored.query);
       setFormat(stored.format);
       setBudget(stored.budget);
+      setBriefDerivedContext(stored.briefDerivedContext === true);
       setCurrency(stored.currency);
       pendingDraftRef.current = stored.faces;
       draftFaceOrderRef.current = stored.faces.map((ref) => ref.faceId);
@@ -417,7 +419,7 @@ function AgencyWorkspace() {
               if (snapshot) snapshots[id] = { ...snapshot, window: restoreWindow };
               for (const ref of refs) {
                 const face = site.faces.find((item) => item.id === ref.faceId);
-                if (!face || !face.bookable) {
+                if (!face || (!face.bookable && !site.isResearchReference)) {
                   unavailable.push(ref);
                   continue;
                 }
@@ -472,6 +474,7 @@ function AgencyWorkspace() {
         format,
         budget,
         currency,
+        ...(briefDerivedContext ? { briefDerivedContext: true } : {}),
         faces: orderPlanningFaces(
           [
             ...shortlist.map((item) => ({
@@ -497,6 +500,7 @@ function AgencyWorkspace() {
     currency,
     shortlist,
     unrestoredFaces,
+    briefDerivedContext,
   ]);
 
   useEffect(() => {
@@ -587,8 +591,10 @@ function AgencyWorkspace() {
               ? preferredFaceRef.current.faceId
               : undefined;
           setFaceId(
-            site.faces.find((face) => face.bookable && face.id === preferred)?.id ??
-              site.faces.find((face) => face.bookable)?.id ??
+            site.faces.find(
+              (face) => (face.bookable || site.isResearchReference) && face.id === preferred,
+            )?.id ??
+              site.faces.find((face) => face.bookable || site.isResearchReference)?.id ??
               '',
           );
           setDetailState('ready');
@@ -654,7 +660,12 @@ function AgencyWorkspace() {
       const snapshot = options[siteId];
       const face = snapshot?.faces.find((item) => item.faceId === id);
       return {
-        status: face ? (face.available ? 'available' : 'unavailable') : 'unknown',
+        status:
+          face?.available === true
+            ? 'available'
+            : face?.available === false
+              ? 'unavailable'
+              : 'unknown',
         window: snapshot?.window,
         checkedAt: snapshot?.checkedAt,
       };
@@ -711,8 +722,10 @@ function AgencyWorkspace() {
     preferredFaceRef.current = preferredFaceId ? { siteId: id, faceId: preferredFaceId } : null;
     if (detail?.id === id) {
       setFaceId(
-        detail.faces.find((face) => face.bookable && face.id === preferredFaceId)?.id ??
-          detail.faces.find((face) => face.bookable)?.id ??
+        detail.faces.find(
+          (face) => (face.bookable || detail.isResearchReference) && face.id === preferredFaceId,
+        )?.id ??
+          detail.faces.find((face) => face.bookable || detail.isResearchReference)?.id ??
           '',
       );
     }
@@ -917,6 +930,7 @@ function AgencyWorkspace() {
     format,
     budget,
     currency,
+    ...(briefDerivedContext ? { briefDerivedContext: true } : {}),
     faces: orderPlanningFaces(
       [
         ...shortlist.map((item) => ({
@@ -1666,6 +1680,8 @@ function AgencyWorkspace() {
           window={window}
           budget={budget}
           onBudget={setBudget}
+          contextMayContainBrief={briefDerivedContext}
+          onBriefContext={() => setBriefDerivedContext(true)}
           currency={currency}
           onCurrency={setCurrency}
           shortlist={shortlist}

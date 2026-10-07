@@ -1,3 +1,4 @@
+import type { ResearchProvenance } from '../../../api/src/common/research-inventory';
 // Typed client for the inventory API (apps/api/src/inventory). All calls carry the
 // tenant context via the X-Org-Id header, matching the controller's orgContext().
 import { apiJson, apiUrl, ApiError } from './api';
@@ -11,6 +12,9 @@ export interface GeoPoint {
 }
 
 export interface SiteSummary {
+  isResearchReference?: boolean;
+  ownershipKind?: 'agency_curated_reference';
+  researchProvenance?: ResearchProvenance | null;
   isDemo?: boolean;
   commerciallyBookable?: boolean;
   demoProvenance?: string;

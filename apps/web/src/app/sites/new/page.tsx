@@ -34,7 +34,11 @@ import {
 import { getSitesCopy } from '../../../lib/sites-locale';
 import { canManageSites } from '../../../lib/sites-access';
 import { parseDecimal } from '../../../lib/number-format';
-import { plausibilityErrors, structureValuesEntered } from '../../../lib/sites-plausibility';
+import {
+  plausibilityErrors,
+  structureValuesEntered,
+  optionalStructureNumberErrors,
+} from '../../../lib/sites-plausibility';
 import { useUnsavedNavigation, confirmUnsavedNavigation } from '../../../lib/unsaved-navigation';
 import { ApiError } from '../../../lib/api';
 import { SUPPORTED_MARKETS } from '../../../lib/markets';
@@ -260,6 +264,9 @@ export default function RegisterSitePage() {
     if (height === null || height <= 0) next.height = copy.register.requiredFields;
     if (form.illuminationType !== 'none' && !form.illuminationHours.trim())
       next.illuminationHours = copy.register.requiredFields;
+    for (const [field, messageKey] of Object.entries(optionalStructureNumberErrors(form))) {
+      next[field as keyof FormState] = copy.register[messageKey];
+    }
     // Plausibility (SPEC §5.1 trust contract 6) — same rules as the API.
     const plausibility = plausibilityErrors({
       latitude: lat ?? undefined,

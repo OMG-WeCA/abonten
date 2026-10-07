@@ -1542,10 +1542,49 @@
     overflow-y: auto;
   }
   .agency-map-notice {
-    top: 33%;
+    top: 12px;
     left: 12px;
     right: 12px;
-    max-width: 350px;
+    z-index: 15;
+    max-width: none;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    align-items: center;
+  }
+  .agency-map-notice > svg {
+    display: none;
+  }
+  .agency-map-notice h2 {
+    grid-column: 1;
+    font-size: 13px;
+    line-height: 1.4;
+    margin: 0;
+  }
+  .agency-map-notice p {
+    grid-column: 1;
+    font-size: 11px;
+    line-height: 1.4;
+    margin: 0;
+  }
+  .agency-map-notice > button {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    min-height: 44px;
+    max-width: 100px;
+    padding: 9px 12px;
+    font-size: 11px;
+  }
+  .agency-map-stage:has(.agency-map-notice) .agency-map-heading {
+    display: none;
+  }
+  .agency-map-stage:has(.agency-map-notice)
+    :is(.agency-planner, .agency-board, .agency-inventory, .agency-filters) {
+    top: 160px;
+  }
+  .agency-map-stage:has(.agency-map-notice) .agency-filters {
+    max-height: calc(100% - 225px);
   }
   .agency-toast {
     left: 12px;

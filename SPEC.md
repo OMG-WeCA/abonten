@@ -567,6 +567,30 @@ Demo contacts use reserved `.example` addresses. Existing personal draft isolati
 and revision/audit rules remain unchanged; rollback must not expose scoped samples
 as ordinary shared listings.
 
+**Source-qualified research planning (2026-10-07 amendment).** An authorized
+operator may import real, publicly documented billboard references into an existing
+agency's private planning catalog. These are research references, distinct from
+partner-registered/verified or commercially bookable stock and from DEMO inventory.
+The importing agency curates the record; it does not represent the media owner.
+A separate nullable research-agency scope is enforced across every discovery,
+parent/child/media, planning and enrichment read. Public-source evidence records
+publisher, canonical URL, access date, explicitly reported dimensions and WGS84
+coordinates with accuracy/verification limitations. Unknown data stays absent;
+reported monthly asking prices retain source, currency, period and fetch date and
+are neither daily-prorated nor converted to confirmed flight quotes. Unknown slot
+specifications, availability, permits, taxes, production costs and traffic are not
+invented. A researched reference can be shortlisted, compared and saved as planning
+interest despite unverified commercial specifications; this never permits booking,
+publication as partner-verified supply, or confirmed budget fit. AI grounding carries
+these distinctions and can compare a source-priced preliminary monthly baseline,
+while the canonical full-flight cost and availability remain unconfirmed. Imported
+references are insert-only, audited and idempotent; existing DEMO and user data are
+preserved. Existing source-media rights are not inferred and no photos are copied
+without authorization. An internally authored campaign brief is planning work and
+must not assert instructions from a real client. Uploaded briefs remain inert and
+provider sharing remains independently consented; confirming extracted controls
+alone does not permit transmitting brief-derived constraints to the model.
+
 **Key user stories.**
 
 - As a planner, I can draw a polygon over Lagos and see all bookable billboards inside it with KPI

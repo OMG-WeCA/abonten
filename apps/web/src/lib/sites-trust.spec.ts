@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   isOlderThanTwelveMonths,
   plausibilityErrors,
+  optionalStructureNumberErrors,
   structureValuesEntered,
 } from './sites-plausibility';
 import { galleryCaption, lightboxAlt } from './gallery';
@@ -131,4 +132,39 @@ test('five-market country aliases, accents and defaults are consistent without c
     latitude: 'errorCountryBox',
   });
   assert.equal(findMarket('unknown'), undefined);
+});
+
+test('optional structure numbers reject entered malformed text without treating empty values as errors', () => {
+  assert.deepEqual(optionalStructureNumberErrors({}), {});
+  assert.deepEqual(
+    optionalStructureNumberErrors({ orientationDeg: '', viewingDistance: '  ', elevation: '' }),
+    {},
+  );
+  assert.deepEqual(
+    optionalStructureNumberErrors({
+      orientationDeg: '3 m',
+      viewingDistance: '12.5,0',
+      elevation: '4m',
+    }),
+    { orientationDeg: 'errorNumber', viewingDistance: 'errorNumber', elevation: 'errorNumber' },
+  );
+  for (const raw of ['NaN', 'Infinity', '1,234.5', '12..5']) {
+    assert.deepEqual(optionalStructureNumberErrors({ elevation: raw }), {
+      elevation: 'errorNumber',
+    });
+  }
+  assert.deepEqual(
+    optionalStructureNumberErrors({
+      orientationDeg: '0',
+      viewingDistance: '12,5',
+      elevation: '4.5',
+    }),
+    {},
+  );
+  // Parsed range errors still use the existing field-specific plausibility rules.
+  assert.deepEqual(optionalStructureNumberErrors({ orientationDeg: '360', elevation: '-1' }), {});
+  assert.deepEqual(plausibilityErrors({ orientationDeg: 360, elevation: -1 }), {
+    orientationDeg: 'errorOrientation',
+    elevation: 'errorElevation',
+  });
 });

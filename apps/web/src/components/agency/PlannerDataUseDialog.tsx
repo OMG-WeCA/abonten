@@ -48,8 +48,8 @@ export function PlannerDataUseDialog({
       </p>
       <p>
         {t(
-          'Abonten extracts brief text. Brief text is sent to OpenAI only after you confirm and authorize it; the original file is not sent. Editing or removing the brief clears permission and chat.',
-          'Abonten extrait le texte du document. Son texte est envoyé à OpenAI uniquement après votre confirmation et votre autorisation ; le fichier original n’est pas envoyé. Modifier ou retirer le document efface l’autorisation et la conversation.',
+          'Abonten extracts brief text. Brief text is sent to OpenAI only after you confirm and authorize it; the original file is not sent. Brief-derived controls and history stay local without this permission, including after removal or reload. Editing or removing the brief clears permission and chat.',
+          'Abonten extrait le texte du document. Son texte est envoyé à OpenAI uniquement après votre confirmation et votre autorisation ; le fichier original n’est pas envoyé. Sans cette autorisation, les paramètres et l’historique issus du document restent locaux, même après retrait ou rechargement. Modifier ou retirer le document efface l’autorisation et la conversation.',
         )}
       </p>
       <p>

@@ -9,6 +9,7 @@ import {
   planningCoordinate,
   selectionDistances,
   summarizeBudget,
+  summarizeResearchPrices,
   summarizeGrossOts,
   PLANNING_CURRENCIES,
   type PlanningSite,
@@ -186,7 +187,19 @@ test('canonical great-circle distances provide registered-coordinate provenance 
   assert.equal(pairs[1].value, null);
 });
 test('missing coordinates never become zero and only complete locations produce distances', () => {
-  for (const missing of [null, undefined, '', '  ', false, true, [], {}, 'not recorded', NaN, Infinity]) {
+  for (const missing of [
+    null,
+    undefined,
+    '',
+    '  ',
+    false,
+    true,
+    [],
+    {},
+    'not recorded',
+    NaN,
+    Infinity,
+  ]) {
     assert.equal(planningCoordinate(missing, 'latitude'), null);
     assert.equal(planningCoordinate(missing, 'longitude'), null);
   }
@@ -250,4 +263,154 @@ test('pricing does not mutate inventory or availability and repeats with identic
   const second = estimateFaceCost(inventory, face, window, 'GHS', available);
   assert.deepEqual(first, second);
   assert.equal(JSON.stringify({ inventory, face, window, available }), before);
+});
+
+test('research prices retain the monthly source baseline without creating a confirmed quote', () => {
+  const sites = [4.5e6, 4.5e6, 5.5e6, 4e6].map((amount, index) => ({
+    id: `source-${index}`,
+    isResearchReference: true,
+    researchProvenance: {
+      askingPrice: {
+        amount,
+        currency: 'NGN',
+        period: 'month' as const,
+        qualification: 'published_indicative' as const,
+        sourceUrl: 'https://elev8mediabookings.com/',
+        accessedAt: '2026-10-07T00:09:00Z',
+      },
+    },
+  }));
+  const month = { startDate: '2026-11-01', endDate: '2026-12-01' };
+  const summary = summarizeResearchPrices([...sites, sites[0]!], month, {
+    amount: 22000000,
+    currency: 'NGN',
+  });
+  assert.deepEqual(summary.totals, { NGN: 18500000 });
+  assert.equal(summary.referenceCount, 4);
+  assert.equal(summary.pricedCount, 4);
+  assert.equal(summary.period, 'month');
+  assert.equal(summary.windowComparable, true);
+  assert.equal(summary.unquotedReserve, 3500000);
+  assert.equal(summary.confirmedBudgetFit, false);
+  assert.equal(summary.sources.length, 4);
+  for (const flight of [
+    { startDate: '2026-11-01', endDate: '2026-11-29' },
+    { startDate: '2026-11-01', endDate: '2026-12-02' },
+    { startDate: '2026-11-15', endDate: '2026-12-15' },
+  ]) {
+    const partial = summarizeResearchPrices(sites, flight, { amount: 22000000, currency: 'NGN' });
+    assert.equal(partial.windowComparable, false);
+    assert.equal(partial.unquotedReserve, null);
+    assert.deepEqual(partial.totals, { NGN: 18500000 });
+  }
+  assert.equal(
+    summarizeResearchPrices(sites, month, { amount: 22000000, currency: 'USD' }).unquotedReserve,
+    null,
+  );
+  assert.equal(
+    summarizeResearchPrices(sites, month, { amount: 1000000, currency: 'NGN' }).unquotedReserve,
+    null,
+  );
+  const missing = summarizeResearchPrices(
+    [...sites, { id: 'missing', isResearchReference: true }],
+    month,
+    { amount: 22000000, currency: 'NGN' },
+  );
+  assert.equal(missing.unpricedCount, 1);
+  assert.equal(missing.unquotedReserve, null);
+  const mixed = summarizeResearchPrices(
+    [...sites, { id: 'ordinary-priced-board', isResearchReference: false }],
+    month,
+    { amount: 22000000, currency: 'NGN' },
+  );
+  assert.deepEqual(mixed.totals, { NGN: 18500000 });
+  assert.equal(
+    mixed.unquotedReserve,
+    null,
+    'A research-only subtotal cannot yield a whole-plan reserve for a mixed selection',
+  );
+  const normal = summarizeResearchPrices(
+    sites.map((site) => ({ ...site, isResearchReference: false })),
+    month,
+    { amount: 22000000, currency: 'NGN' },
+  );
+  assert.deepEqual(normal.totals, {});
+  assert.equal(normal.unquotedReserve, null);
+});
+
+test('research references can be shortlisted as interest while quotes and bookability remain unavailable', () => {
+  const reference = {
+    id: 'reported-site',
+    format: 'digital_led',
+    isResearchReference: true,
+    rateCards: [],
+  };
+  const face = { id: 'reported-face', siteId: reference.id, bookable: false };
+  const flight = { startDate: '2026-11-01', endDate: '2026-12-01' };
+  assert.deepEqual(faceFlightEligibility(reference, face, flight), {
+    eligible: true,
+    reason: null,
+    interestOnly: true,
+  });
+  const estimate = estimateFaceCost(reference, face, flight);
+  assert.equal(estimate.status, 'unavailable');
+  assert.match(estimate.reason!, /Research interest only/);
+  assert.equal(face.bookable, false);
+  assert.equal(
+    faceFlightEligibility(reference, { ...face, siteId: 'foreign' }, flight).eligible,
+    false,
+  );
+  assert.equal(
+    faceFlightEligibility(reference, face, { ...flight, endDate: flight.startDate }).eligible,
+    false,
+  );
+  assert.equal(
+    faceFlightEligibility({ ...reference, isResearchReference: false }, face, flight).eligible,
+    false,
+  );
+  // Even a mistakenly attached rate may not turn a reference into a commercial quote.
+  assert.equal(
+    estimateFaceCost(
+      {
+        ...reference,
+        rateCards: [
+          {
+            id: 'improper-rate',
+            siteId: reference.id,
+            currency: 'NGN',
+            rates: { perDay: 1 },
+            effectiveFrom: '2020-01-01',
+          },
+        ],
+      },
+      { ...face, bookable: true },
+      flight,
+    ).status,
+    'unavailable',
+  );
+});
+
+test('canonical distances distinguish operator-published research points from registered inventory', () => {
+  const source = 'https://elev8.com.ng/king-of-marina/';
+  const from = {
+    id: 'marina',
+    latitude: 6.450732,
+    longitude: 3.389668,
+    isResearchReference: true,
+    researchProvenance: { siteSourceUrl: source },
+  };
+  const to = { id: 'lekki', latitude: 6.437117, longitude: 3.456371 };
+  const distance = selectionDistances([from, to])[0]!;
+  assert.equal(distance.value, 7.5);
+  assert.equal(distance.researchReference, true);
+  assert.equal(distance.eligibleExactScoring, false);
+  assert.deepEqual(distance.sourceUrls, [source]);
+  assert.match(distance.provenance, /Operator-published/);
+  assert.doesNotMatch(distance.provenance, /Registered site/);
+  assert.ok(distance.assumptions.some((assumption) => assumption.includes('geofence')));
+  const normal = selectionDistances([{ ...from, isResearchReference: false }, to])[0]!;
+  assert.equal(normal.researchReference, undefined);
+  assert.equal(normal.eligibleExactScoring, undefined);
+  assert.equal(normal.provenance, 'Registered site coordinates (WGS84).');
+  assert.equal(selectionDistances([{ ...from, latitude: null }, to])[0]!.value, null);
 });

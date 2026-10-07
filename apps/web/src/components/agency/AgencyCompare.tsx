@@ -9,6 +9,7 @@ import type {
   PlanningWindow,
 } from '../../lib/agency-planning';
 import { planningDays, PLANNING_CURRENCIES } from '../../lib/agency-planning';
+import { ResearchBadge, ResearchReferenceFacts } from './ResearchReferenceFacts';
 import { draftFaceEligibility } from '../../lib/agency-draft';
 import {
   projectPlanningEnrichment,
@@ -169,9 +170,11 @@ function CompareFace({
     planningDays(window) !== null &&
     availability.window?.startDate === window.startDate &&
     availability.window.endDate === window.endDate;
-  const availabilityStatus = matchingAvailability ? availability.status : 'unknown';
+  const availabilityStatus =
+    !site.isResearchReference && matchingAvailability ? availability.status : 'unknown';
   // Reject an old flight/currency or an ineligible face even if the caller retains a previous estimate.
   const price =
+    !site.isResearchReference &&
     estimate?.status === 'ready' &&
     eligibility.eligible &&
     estimate.window.startDate === window.startDate &&
@@ -213,55 +216,62 @@ function CompareFace({
         </p>
         <span className="agency-compare-format">{prettyFormat(site.format, locale)}</span>{' '}
         {site.isDemo && <span className="agency-data-badge">DEMO</span>}
+        {site.isResearchReference && <ResearchBadge locale={locale} />}
       </header>
-      <div className="agency-compare-price">
-        <span className="agency-compare-label">
-          {site.isDemo
-            ? t('Sample media cost', 'Coût média fictif')
-            : t('Media cost for this flight', 'Coût média pour cette diffusion')}
-        </span>
-        <strong>
-          {price
-            ? formatMoney(price.amount, price.currency, locale)
-            : t('Quote unavailable', 'Devis indisponible')}
-        </strong>
-        {price ? (
-          <>
-            <p>
-              {displayNumber(price.days, locale)} {t('days', 'jours')} · {price.currency} ·{' '}
-              {price.basis === 'perDay'
-                ? t('daily rate', 'tarif journalier')
-                : t('weekly rate', 'tarif hebdomadaire')}
+      {site.isResearchReference ? (
+        <ResearchReferenceFacts provenance={site.researchProvenance} locale={locale} />
+      ) : (
+        <div className="agency-compare-price">
+          <span className="agency-compare-label">
+            {site.isDemo
+              ? t('Sample media cost', 'Coût média fictif')
+              : t('Media cost for this flight', 'Coût média pour cette diffusion')}
+          </span>
+          <strong>
+            {price
+              ? formatMoney(price.amount, price.currency, locale)
+              : t('Quote unavailable', 'Devis indisponible')}
+          </strong>
+          {price ? (
+            <>
+              <p>
+                {displayNumber(price.days, locale)} {t('days', 'jours')} · {price.currency} ·{' '}
+                {price.basis === 'perDay'
+                  ? t('daily rate', 'tarif journalier')
+                  : t('weekly rate', 'tarif hebdomadaire')}
+              </p>
+              <details className="agency-compare-evidence">
+                <summary>
+                  {site.isDemo
+                    ? t('Sample rate and assumptions', 'Tarif fictif et hypothèses')
+                    : t('Rate source and assumptions', 'Source tarifaire et hypothèses')}
+                </summary>
+                {site.isDemo && site.demoProvenance && (
+                  <p>{agencyEvidenceText(site.demoProvenance, locale)}</p>
+                )}
+                <p>{agencyEvidenceText(price.provenance, locale)}</p>
+                <p>
+                  {t('Rate record', 'Grille tarifaire')} <code>{price.rateCardId}</code>
+                </p>
+                <p>
+                  {formatMoney(price.unitRate, price.currency, locale)} ×{' '}
+                  {displayNumber(price.quantity, locale)}{' '}
+                  {price.basis === 'perDay' ? t('days', 'jours') : t('weeks', 'semaines')}
+                </p>
+                <ul>
+                  {price.assumptions.map((assumption, index) => (
+                    <li key={index}>{agencyEvidenceText(assumption, locale)}</li>
+                  ))}
+                </ul>
+              </details>
+            </>
+          ) : (
+            <p className="agency-compare-missing">
+              {agencyEvidenceText(priceReason ?? '', locale)}
             </p>
-            <details className="agency-compare-evidence">
-              <summary>
-                {site.isDemo
-                  ? t('Sample rate and assumptions', 'Tarif fictif et hypothèses')
-                  : t('Rate source and assumptions', 'Source tarifaire et hypothèses')}
-              </summary>
-              {site.isDemo && site.demoProvenance && (
-                <p>{agencyEvidenceText(site.demoProvenance, locale)}</p>
-              )}
-              <p>{agencyEvidenceText(price.provenance, locale)}</p>
-              <p>
-                {t('Rate record', 'Grille tarifaire')} <code>{price.rateCardId}</code>
-              </p>
-              <p>
-                {formatMoney(price.unitRate, price.currency, locale)} ×{' '}
-                {displayNumber(price.quantity, locale)}{' '}
-                {price.basis === 'perDay' ? t('days', 'jours') : t('weeks', 'semaines')}
-              </p>
-              <ul>
-                {price.assumptions.map((assumption, index) => (
-                  <li key={index}>{agencyEvidenceText(assumption, locale)}</li>
-                ))}
-              </ul>
-            </details>
-          </>
-        ) : (
-          <p className="agency-compare-missing">{agencyEvidenceText(priceReason ?? '', locale)}</p>
-        )}
-      </div>
+          )}
+        </div>
+      )}
       <dl className="agency-compare-facts">
         <div className="agency-compare-fact">
           <dt>
@@ -282,7 +292,7 @@ function CompareFace({
                   : t('Not confirmed', 'Non confirmée')}
             </span>
             <small>
-              {matchingAvailability && availability.checkedAt
+              {!site.isResearchReference && matchingAvailability && availability.checkedAt
                 ? `${t('Checked', 'Contrôlé')} ${displayUtcTimestamp(availability.checkedAt, locale)}`
                 : t(
                     'No matching flight check. Review availability in board details.',
@@ -290,9 +300,14 @@ function CompareFace({
                   )}
             </small>
             <small>
-              {site.isDemo
-                ? t('Synthetic · no booking', 'Fictive · aucune réservation')
-                : t('Indicative only · no reservation', 'Indicative uniquement · sans réservation')}
+              {site.isResearchReference
+                ? t('Public listing · no booking', 'Source publique · sans réservation')
+                : site.isDemo
+                  ? t('Synthetic · no booking', 'Fictive · aucune réservation')
+                  : t(
+                      'Indicative only · no reservation',
+                      'Indicative uniquement · sans réservation',
+                    )}
             </small>
           </dd>
         </div>
@@ -303,14 +318,20 @@ function CompareFace({
               ? `${dimension(face.width)} × ${dimension(face.height)} ${face.units ? agencyEvidenceUnit(face.units, locale) : t('units unknown', 'unités inconnues')}`
               : unknown}
             <small>
-              {site.isDemo
-                ? t('Illustrative dimensions', 'Dimensions illustratives')
-                : t('Registered inventory declaration', 'Déclaration enregistrée de l’inventaire')}
+              {site.isResearchReference
+                ? t('Publicly reported dimensions', 'Dimensions publiées')
+                : site.isDemo
+                  ? t('Illustrative dimensions', 'Dimensions illustratives')
+                  : t(
+                      'Registered inventory declaration',
+                      'Déclaration enregistrée de l’inventaire',
+                    )}
             </small>
           </dd>
         </div>
         <EvidenceFact
           demo={site.isDemo}
+          research={site.isResearchReference}
           label={t('Facing orientation', 'Orientation de la face')}
           metric={enrichment.structure.orientation}
           value={numeric(enrichment.structure.orientation)}
@@ -318,6 +339,7 @@ function CompareFace({
         />
         <EvidenceFact
           demo={site.isDemo}
+          research={site.isResearchReference}
           label={t('Viewing angle', 'Angle de vue')}
           metric={enrichment.structure.viewingAngle}
           value={numeric(enrichment.structure.viewingAngle)}
@@ -325,6 +347,7 @@ function CompareFace({
         />
         <EvidenceFact
           demo={site.isDemo}
+          research={site.isResearchReference}
           label={t('Viewing distance', 'Distance de visibilité')}
           metric={enrichment.structure.viewingDistance}
           value={numeric(enrichment.structure.viewingDistance)}
@@ -332,6 +355,7 @@ function CompareFace({
         />
         <EvidenceFact
           demo={site.isDemo}
+          research={site.isResearchReference}
           label={t('Elevation above ground', 'Hauteur au-dessus du sol')}
           metric={enrichment.structure.elevation}
           value={numeric(enrichment.structure.elevation)}
@@ -339,6 +363,7 @@ function CompareFace({
         />
         <EvidenceFact
           demo={site.isDemo}
+          research={site.isResearchReference}
           label={t('Illumination', 'Éclairage')}
           metric={illumination}
           value={
@@ -350,6 +375,7 @@ function CompareFace({
         />
         <EvidenceFact
           demo={site.isDemo}
+          research={site.isResearchReference}
           label={t('Visibility score', 'Score de visibilité')}
           metric={enrichment.visibility}
           value={numeric(enrichment.visibility)}
@@ -357,6 +383,7 @@ function CompareFace({
         />
         <EvidenceFact
           demo={site.isDemo}
+          research={site.isResearchReference}
           label={t('Declared traffic', 'Trafic déclaré')}
           metric={enrichment.declaredTraffic}
           value={numeric(enrichment.declaredTraffic)}
@@ -399,8 +426,10 @@ function EvidenceFact({
   value,
   locale,
   demo,
+  research,
 }: {
   demo?: boolean;
+  research?: boolean;
   label: string;
   metric: PlanningEnrichmentMetric<unknown>;
   value: string;
@@ -448,8 +477,10 @@ function EvidenceFact({
             {metric.method && (
               <p>
                 {t('Method', 'Méthode')} :{' '}
-                {demo && metric.method === 'Registered inventory declaration'
-                  ? t('Synthetic inventory sample', 'Exemple d’inventaire fictif')
+                {metric.method === 'Registered inventory declaration' && (research || demo)
+                  ? research
+                    ? t('Public source declaration', 'Déclaration d’une source publique')
+                    : t('Synthetic inventory sample', 'Exemple d’inventaire fictif')
                   : agencyEvidenceText(metric.method, locale)}
               </p>
             )}

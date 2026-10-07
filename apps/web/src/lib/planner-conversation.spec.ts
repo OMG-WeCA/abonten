@@ -260,3 +260,50 @@ test('oversized structured replies remain complete bounded JSON without losing f
     history.recommendations.every((reference: { reason: string }) => reference.reason.length > 0),
   );
 });
+
+test('brief-derived controls and history remain local after opt-out, removal, edits and reload', () => {
+  const derived = {
+    ...defaults,
+    contextMayContainBrief: true,
+    context: { budget: { amount: 22000000, currency: 'NGN' } },
+    messages: [{ role: 'assistant' as const, text: 'Brief-derived campaign facts' }],
+  };
+  for (const state of [
+    derived,
+    { ...derived, briefText: '', briefConfirmed: false },
+    { ...derived, briefText: 'Edited', briefConsentText: defaults.briefText },
+    { ...derived, briefConfirmed: false, briefConsentText: defaults.briefText },
+  ]) {
+    const request = buildPlannerRequest(state);
+    assert.equal(request.context, undefined);
+    assert.deepEqual(request.history, []);
+    assert.equal(request.briefText, undefined);
+    assert.equal(request.shareBriefWithProvider, false);
+  }
+  const shared = buildPlannerRequest({ ...derived, briefConsentText: derived.briefText });
+  assert.deepEqual(shared.context, derived.context);
+  assert.equal(shared.history!.length, 1);
+  assert.equal(shared.shareBriefWithProvider, true);
+  assert.deepEqual(
+    buildPlannerRequest({ ...derived, contextMayContainBrief: false }).context,
+    derived.context,
+  );
+});
+
+test('local assistance retains confirmed brief context while the server receives its provenance guard', () => {
+  const request = buildPlannerRequest({
+    ...defaults,
+    contextMayContainBrief: true,
+    status: {
+      ...status,
+      mode: 'local',
+      provider: null,
+      model: null,
+      aiAvailable: false,
+      externalTransfer: false,
+    },
+  });
+  assert.deepEqual(request.context, defaults.context);
+  assert.equal(request.contextRequiresBriefConsent, true);
+  assert.equal(request.shareBriefWithProvider, false);
+});

@@ -6,6 +6,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+import type { ResearchProvenance } from '../research-inventory';
+
 export type SiteStatus =
   'draft' | 'pending_review' | 'approved' | 'listed' | 'rejected' | 'suspended' | 'decommissioned';
 
@@ -25,6 +27,10 @@ export class BillboardSiteEntity {
   @Column({ name: 'organization_id' }) organizationId!: string;
   /** Operator-only synthetic catalog scope; never writable via registration DTOs. */
   @Column({ name: 'demo_agency_id', type: 'uuid', nullable: true }) demoAgencyId?: string | null;
+  @Column({ name: 'research_agency_id', type: 'uuid', nullable: true }) researchAgencyId?:
+    string | null;
+  @Column({ name: 'research_provenance', type: 'jsonb', nullable: true })
+  researchProvenance?: ResearchProvenance | null;
   @Column() code!: string;
   @Column() name!: string;
   @Column({ default: 'billboard' }) type!: string;

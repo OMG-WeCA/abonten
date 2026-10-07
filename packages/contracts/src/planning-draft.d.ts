@@ -1,6 +1,8 @@
 /** Personal planning interest only: no cached commercial facts or document content. */
 export interface AgencyPlanningDraftV1 {
   version: 1;
+  /** Origin marker only; never document text or provider-sharing consent. */
+  briefDerivedContext?: true;
   window: { startDate: string; endDate: string };
   country: string;
   query: string;

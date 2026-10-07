@@ -312,3 +312,58 @@ test('sample unavailable and unknown checks stay distinct', () => {
     assert.ok(!html.includes('Available in sample'));
   }
 });
+
+test('research comparison keeps advertised monthly rate apart from flight quotes and date availability', () => {
+  const reference: SiteDetail = {
+    ...site,
+    isResearchReference: true,
+    commerciallyBookable: false,
+    faces: [{ ...site.faces[0], bookable: false }],
+    rateCards: [],
+    metadata: [],
+    researchProvenance: {
+      publisher: 'ELEV8 Media',
+      operatorName: 'ELEV8MEDIA ADVERTISING LTD',
+      siteSourceUrl: 'https://elev8.com.ng/king-of-marina/',
+      accessedAt: '2026-10-07T00:09:00Z',
+      coordinateVerification: 'operator_published_not_field_verified',
+      dimensionsUnit: 'm',
+      askingPrice: {
+        amount: 4500000,
+        currency: 'NGN',
+        period: 'month',
+        sourceUrl: 'https://elev8mediabookings.com/',
+        accessedAt: '2026-10-07T00:09:00Z',
+        qualification: 'published_indicative',
+      },
+      unknowns: [],
+    },
+  };
+  for (const locale of ['en', 'fr'] as const) {
+    const html = render(props({ locale, shortlist: [{ site: reference, faceId: 'face-A' }] }));
+    assert.ok(html.includes(locale === 'fr' ? 'SOURCE PUBLIQUE' : 'RESEARCH'));
+    assert.ok(html.includes(locale === 'fr' ? '/ mois' : '/ month'));
+    assert.ok(html.includes(locale === 'fr' ? 'Non confirmée' : 'Not confirmed'));
+    assert.ok(
+      html.includes(locale === 'fr' ? 'Dimensions publiées' : 'Publicly reported dimensions'),
+    );
+    assert.ok(
+      !html.includes(
+        locale === 'fr' ? 'Disponible au dernier contrôle' : 'Available at last check',
+      ),
+    );
+    assert.ok(
+      !html.includes(
+        locale === 'fr' ? 'Coût média pour cette diffusion' : 'Media cost for this flight',
+      ),
+    );
+    assert.ok(
+      !html.includes(
+        locale === 'fr'
+          ? 'Déclaration enregistrée de l’inventaire'
+          : 'Registered inventory declaration',
+      ),
+    );
+    assert.ok(!html.includes('DEMO'));
+  }
+});

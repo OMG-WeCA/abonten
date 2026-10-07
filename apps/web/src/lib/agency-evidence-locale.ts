@@ -5,6 +5,40 @@ import { displayUiText } from './display-ui-text';
 
 const frenchText = new Map<string, string>([
   [
+    'Research reference: operator-published coordinates are not field verified. Site-specific enrichment and audience exposure remain unavailable.',
+    'Référence de recherche : les coordonnées publiées par l’opérateur ne sont pas vérifiées sur le terrain. Les données enrichies propres au site et l’exposition restent indisponibles.',
+  ],
+  [
+    'Operator-published WGS84 points; not field verified; positional accuracy unknown.',
+    'Points WGS84 publiés par l’opérateur ; sans vérification terrain, précision inconnue.',
+  ],
+  [
+    'Approximate point-to-point distance only; unsuitable for exact location scoring or geofence eligibility.',
+    'Distance approximative entre les points uniquement ; ne convient pas à un classement précis ni à l’éligibilité à un périmètre géographique.',
+  ],
+
+  [
+    'Research interest only; a confirmed full-flight quote and commercial availability are unavailable.',
+    'Sélection de recherche uniquement ; le devis complet et la disponibilité commerciale restent à confirmer.',
+  ],
+  [
+    'Published indicative monthly asking prices; one price per researched display, not a confirmed flight quote or slot price.',
+    'Prix mensuels indicatifs publiés ; un prix par support recherché, sans devis confirmé ni tarif de créneau.',
+  ],
+  [
+    'No daily proration or currency conversion. Comparison requires one whole calendar month; other flights need an operator quote.',
+    'Aucun prorata journalier ni conversion de devises. La comparaison exige un mois civil complet ; les autres périodes nécessitent un devis opérateur.',
+  ],
+  [
+    'An unquoted reserve is budget less the preliminary asking-price subtotal; it does not estimate taxes, production or other unknown charges and does not guarantee all-in budget fit.',
+    'La réserve sans devis correspond au budget moins le sous-total indicatif ; elle ne chiffre ni les taxes, ni la production, ni les frais inconnus et ne garantit pas le respect du budget global.',
+  ],
+  [
+    'Availability, LED slot duration/share, permits and operator approval remain unconfirmed.',
+    'La disponibilité, la durée et la part des créneaux LED, les permis et l’accord opérateur restent à confirmer.',
+  ],
+
+  [
     'Synthetic agency demonstration sample; dimensions, location and NGN prices are illustrative. No verified media, commercial booking, permit or audience claim.',
     'Exemple fictif pour l’agence ; dimensions, emplacement et prix en NGN sont illustratifs. Aucun média vérifié, réservation commerciale, permis ou audience attestée.',
   ],

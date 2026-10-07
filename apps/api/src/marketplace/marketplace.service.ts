@@ -11,9 +11,10 @@ import { findMarket } from '../common/supported-markets';
 import { projectMediaAssetEvidence } from '../inventory/inventory-media-projection';
 import type { MarketplaceQueryDto } from './dto/marketplace.dto';
 import { demoVisibilitySql, demoDisclosure } from '../common/demo-inventory';
+import { researchDisclosure } from '../common/research-inventory';
 
 const SITE_COLUMNS =
-  'id, (demo_agency_id IS NOT NULL) AS "isDemo", code, name, type, format, sub_format AS "subFormat", address, city, region, country, ' +
+  'id, (demo_agency_id IS NOT NULL) AS "isDemo", (research_agency_id IS NOT NULL) AS "isResearchReference", research_provenance AS "researchProvenance", code, name, type, format, sub_format AS "subFormat", address, city, region, country, ' +
   'market_id AS "marketId", orientation_deg AS "orientationDeg", viewing_distance AS "viewingDistance", ' +
   'elevation, width, height, area, units, illumination_type AS "illuminationType", illumination_hours AS "illuminationHours", ' +
   'description, status, permit_ref AS "permitRef", permit_expires_at AS "permitExpiresAt", ' +
@@ -109,6 +110,12 @@ export class MarketplaceService {
         rateForFace +
         '))',
     ];
+    // References are discoverable planning interests despite missing commercial facts.
+    where.splice(
+      1,
+      where.length - 1,
+      `(s.research_agency_id IS NOT NULL OR (${where.slice(1).join(' AND ')}))`,
+    );
     const push = (clause: string, ...values: unknown[]) => {
       const start = params.length + 1;
       for (const v of values) params.push(v);
@@ -150,7 +157,7 @@ export class MarketplaceService {
       if (await this.hasPostgis(signal)) {
         // PostGIS available: ST_DWithin on geometry built from the float columns (meters).
         push(
-          'ST_DWithin(ST_SetSRID(ST_MakePoint(s.longitude, s.latitude), 4326)::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)',
+          '(s.research_agency_id IS NOT NULL OR ST_DWithin(ST_SetSRID(ST_MakePoint(s.longitude, s.latitude), 4326)::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?))',
           q.lng,
           q.lat,
           q.radius * 1000,
@@ -158,7 +165,7 @@ export class MarketplaceService {
       } else {
         // No PostGIS: Haversine great-circle distance in km on the float columns.
         push(
-          '(6371 * acos(LEAST(1, sin(radians(?)) * sin(radians(s.latitude)) + cos(radians(?)) * cos(radians(s.latitude)) * cos(radians(s.longitude - ?))))) <= ?',
+          '(s.research_agency_id IS NOT NULL OR (6371 * acos(LEAST(1, sin(radians(?)) * sin(radians(s.latitude)) + cos(radians(?)) * cos(radians(s.latitude)) * cos(radians(s.longitude - ?))))) <= ?)',
           q.lat,
           q.lat,
           q.lng,
@@ -173,7 +180,7 @@ export class MarketplaceService {
     // the aggregate physically cannot include one.
     checkDetailCancelled(signal);
     const rows = await repo.query(
-      `SELECT s.id, (s.demo_agency_id IS NOT NULL) AS "isDemo", s.code, s.name, s.format, s.city, s.country, s.illumination_type AS "illuminationType",
+      `SELECT s.id, (s.demo_agency_id IS NOT NULL) AS "isDemo", (s.research_agency_id IS NOT NULL) AS "isResearchReference", s.research_provenance AS "researchProvenance", s.code, s.name, s.format, s.city, s.country, s.illumination_type AS "illuminationType",
         s.width, s.height, s.area, s.latitude, s.longitude,
         (SELECT count(*) FROM site_faces WHERE site_id = s.id::text) AS "faceCount",
         ${priceSql} AS "startingPrice",
@@ -192,6 +199,7 @@ export class MarketplaceService {
       items: rows.map((row: Record<string, unknown>) => ({
         ...row,
         ...demoDisclosure(row.isDemo === true),
+        ...researchDisclosure(row.isResearchReference === true, row.researchProvenance),
       })),
       total: totalRows[0]?.c ?? 0,
       page,
@@ -264,10 +272,12 @@ export class MarketplaceService {
               Object.values(rate.rates).some((price) => typeof price === 'number' && price > 0),
           ),
       );
-    if (!ready) throw new NotFoundException('Site is not ready for the marketplace');
+    if (!ready && !site.isResearchReference)
+      throw new NotFoundException('Site is not ready for the marketplace');
     return {
       ...site,
       ...demoDisclosure(site.isDemo === true),
+      ...researchDisclosure(site.isResearchReference === true, site.researchProvenance),
       faces,
       assets: assets.map((asset) => projectMediaAssetEvidence(asset, site)),
       metadata,

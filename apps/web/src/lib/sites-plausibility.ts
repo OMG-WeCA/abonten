@@ -3,6 +3,7 @@
 // The server enforces the same checks — the client catches them early so the
 // partner can fix a typo before it ever posts.
 
+import { parseDecimal } from './number-format';
 import { SUPPORTED_MARKETS, findMarket, normalizeMarketName } from './markets';
 export const COUNTRY_BOUNDS = Object.fromEntries(
   SUPPORTED_MARKETS.map((market) => [
@@ -74,6 +75,18 @@ export function plausibilityErrors(input: PlausibilityInput): Partial<Record<str
       input.longitude > box.maxLng)
   ) {
     errors.latitude = 'errorCountryBox';
+  }
+  return errors;
+}
+
+/** Nonempty optional measurements must parse before absent values are omitted. */
+export function optionalStructureNumberErrors(
+  values: Partial<Record<StructureField, string>>,
+): Partial<Record<StructureField, 'errorNumber'>> {
+  const errors: Partial<Record<StructureField, 'errorNumber'>> = {};
+  for (const field of STRUCTURE_FIELDS) {
+    const raw = values[field];
+    if (raw?.trim() && parseDecimal(raw) === null) errors[field] = 'errorNumber';
   }
   return errors;
 }

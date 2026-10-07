@@ -6,6 +6,12 @@ const draftSchema: SchemaObject = {
   required: ['version', 'window', 'country', 'query', 'format', 'budget', 'currency', 'faces'],
   properties: {
     version: { type: 'integer', enum: [1] },
+    briefDerivedContext: {
+      type: 'boolean',
+      enum: [true],
+      description:
+        'Origin marker only. Brief-derived controls require fresh explicit consent before provider sharing; this marker is not consent.',
+    },
     window: {
       type: 'object',
       additionalProperties: false,

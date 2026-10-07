@@ -32,7 +32,7 @@ async function withSchema(work: (db: DataSource, stored: Map<string, Buffer>) =>
   try {
     await db.query(`CREATE SCHEMA "${schema}"`);
     await db.query(`CREATE TABLE billboard_sites (
-      demo_agency_id uuid,
+      demo_agency_id uuid, research_agency_id uuid, research_provenance jsonb,
       id uuid PRIMARY KEY, organization_id varchar NOT NULL, code varchar NOT NULL, name varchar NOT NULL,
       type varchar NOT NULL DEFAULT 'billboard', format varchar NOT NULL, sub_format varchar,
       latitude double precision NOT NULL, longitude double precision NOT NULL, geo_polygon json,

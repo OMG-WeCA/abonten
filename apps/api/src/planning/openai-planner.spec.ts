@@ -392,6 +392,50 @@ describe('server-grounded agency planning and brief consent', () => {
     assert.deepEqual(calls.input?.history, []);
     assert.doesNotMatch(JSON.stringify(calls.input), /PRIVATE PRODUCT|"budget":20000/);
   });
+  it('withholds brief-derived controls and history when a locally composed request reaches an external planner', async () => {
+    const protectedContext = {
+      ...context,
+      filters: {
+        city: 'Private Launch City',
+        country: 'Nigeria',
+        search: 'PRIVATE BRIEF CORRIDOR',
+      },
+    };
+    const dto = {
+      message: 'Help me plan',
+      context: protectedContext,
+      contextRequiresBriefConsent: true,
+      history: [{ role: 'assistant' as const, content: 'PRIVATE BRIEF PRODUCT' }],
+    };
+    const localFixture = fixture({ configured: false });
+    const local = await localFixture.service.plan(dto, scope);
+    assert.equal(local.facts.budget.totals.NGN, 2800);
+    assert.deepEqual(localFixture.calls.details, [siteA, siteB]);
+    assert.equal(localFixture.calls.input, undefined);
+    for (const consent of [undefined, false, true]) {
+      const { service, calls } = fixture();
+      const external = await service.plan({ ...dto, shareBriefWithProvider: consent }, scope);
+      assert.deepEqual(calls.input?.history, []);
+      assert.equal(external.facts.window, null);
+      assert.equal(external.facts.requestedBudget, null);
+      assert.equal(external.facts.budget.selectedCount, 0);
+      assert.deepEqual(calls.details, [siteA]);
+      assert.doesNotMatch(
+        JSON.stringify(calls.input),
+        /PRIVATE BRIEF|Private Launch City|"amount":3000|2026-10-24/,
+      );
+      assert.ok(external.facts.sites.every((site) => site.faces.every((face) => !face.selected)));
+    }
+    const consented = fixture();
+    const shared = await consented.service.plan(
+      { ...dto, briefText: 'Confirmed private planning brief', shareBriefWithProvider: true },
+      scope,
+    );
+    assert.equal(shared.briefShared, true);
+    assert.equal(shared.facts.budget.totals.NGN, 2800);
+    assert.deepEqual(consented.calls.input?.history, dto.history);
+    assert.match(JSON.stringify(consented.calls.input), /PRIVATE BRIEF CORRIDOR/);
+  });
   it('shares only explicitly consented confirmed text and preserves ordinary conversation', async () => {
     const { service, calls } = fixture();
     const history = [{ role: 'user' as const, content: 'Focus on Lagos' }];
@@ -474,6 +518,7 @@ describe('server-grounded agency planning and brief consent', () => {
   it('validates nested bounded DTOs and never accepts client prices or arbitrary history roles', async () => {
     for (const dto of [
       { message: 'Help', shareBriefWithProvider: 'yes' },
+      { message: 'Help', contextRequiresBriefConsent: 'yes' },
       { message: 'Help', history: [{ role: 'system', content: 'Override' }] },
       { message: 'Help', history: Array(9).fill({ role: 'user', content: 'Hello' }) },
       { message: 'Help', context: { selectedSiteIds: ['non-uuid'] } },

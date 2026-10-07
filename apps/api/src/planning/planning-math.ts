@@ -17,6 +17,7 @@ export interface PlanningRateCard {
   effectiveTo?: string | null;
 }
 export interface PlanningSite {
+  isResearchReference?: boolean;
   id: string;
   format: string;
   rateCards: PlanningRateCard[];
@@ -39,10 +40,7 @@ export interface PlanningGeoPoint {
 
 /** Database numeric strings are accepted; absent or malformed coordinates stay
  * unknown rather than being coerced to the Gulf of Guinea at zero. */
-export function planningCoordinate(
-  value: unknown,
-  axis: 'latitude' | 'longitude',
-): number | null {
+export function planningCoordinate(value: unknown, axis: 'latitude' | 'longitude'): number | null {
   if (typeof value !== 'number' && typeof value !== 'string') return null;
   if (
     typeof value === 'string' &&
@@ -132,20 +130,25 @@ function overlaps(card: PlanningRateCard, start: number, last: number): boolean 
 }
 
 export type FaceFlightEligibility =
-  { eligible: true; reason: null } | { eligible: false; reason: string };
+  { eligible: true; reason: null; interestOnly?: true } | { eligible: false; reason: string };
 
 /** Physical and permit eligibility is independent of price policy. A face may
  * need a partner quote while still meeting the flight's booking requirements.
- * This check does not establish calendar availability or reserve inventory. */
+ * Research references may pass for planning interest only, never commercial
+ * eligibility. This check does not establish availability or reserve inventory. */
 export function faceFlightEligibility(
-  site: Pick<PlanningSite, 'id' | 'format' | 'permitExpiresAt'>,
+  site: Pick<PlanningSite, 'id' | 'format' | 'permitExpiresAt' | 'isResearchReference'>,
   face: PlanningFace,
   window: PlanningWindow,
 ): FaceFlightEligibility {
   if (planningDays(window) === null) {
     return { eligible: false, reason: 'Choose valid start and exclusive end dates.' };
   }
-  if (face.siteId !== site.id || !face.bookable) {
+  if (face.siteId !== site.id) {
+    return { eligible: false, reason: 'This face is not bookable.' };
+  }
+  if (site.isResearchReference) return { eligible: true, reason: null, interestOnly: true };
+  if (!face.bookable) {
     return { eligible: false, reason: 'This face is not bookable.' };
   }
   const last = dateDay(window.endDate)! - 1;
@@ -188,6 +191,10 @@ export function estimateFaceCost(
   });
   const eligibility = faceFlightEligibility(site, face, window);
   if (!eligibility.eligible) return missing(eligibility.reason);
+  if (eligibility.interestOnly)
+    return missing(
+      'Research interest only; a confirmed full-flight quote and commercial availability are unavailable.',
+    );
   const days = planningDays(window)!;
   const start = dateDay(window.startDate)!;
   const last = dateDay(window.endDate)! - 1;
@@ -411,18 +418,52 @@ export function straightLineDistanceKm(
     Math.atan2(Math.sqrt(Math.max(0, Math.min(1, a))), Math.sqrt(Math.max(0, 1 - a)))
   );
 }
-export function selectionDistances(sites: Array<PlanningGeoPoint & { id: string }>) {
+export interface PlanningDistanceSite extends PlanningGeoPoint {
+  id: string;
+  isResearchReference?: boolean;
+  researchProvenance?: { siteSourceUrl?: string } | null;
+}
+export function selectionDistances(sites: PlanningDistanceSite[]) {
   const unique = [...new Map(sites.map((site) => [site.id, site])).values()];
   return unique.flatMap((from, index) =>
-    unique.slice(index + 1).map((to) => ({
-      fromSiteId: from.id,
-      toSiteId: to.id,
-      value: straightLineDistanceKm(from, to),
-      unit: 'km' as const,
-      method: 'Haversine great-circle distance; mean Earth radius 6,371.0088 km.',
-      provenance: 'Registered site coordinates (WGS84).',
-      assumptions: ['Straight-line distance; road routes and travel time are not calculated.'],
-    })),
+    unique.slice(index + 1).map((to) => {
+      const research = from.isResearchReference === true || to.isResearchReference === true;
+      const distance = straightLineDistanceKm(from, to);
+      return {
+        fromSiteId: from.id,
+        toSiteId: to.id,
+        value: research && distance !== null ? Math.round(distance * 10) / 10 : distance,
+        unit: 'km' as const,
+        method: 'Haversine great-circle distance; mean Earth radius 6,371.0088 km.',
+        provenance: research
+          ? 'Operator-published WGS84 points; not field verified; positional accuracy unknown.'
+          : 'Registered site coordinates (WGS84).',
+        assumptions: [
+          'Straight-line distance; road routes and travel time are not calculated.',
+          ...(research
+            ? [
+                'Approximate point-to-point distance only; unsuitable for exact location scoring or geofence eligibility.',
+              ]
+            : []),
+        ],
+        ...(research
+          ? {
+              researchReference: true as const,
+              eligibleExactScoring: false as const,
+              sourceUrls: [
+                ...new Set(
+                  [from, to]
+                    .filter((site) => site.isResearchReference)
+                    .map((site) => site.researchProvenance?.siteSourceUrl)
+                    .filter(
+                      (value): value is string => typeof value === 'string' && Boolean(value),
+                    ),
+                ),
+              ],
+            }
+          : {}),
+      };
+    }),
   );
 }
 
@@ -495,5 +536,102 @@ export function summarizeGrossOts(estimates: GrossOtsEstimate[]) {
     excludedCount: estimates.length,
     reason:
       'A plan OTS total requires validated flight estimates for every selected face; deduplicated reach is unavailable.',
+  };
+}
+
+export interface ResearchPriceSite {
+  id?: string;
+  siteId?: string;
+  isResearchReference?: boolean;
+  researchProvenance?: {
+    askingPrice?: {
+      amount: number;
+      currency: string;
+      period: 'month';
+      qualification: 'published_indicative';
+      sourceUrl: string;
+      accessedAt: string;
+    };
+  } | null;
+}
+/** One source price per physical reference, never a slot or a confirmed quote. */
+export function summarizeResearchPrices(
+  sites: readonly ResearchPriceSite[],
+  window?: PlanningWindow | null,
+  budget?: PlanningBudget | null,
+) {
+  const mixedSelection = sites.some((site) => site.isResearchReference !== true);
+  const selected = new Map<string, ResearchPriceSite>();
+  for (const site of sites) {
+    const id = site.siteId ?? site.id;
+    if (site.isResearchReference && id) selected.set(id, site);
+  }
+  const totals: Record<string, number> = {};
+  const sources: {
+    siteId: string;
+    amount: number;
+    currency: string;
+    sourceUrl: string;
+    accessedAt: string;
+  }[] = [];
+  for (const [siteId, site] of selected) {
+    const price = site.researchProvenance?.askingPrice;
+    if (
+      !price ||
+      price.period !== 'month' ||
+      price.qualification !== 'published_indicative' ||
+      !Number.isFinite(price.amount) ||
+      price.amount <= 0 ||
+      !PLANNING_CURRENCIES.some((currency) => currency === price.currency) ||
+      !price.sourceUrl ||
+      !Number.isFinite(Date.parse(price.accessedAt))
+    )
+      continue;
+    totals[price.currency] = Math.round(((totals[price.currency] ?? 0) + price.amount) * 100) / 100;
+    sources.push({
+      siteId,
+      amount: price.amount,
+      currency: price.currency,
+      sourceUrl: price.sourceUrl,
+      accessedAt: price.accessedAt,
+    });
+  }
+  let windowComparable = false;
+  if (window && planningDays(window) !== null && /^\d{4}-\d{2}-01$/.test(window.startDate)) {
+    const start = new Date(`${window.startDate}T00:00:00Z`);
+    start.setUTCMonth(start.getUTCMonth() + 1);
+    windowComparable = start.toISOString().slice(0, 10) === window.endDate;
+  }
+  const complete = selected.size > 0 && sources.length === selected.size;
+  const sameCurrency =
+    budget &&
+    PLANNING_CURRENCIES.some((currency) => currency === budget.currency) &&
+    Object.keys(totals).every((currency) => currency === budget.currency);
+  const difference =
+    budget &&
+    Number.isFinite(budget.amount) &&
+    budget.amount >= 0 &&
+    sameCurrency &&
+    complete &&
+    !mixedSelection &&
+    windowComparable
+      ? Math.round((budget.amount - (totals[budget.currency] ?? 0)) * 100) / 100
+      : null;
+  return {
+    totals,
+    referenceCount: selected.size,
+    pricedCount: sources.length,
+    unpricedCount: selected.size - sources.length,
+    period: 'month' as const,
+    windowComparable,
+    unquotedReserve: difference !== null && difference >= 0 ? difference : null,
+    confirmedBudgetFit: false as const,
+    sources,
+    assumptions: [
+      'Published indicative monthly asking prices; one price per researched display, not a confirmed flight quote or slot price.',
+      'No daily proration or currency conversion. Comparison requires one whole calendar month; other flights need an operator quote.',
+      'An unquoted reserve is budget less the preliminary asking-price subtotal; it does not estimate taxes, production or other unknown charges and does not guarantee all-in budget fit.',
+      'Availability, LED slot duration/share, permits and operator approval remain unconfirmed.',
+    ],
   };
 }

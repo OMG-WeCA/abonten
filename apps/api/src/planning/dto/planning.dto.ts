@@ -142,6 +142,14 @@ export class AssistantMessageDto {
   @IsBoolean()
   shareBriefWithProvider?: boolean;
   @ApiPropertyOptional({
+    default: false,
+    description:
+      'Context or history is derived from a brief and must stay local until that confirmed brief is explicitly shared.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  contextRequiresBriefConsent?: boolean;
+  @ApiPropertyOptional({
     type: [PlannerHistoryDto],
     maxItems: 8,
     description:

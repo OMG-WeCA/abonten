@@ -80,7 +80,7 @@ async function withSchema(
         created_at timestamptz NOT NULL DEFAULT now()
       );
       CREATE TABLE billboard_sites (
-      demo_agency_id uuid,
+      demo_agency_id uuid, research_agency_id uuid, research_provenance jsonb,
         id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
         organization_id varchar NOT NULL,
         code varchar NOT NULL,

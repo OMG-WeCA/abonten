@@ -56,6 +56,32 @@ describe('strict personal draft admission', () => {
       'Personal plan',
     );
   });
+  it('preserves only a true brief-origin marker, without persisting document text or consent', () => {
+    const original = draft();
+    assert.deepEqual(normalizePlanningDraft({ ...original, briefDerivedContext: true }), {
+      ...original,
+      briefDerivedContext: true,
+    });
+    for (const value of [undefined, false, null, 'true', 1, {}])
+      assert.deepEqual(
+        normalizePlanningDraft({ ...original, briefDerivedContext: value }),
+        original,
+      );
+    assert.throws(
+      () =>
+        normalizePlanningDraft({ ...original, briefDerivedContext: true, briefText: 'PRIVATE' }),
+      BadRequestException,
+    );
+    assert.throws(
+      () =>
+        normalizePlanningDraft({
+          ...original,
+          briefDerivedContext: true,
+          shareBriefWithProvider: true,
+        }),
+      BadRequestException,
+    );
+  });
   it('rejects unknown content at every level instead of persisting documents, consent, identity or commercial facts', () => {
     const value = create();
     for (const key of [

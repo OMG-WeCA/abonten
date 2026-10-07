@@ -17,6 +17,8 @@ import { PartnerTermsAcceptance1760000003000 } from './migrations/1760000003000-
 import { PersonalPlanningDrafts1760000004000 } from './migrations/1760000004000-PersonalPlanningDrafts';
 import { AgencyDemoInventoryScope1760000005000 } from './migrations/1760000005000-AgencyDemoInventoryScope';
 
+import { AgencyResearchInventoryScope1760000006000 } from './migrations/1760000006000-AgencyResearchInventoryScope';
+
 // DataSource used by the migration CLI / `pnpm migration:run|revert|generate`.
 // The runtime app uses DatabaseModule's lazy, migration-only DataSource with
 // synchronize disabled in every environment; this standalone DataSource is for
@@ -42,6 +44,7 @@ export const AppDataSource = new DataSource({
     PartnerTermsAcceptance1760000003000,
     PersonalPlanningDrafts1760000004000,
     AgencyDemoInventoryScope1760000005000,
+    AgencyResearchInventoryScope1760000006000,
   ],
   migrationsRun: false,
   logging: ['error', 'migration'],

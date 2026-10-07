@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { ResearchPriceBaseline } from '../components/agency/ResearchReferenceFacts';
 import { BoardDetail } from '../components/agency/BoardDetail';
 import { PlannerDataUseDialog } from '../components/agency/PlannerDataUseDialog';
 import { AgencyPlanner } from '../components/agency/AgencyPlanner';
@@ -8,7 +9,13 @@ import { prettyFormat } from '../components/sites/sites-ui';
 import { GeographicContextSnapshot } from '../components/sites/GeographicContextPanel';
 import type { ContextMetric, SiteGeographicContext } from '@abonten/contracts/enrichment';
 import type { SiteDetail } from './sites-api';
-import { estimateFaceCost, selectionDistances, summarizeBudget } from './agency-planning';
+import { researchSourceUrl, researchAskingPrice } from './research-reference';
+import {
+  estimateFaceCost,
+  selectionDistances,
+  summarizeBudget,
+  summarizeResearchPrices,
+} from './agency-planning';
 
 const window = { startDate: '2026-10-01', endDate: '2026-10-08' };
 const availability = { status: 'available' as const, window, checkedAt: '2026-09-30T12:34:56Z' };
@@ -108,6 +115,8 @@ test('planner renders French decimal distances, cost assumptions and UTC checks 
   const original = JSON.stringify(estimate);
   const html = renderToStaticMarkup(
     <AgencyPlanner
+      contextMayContainBrief={false}
+      onBriefContext={noop}
       open
       orgId="synthetic-org"
       locale="fr"
@@ -161,6 +170,8 @@ test('budget input accepts French grouped decimals and plain English amounts, re
   const render = (budget: string, locale: 'en' | 'fr') =>
     renderToStaticMarkup(
       <AgencyPlanner
+        contextMayContainBrief={false}
+        onBriefContext={noop}
         open
         orgId="synthetic-org"
         locale={locale}
@@ -318,6 +329,248 @@ test('demo popup distinguishes sample cost and unknown availability without chan
           locale === 'fr' ? 'Disponible au dernier contrôle' : 'Available at last check',
         ),
       );
+    }
+  }
+});
+
+// Real-source contract fixture only; no remote requests or rehosted photographs.
+const researched: SiteDetail = {
+  ...site,
+  name: 'KING OF MARINA 2.0',
+  isResearchReference: true,
+  commerciallyBookable: false,
+  ownershipKind: 'agency_curated_reference',
+  faces: [{ ...site.faces[0], width: 15.36, height: 6.72, units: 'm', bookable: false }],
+  rateCards: [],
+  assets: [],
+  metadata: [],
+  researchProvenance: {
+    publisher: 'ELEV8 Media',
+    operatorName: 'ELEV8MEDIA ADVERTISING LTD',
+    siteSourceUrl: 'https://elev8.com.ng/king-of-marina/',
+    accessedAt: '2026-10-07T00:09:00Z',
+    coordinateVerification: 'operator_published_not_field_verified',
+    dimensionsUnit: 'm',
+    askingPrice: {
+      amount: 4500000,
+      currency: 'NGN',
+      period: 'month',
+      sourceUrl: 'https://elev8mediabookings.com/',
+      accessedAt: '2026-10-07T00:09:00Z',
+      qualification: 'published_indicative',
+    },
+    unknowns: ['Availability', 'Digital slot terms', 'Audience'],
+  },
+};
+
+test('real research details preserve source monthly price, uncertainty and reference faces without relabeling or loading copied photos', () => {
+  // A stale ordinary quote must not overrule the research discriminator.
+  const stale = estimateFaceCost(site, site.faces[0], window, 'NGN', availability);
+  for (const locale of ['en', 'fr'] as const) {
+    const html = renderToStaticMarkup(
+      <BoardDetail
+        site={researched}
+        orgId="synthetic-org"
+        locale={locale}
+        faceId="face-test"
+        onFace={noop}
+        estimate={stale}
+        selected={false}
+        canPlan
+        window={window}
+        availability={availability}
+        onRetryAvailability={noop}
+        onAdd={noop}
+        onClose={noop}
+      />,
+    );
+    assert.ok(html.includes(locale === 'fr' ? 'SOURCE PUBLIQUE' : 'RESEARCH'));
+    assert.ok(html.includes('KING OF MARINA 2.0'));
+    assert.ok(html.includes('NGN'));
+    assert.ok(html.includes(locale === 'fr' ? '/ mois' : '/ month'));
+    assert.ok(html.includes('https://elev8.com.ng/king-of-marina/'));
+    assert.ok(html.includes('https://elev8mediabookings.com/'));
+    assert.ok(html.includes(locale === 'fr' ? '07 oct. 2026' : '07 Oct 2026'));
+    assert.ok(
+      html.includes(
+        locale === 'fr' ? 'devis de campagne non confirmé' : 'flight quote unconfirmed',
+      ),
+    );
+    assert.ok(html.includes(locale === 'fr' ? 'non vérifiée sur place' : 'not field verified'));
+    assert.ok(html.includes('value="face-test"'));
+    assert.ok(!html.includes('<img'));
+    assert.ok(!html.includes('DEMO'));
+    assert.ok(!html.includes('Synthetic'));
+    assert.ok(
+      !html.includes(
+        locale === 'fr' ? 'Disponible au dernier contrôle' : 'Available at last check',
+      ),
+    );
+    assert.ok(
+      !html.includes(locale === 'fr' ? 'jours · estimation média' : 'days · media estimate'),
+    );
+  }
+});
+
+test('research metadata cannot turn unsafe links or malformed asking rates into usable source prices', () => {
+  for (const value of [
+    'javascript:alert(1)',
+    'data:text/html,test',
+    'http://example.test/',
+    'https://user:pass@example.test/',
+    '/relative',
+    'not a URL',
+  ])
+    assert.equal(researchSourceUrl(value), undefined);
+  assert.equal(
+    researchSourceUrl('https://elev8.com.ng/king-of-marina/'),
+    'https://elev8.com.ng/king-of-marina/',
+  );
+  assert.equal(researchAskingPrice(null, 'en'), null);
+  const provenance = researched.researchProvenance!;
+  const price = provenance.askingPrice!;
+  for (const patch of [
+    { amount: NaN },
+    { amount: -1 },
+    { currency: 'BAD' },
+    { sourceUrl: 'http://example.test/' },
+  ])
+    assert.equal(
+      researchAskingPrice({ ...provenance, askingPrice: { ...price, ...patch } }, 'en'),
+      null,
+    );
+});
+
+test('research baseline renders the qualified monthly subtotal and reserve without claiming confirmed budget fit', () => {
+  const references = [4500000, 4500000, 5500000, 4000000].map((amount, index) => ({
+    ...researched,
+    id: `reference-${index}`,
+    researchProvenance: {
+      ...researched.researchProvenance!,
+      askingPrice: { ...researched.researchProvenance!.askingPrice!, amount },
+    },
+  }));
+  const monthly = { startDate: '2026-11-01', endDate: '2026-12-01' };
+  const baseline = summarizeResearchPrices(references, monthly, {
+    amount: 22000000,
+    currency: 'NGN',
+  });
+  assert.equal(baseline.confirmedBudgetFit, false);
+  for (const locale of ['en', 'fr'] as const) {
+    const html = renderToStaticMarkup(
+      <ResearchPriceBaseline baseline={baseline} locale={locale} currency="NGN" />,
+    );
+    assert.ok(html.includes(locale === 'fr' ? '18 500 000' : '18,500,000'));
+    assert.ok(html.includes(locale === 'fr' ? '3 500 000' : '3,500,000'));
+    assert.ok(html.includes(locale === 'fr' ? 'réserve sans devis' : 'unquoted reserve'));
+    assert.ok(
+      html.includes(
+        locale === 'fr'
+          ? 'devis et budget de campagne non confirmés'
+          : 'flight quote and budget fit unconfirmed',
+      ),
+    );
+    assert.ok(html.includes('https://elev8mediabookings.com/'));
+  }
+  const shorter = summarizeResearchPrices(references, window, {
+    amount: 22000000,
+    currency: 'NGN',
+  });
+  const html = renderToStaticMarkup(
+    <ResearchPriceBaseline baseline={shorter} locale="en" currency="NGN" />,
+  );
+  assert.ok(html.includes('cannot be prorated'));
+  assert.ok(!html.includes('unquoted reserve'));
+});
+
+test('planner selection shows research monthly asking prices and approximate published-point spacing', () => {
+  const monthly = { startDate: '2026-11-01', endDate: '2026-12-01' };
+  const estimate = {
+    status: 'unavailable' as const,
+    siteId: researched.id,
+    faceId: 'face-test',
+    reason: 'Research reference: full-flight quote unavailable.',
+  };
+  const other = {
+    ...researched,
+    id: 'other-reference',
+    name: 'LEKKI GATEWAY',
+    faces: [{ ...researched.faces[0], id: 'other-face', siteId: 'other-reference' }],
+  };
+  for (const locale of ['en', 'fr'] as const) {
+    for (const partial of [false, true]) {
+      const html = renderToStaticMarkup(
+        <AgencyPlanner
+          contextMayContainBrief={false}
+          onBriefContext={noop}
+          open
+          orgId="synthetic-org"
+          locale={locale}
+          canPlan
+          window={monthly}
+          budget="22000000"
+          onBudget={noop}
+          currency="NGN"
+          onCurrency={noop}
+          shortlist={[
+            { site: researched, faceId: 'face-test' },
+            { site: other, faceId: 'other-face' },
+          ]}
+          estimates={[estimate, { ...estimate, siteId: other.id, faceId: 'other-face' }]}
+          summary={summarizeBudget(
+            [
+              estimate,
+              { ...estimate, siteId: other.id, faceId: 'other-face' },
+              ...(partial
+                ? [{ ...estimate, siteId: 'unresolved', faceId: 'unresolved-face' }]
+                : []),
+            ],
+            { amount: 22000000, currency: 'NGN' },
+          )}
+          distances={[
+            {
+              ...selectionDistances([
+                { id: researched.id, latitude: 6.450732, longitude: 3.389668 },
+                { id: other.id, latitude: 6.437117, longitude: 3.456371 },
+              ])[0],
+              value: 7.534,
+            },
+          ]}
+          onSelect={noop}
+          onRemove={noop}
+          onClear={noop}
+          onClose={noop}
+          onRecommend={noop}
+          recommending={false}
+          onCancelRecommendation={noop}
+          canRecommend
+          notice=""
+        />,
+      );
+      assert.ok(html.includes(locale === 'fr' ? 'SOURCE PUBLIQUE' : 'RESEARCH'));
+      assert.ok(html.includes(locale === 'fr' ? '/ mois' : '/ month'));
+      assert.ok(
+        html.includes(
+          locale === 'fr' ? 'Sous-total média mensuel publié' : 'Advertised monthly media subtotal',
+        ),
+      );
+      assert.ok(html.includes(locale === 'fr' ? '≈ 7,5' : '≈ 7.5'));
+      assert.ok(
+        html.includes(
+          locale === 'fr' ? 'distances sont approximatives' : 'distances are approximate',
+        ),
+      );
+      assert.ok(
+        html.includes(
+          locale === 'fr'
+            ? 'devis et disponibilité non confirmés'
+            : 'quote and availability unconfirmed',
+        ),
+      );
+      assert.ok(!html.includes('7.534'));
+      assert.ok(!html.includes('DEMO'));
+      if (partial)
+        assert.ok(!html.includes(locale === 'fr' ? 'réserve sans devis' : 'unquoted reserve'));
     }
   }
 });

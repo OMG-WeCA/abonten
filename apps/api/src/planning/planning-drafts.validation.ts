@@ -23,6 +23,7 @@ function currency(value: unknown): string {
 export function normalizePlanningDraft(value: unknown): AgencyPlanningDraftV1 {
   const input = object(value, [
     'version',
+    'briefDerivedContext',
     'window',
     'country',
     'query',
@@ -60,6 +61,7 @@ export function normalizePlanningDraft(value: unknown): AgencyPlanningDraftV1 {
   });
   return {
     version: 1,
+    ...(input.briefDerivedContext === true ? { briefDerivedContext: true as const } : {}),
     window,
     country: text(input.country, 80),
     query: text(input.query, 200),

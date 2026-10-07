@@ -99,6 +99,28 @@ async function withSchema(
 }
 
 describe('real PostgreSQL personal draft persistence', { skip: !url }, () => {
+  it('round-trips brief origin independently from documents and consent', async () => {
+    await withSchema(async (_db, service) => {
+      const input = { ...create(), draft: { ...draft(), briefDerivedContext: true } };
+      const saved = await service.create(actor, input);
+      assert.equal(saved.draft.briefDerivedContext, true);
+      assert.equal((await service.get(actor, saved.id)).draft.briefDerivedContext, true);
+      assert.equal((await service.list(actor)).items[0]!.draft.briefDerivedContext, true);
+      const updated = await service.update(actor, saved.id, {
+        name: 'Edited controls',
+        draft: { ...input.draft, budget: '22000000' },
+        revision: 1,
+      });
+      assert.equal(updated.draft.briefDerivedContext, true);
+      const cleared = await service.update(actor, saved.id, {
+        name: 'Manual controls',
+        draft: { ...input.draft, briefDerivedContext: false },
+        revision: 2,
+      });
+      assert.equal(cleared.draft.briefDerivedContext, undefined);
+      assert.equal((await service.get(actor, saved.id)).draft.briefDerivedContext, undefined);
+    });
+  });
   it('serializes simultaneous retries, scopes reads and writes, and detects concurrent stale revisions', async () => {
     await withSchema(async (db, service) => {
       const input = create();

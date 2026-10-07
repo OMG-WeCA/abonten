@@ -82,7 +82,7 @@ import { displayDateOnly, displayNumber, displayUtcTimestamp } from '../../../li
 import { agencyEvidenceText, agencyEvidenceUnit } from '../../../lib/agency-evidence-locale';
 import { formatArea, formatMoney, parseAmount, parseDecimal } from '../../../lib/number-format';
 import { getSitesCopy, type SiteLocale } from '../../../lib/sites-locale';
-import { plausibilityErrors } from '../../../lib/sites-plausibility';
+import { plausibilityErrors, optionalStructureNumberErrors } from '../../../lib/sites-plausibility';
 
 function DetailInner() {
   const router = useRouter();
@@ -626,6 +626,9 @@ function DetailsSection({
     const orientation = parseDecimal(form.orientationDeg);
     const viewingDistance = parseDecimal(form.viewingDistance);
     const elevation = parseDecimal(form.elevation);
+    for (const [field, messageKey] of Object.entries(optionalStructureNumberErrors(form))) {
+      next[field] = copy.register[messageKey];
+    }
     const plausibility = plausibilityErrors({
       latitude: lat ?? undefined,
       longitude: lon ?? undefined,

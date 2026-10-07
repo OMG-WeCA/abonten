@@ -21,6 +21,7 @@ import {
 } from '../../lib/planner-conversation';
 import {
   planningDays,
+  summarizeResearchPrices,
   type FaceCostEstimate,
   type PlanningWindow,
   type selectionDistances,
@@ -32,6 +33,12 @@ import { parseAmount } from '../../lib/number-format';
 import { displayDateOnly, displayNumber, displayUtcTimestamp } from '../../lib/locale-format';
 import { money } from './BoardDetail';
 import { PlannerDataUseDialog } from './PlannerDataUseDialog';
+import {
+  ResearchBadge,
+  ResearchPriceBaseline,
+  ResearchReferenceFacts,
+} from './ResearchReferenceFacts';
+import { researchAskingPrice } from '../../lib/research-reference';
 
 interface PlannerProps {
   open: boolean;
@@ -41,6 +48,8 @@ interface PlannerProps {
   window: PlanningWindow;
   budget: string;
   onBudget: (value: string) => void;
+  contextMayContainBrief: boolean;
+  onBriefContext: () => void;
   currency: string;
   onCurrency: (value: string) => void;
   shortlist: ShortlistFace[];
@@ -174,6 +183,7 @@ export function AgencyPlanner(props: PlannerProps) {
     try {
       const result = await extractBrief(orgId, file, controller.signal);
       if (!controller.signal.aborted) {
+        props.onBriefContext();
         setBrief(result);
         setBriefText(result.text);
         setBriefConfirmed(false);
@@ -234,6 +244,7 @@ export function AgencyPlanner(props: PlannerProps) {
           briefText,
           briefConfirmed,
           briefConsentText,
+          contextMayContainBrief: props.contextMayContainBrief,
         }),
         controller.signal,
       );
@@ -257,6 +268,7 @@ export function AgencyPlanner(props: PlannerProps) {
       let response = reply.message;
       if (
         reply.mode === 'local' &&
+        !shortlist.some((item) => item.site.isResearchReference) &&
         /distance|apart|spacing|éloign|écart/i.test(text) &&
         distances.length
       ) {
@@ -275,7 +287,12 @@ export function AgencyPlanner(props: PlannerProps) {
             })
             .join('\n');
       }
-      if (reply.mode === 'local' && /budget|cost|price|coût|prix/i.test(text) && shortlist.length) {
+      if (
+        reply.mode === 'local' &&
+        !shortlist.some((item) => item.site.isResearchReference) &&
+        /budget|cost|price|coût|prix/i.test(text) &&
+        shortlist.length
+      ) {
         response = t(
           'Published media cost estimates for the current draft. Tax, production and installation are excluded; currencies are kept separate.',
           'Estimations média publiées pour la sélection actuelle. Hors taxes, production et installation ; les devises restent séparées.',
@@ -334,6 +351,13 @@ export function AgencyPlanner(props: PlannerProps) {
     Number.isFinite(budgetAmount) &&
     budgetAmount > 0 &&
     budgetAmount <= 1e12;
+  const researchBaseline = summarizeResearchPrices(
+    shortlist.map(({ site }) => site),
+    props.window,
+    hasBudget && summary.selectedCount === shortlist.length
+      ? { amount: budgetAmount, currency }
+      : undefined,
+  );
   return (
     <section
       className="agency-planner agency-panel"
@@ -590,14 +614,22 @@ export function AgencyPlanner(props: PlannerProps) {
                             <span className="agency-data-badge">DEMO</span>{' '}
                           </>
                         )}
+                        {item.site.isResearchReference && (
+                          <>
+                            <ResearchBadge locale={locale} />{' '}
+                          </>
+                        )}
                         {item.site.faces.find((face) => face.id === item.faceId)?.faceLabel} ·{' '}
                         {item.site.city}
                       </small>
                     </span>
                     <em>
-                      {estimate.status === 'ready'
-                        ? money(estimate.amount, estimate.currency, locale)
-                        : t('Check quote', 'Vérifier le devis')}
+                      {item.site.isResearchReference
+                        ? (researchAskingPrice(item.site.researchProvenance, locale) ??
+                          t('Price unknown', 'Tarif inconnu'))
+                        : estimate?.status === 'ready'
+                          ? money(estimate.amount, estimate.currency, locale)
+                          : t('Check quote', 'Vérifier le devis')}
                     </em>
                   </button>
                   <button
@@ -607,10 +639,19 @@ export function AgencyPlanner(props: PlannerProps) {
                   >
                     <X size={14} />
                   </button>
-                  {estimate.status === 'unavailable' && (
-                    <p role="status" className="agency-form-error">
-                      {agencyEvidenceText(estimate.reason, locale)}
+                  {item.site.isResearchReference ? (
+                    <p role="status" className="text-muted">
+                      {t(
+                        'Advertised rate · quote and availability unconfirmed',
+                        'Tarif public · devis et disponibilité non confirmés',
+                      )}
                     </p>
+                  ) : (
+                    estimate?.status === 'unavailable' && (
+                      <p role="status" className="agency-form-error">
+                        {agencyEvidenceText(estimate.reason, locale)}
+                      </p>
+                    )
                   )}
                 </div>
               );
@@ -640,6 +681,11 @@ export function AgencyPlanner(props: PlannerProps) {
                 />
               )}
             </div>
+            <ResearchPriceBaseline
+              baseline={researchBaseline}
+              locale={locale}
+              currency={currency}
+            />
           </div>
         ) : (
           <div className="agency-empty-shortlist">
@@ -723,6 +769,14 @@ export function AgencyPlanner(props: PlannerProps) {
                 'Distance à vol d’oiseau · WGS84 / Haversine, hors trajet routier.',
               )}
             </p>
+            {researchBaseline.referenceCount > 0 && (
+              <p>
+                {t(
+                  'Published points are not field verified; distances are approximate and accuracy is unknown.',
+                  'Les positions publiées ne sont pas vérifiées sur place ; les distances sont approximatives et leur précision est inconnue.',
+                )}
+              </p>
+            )}
             {distances.slice(0, 50).map((pair) => (
               <div key={`${pair.fromSiteId}:${pair.toSiteId}`}>
                 <span>
@@ -732,7 +786,7 @@ export function AgencyPlanner(props: PlannerProps) {
                 <b>
                   {pair.value == null
                     ? '—'
-                    : displayNumber(pair.value, locale, { maximumFractionDigits: 2 })}{' '}
+                    : `${shortlist.some(({ site }) => site.isResearchReference && (site.id === pair.fromSiteId || site.id === pair.toSiteId)) ? '≈ ' : ''}${displayNumber(pair.value, locale, { maximumFractionDigits: shortlist.some(({ site }) => site.isResearchReference && (site.id === pair.fromSiteId || site.id === pair.toSiteId)) ? 1 : 2 })}`}{' '}
                   km
                 </b>
               </div>
@@ -980,27 +1034,33 @@ function ReplyFacts({
     const face = site?.faces.find((candidate) => candidate.faceId === reference.faceId);
     return site && face ? [{ reference, site, face }] : [];
   });
-  const availabilityLabel = (value: 'available' | 'unavailable' | 'unknown', demo = false) =>
-    demo
-      ? value === 'available'
-        ? t('Available in sample · no booking', 'Disponible dans l’exemple · aucune réservation')
-        : value === 'unavailable'
+  const availabilityLabel = (
+    value: 'available' | 'unavailable' | 'unknown' | null,
+    demo = false,
+    research = false,
+  ) =>
+    research
+      ? t('Availability unconfirmed · no booking', 'Disponibilité non confirmée · sans réservation')
+      : demo
+        ? value === 'available'
+          ? t('Available in sample · no booking', 'Disponible dans l’exemple · aucune réservation')
+          : value === 'unavailable'
+            ? t(
+                'Unavailable in sample · no booking',
+                'Indisponible dans l’exemple · aucune réservation',
+              )
+            : t(
+                'Sample availability unconfirmed · no booking',
+                'Disponibilité fictive non confirmée · aucune réservation',
+              )
+        : value === 'available'
           ? t(
-              'Unavailable in sample · no booking',
-              'Indisponible dans l’exemple · aucune réservation',
+              'Available at the check time · no reservation',
+              'Disponible lors du contrôle · sans réservation',
             )
-          : t(
-              'Sample availability unconfirmed · no booking',
-              'Disponibilité fictive non confirmée · aucune réservation',
-            )
-      : value === 'available'
-        ? t(
-            'Available at the check time · no reservation',
-            'Disponible lors du contrôle · sans réservation',
-          )
-        : value === 'unavailable'
-          ? t('Unavailable for this flight', 'Indisponible pour ces dates')
-          : t('Availability needs checking', 'Disponibilité à vérifier');
+          : value === 'unavailable'
+            ? t('Unavailable for this flight', 'Indisponible pour ces dates')
+            : t('Availability needs checking', 'Disponibilité à vérifier');
   const faceSources =
     facts?.sites.flatMap((site) =>
       site.faces
@@ -1028,6 +1088,7 @@ function ReplyFacts({
               >
                 <strong>
                   {site.name} {site.isDemo && <span className="agency-data-badge">DEMO</span>}
+                  {site.isResearchReference && <ResearchBadge locale={locale} />}
                 </strong>
               </button>
               <p>
@@ -1042,22 +1103,27 @@ function ReplyFacts({
               )}
               <p
                 className={
-                  face.availability === 'available'
-                    ? 'text-success'
-                    : face.availability === 'unavailable'
-                      ? 'text-error'
-                      : 'text-muted'
+                  site.isResearchReference
+                    ? 'text-muted'
+                    : face.availability === 'available'
+                      ? 'text-success'
+                      : face.availability === 'unavailable'
+                        ? 'text-error'
+                        : 'text-muted'
                 }
               >
-                {availabilityLabel(face.availability, site.isDemo)}
+                {availabilityLabel(face.availability, site.isDemo, site.isResearchReference)}
               </p>
-              {face.estimate.status === 'ready' && (
+              {site.isResearchReference && (
+                <ResearchReferenceFacts provenance={site.researchProvenance} locale={locale} />
+              )}
+              {!site.isResearchReference && face.estimate.status === 'ready' && (
                 <small>
                   {money(face.estimate.amount, face.estimate.currency, locale)} /{' '}
                   {displayNumber(face.estimate.days, locale)} {t('days', 'jours')}
                 </small>
               )}
-              {face.estimate.status === 'unavailable' && (
+              {!site.isResearchReference && face.estimate.status === 'unavailable' && (
                 <p>
                   {t('Price unavailable', 'Tarif indisponible')} :{' '}
                   {agencyEvidenceText(face.estimate.reason, locale)}
@@ -1081,7 +1147,11 @@ function ReplyFacts({
       )}
       {facts && (
         <details>
-          <summary>{t('Checked planning facts', 'Données de planification vérifiées')}</summary>
+          <summary>
+            {facts.sites.some((site) => site.isResearchReference)
+              ? t('Planning facts and sources', 'Données et sources du plan')
+              : t('Checked planning facts', 'Données de planification vérifiées')}
+          </summary>
           <p>
             {t('Checked', 'Vérifiées')} : {displayUtcTimestamp(facts.checkedAt, locale)}
           </p>
@@ -1116,19 +1186,33 @@ function ReplyFacts({
                 ? t('Above the stated budget.', 'Au-dessus du budget indiqué.')
                 : t('Budget fit remains unconfirmed.', 'Le budget reste à confirmer.')}
           </p>
+          {facts.researchPrices && (
+            <ResearchPriceBaseline
+              baseline={facts.researchPrices}
+              locale={locale}
+              currency={
+                facts.requestedBudget?.currency ??
+                facts.researchPrices.sources[0]?.currency ??
+                'NGN'
+              }
+            />
+          )}
           {faceSources.map(({ site, face }) => (
             <div key={`${site.siteId}:${face.faceId}`}>
               <p>
                 <strong>
                   {site.name} {site.isDemo && <span className="agency-data-badge">DEMO</span>}
+                  {site.isResearchReference && <ResearchBadge locale={locale} />}
                   {face.faceLabel ? ` · ${t('Face', 'Face')} ${face.faceLabel}` : ''}
                 </strong>
               </p>
-              <p>{availabilityLabel(face.availability, site.isDemo)}</p>
+              <p>{availabilityLabel(face.availability, site.isDemo, site.isResearchReference)}</p>
               {site.isDemo && site.demoProvenance && (
                 <p>{agencyEvidenceText(site.demoProvenance, locale)}</p>
               )}
-              {face.estimate.status === 'ready' ? (
+              {site.isResearchReference ? (
+                <ResearchReferenceFacts provenance={site.researchProvenance} locale={locale} />
+              ) : face.estimate.status === 'ready' ? (
                 <>
                   <p>
                     {money(face.estimate.amount, face.estimate.currency, locale)} /{' '}
@@ -1160,10 +1244,22 @@ function ReplyFacts({
               :{' '}
               {pair.value == null
                 ? '—'
-                : new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(
-                    pair.value,
-                  )}{' '}
+                : `${facts.sites.some((site) => site.isResearchReference && (site.siteId === pair.fromSiteId || site.siteId === pair.toSiteId)) ? '≈ ' : ''}${new Intl.NumberFormat(locale, { maximumFractionDigits: facts.sites.some((site) => site.isResearchReference && (site.siteId === pair.fromSiteId || site.siteId === pair.toSiteId)) ? 1 : 2 }).format(pair.value)}`}{' '}
               km · {t('straight-line', 'à vol d’oiseau')}
+              {facts.sites.some(
+                (site) =>
+                  site.isResearchReference &&
+                  (site.siteId === pair.fromSiteId || site.siteId === pair.toSiteId),
+              ) && (
+                <>
+                  {' '}
+                  ·{' '}
+                  {t(
+                    'published points · accuracy unknown',
+                    'positions publiées · précision inconnue',
+                  )}
+                </>
+              )}
             </p>
           ))}
           <p>

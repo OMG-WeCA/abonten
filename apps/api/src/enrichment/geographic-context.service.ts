@@ -42,6 +42,7 @@ interface ImportRow {
   raster_path: string | null;
 }
 interface SiteLocation {
+  isResearchReference?: boolean;
   isDemo?: boolean;
   latitude: number;
   longitude: number;
@@ -134,7 +135,7 @@ export class GeographicContextService {
         return result;
       };
       const sites: SiteLocation[] = await manager.query(
-        'SELECT latitude, longitude, country, (demo_agency_id IS NOT NULL) AS "isDemo" FROM billboard_sites WHERE id = $1',
+        'SELECT latitude, longitude, country, (demo_agency_id IS NOT NULL) AS "isDemo", (research_agency_id IS NOT NULL) AS "isResearchReference" FROM billboard_sites WHERE id = $1',
         [siteId],
       );
       const site = sites[0];
@@ -168,6 +169,11 @@ export class GeographicContextService {
         result.disclaimer =
           'DEMO: synthetic location, not a verified physical board. Geographic and audience enrichment is unavailable for this sample.';
         return { ...result, isDemo: true } as SiteGeographicContext;
+      }
+      if (site.isResearchReference) {
+        result.disclaimer =
+          'Research reference: operator-published coordinates are not field verified. Site-specific enrichment and audience exposure remain unavailable.';
+        return { ...result, isResearchReference: true } as SiteGeographicContext;
       }
       if (!country) return result;
       // Hold exact immutable import IDs throughout the read, even if an operator

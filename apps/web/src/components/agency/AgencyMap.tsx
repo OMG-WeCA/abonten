@@ -17,6 +17,7 @@ export interface AgencyMapSite {
   id: string;
   name: string;
   isDemo?: boolean;
+  isResearchReference?: boolean;
   latitude: number;
   longitude: number;
 }
@@ -274,7 +275,9 @@ export function AgencyMap({
         };
       }
       const tooltipText = document.createElement('span');
-      tooltipText.textContent = site.name;
+      tooltipText.textContent = site.isResearchReference
+        ? `${site.name} · ${fr ? 'source publique, position non vérifiée' : 'research, location unverified'}`
+        : site.name;
       if (entry.marker.getTooltip()) entry.marker.setTooltipContent(tooltipText);
       else
         entry.marker.bindTooltip(tooltipText, {
@@ -311,9 +314,13 @@ export function AgencyMap({
     const second = sites.find((site) => site.id === shortlistIds[1] && validPoint(site));
     if (first && second) {
       const label = document.createElement('span');
-      label.textContent = `1 → 2 · ${displayNumber(straightLineDistanceKm(first, second)!, locale, { maximumFractionDigits: 2 })} km ${labels.straightLine}`;
-      label.title =
-        first.isDemo || second.isDemo
+      const researched = first.isResearchReference || second.isResearchReference;
+      label.textContent = `1 → 2 · ${researched ? '≈ ' : ''}${displayNumber(straightLineDistanceKm(first, second)!, locale, { maximumFractionDigits: researched ? 1 : 2 })} km ${labels.straightLine}${researched ? (fr ? ' · points publiés' : ' · published points') : ''}`;
+      label.title = researched
+        ? fr
+          ? 'Positions publiées non vérifiées sur place ; précision inconnue. Distance indicative.'
+          : 'Published locations are not field verified; accuracy unknown. Indicative distance.'
+        : first.isDemo || second.isDemo
           ? fr
             ? 'Calcul à vol d’oiseau à partir de coordonnées fictives'
             : 'Straight-line calculation from sample coordinates'

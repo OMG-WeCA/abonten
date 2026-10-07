@@ -424,13 +424,22 @@ function derive(dto: AssistantMessageDto, brief: string): PlanningRetrievalInten
   };
 }
 
+/** A request may have been composed while the browser believed the planner was
+ * local. Server runtime configuration determines whether this boundary applies. */
+export function consentSafeProviderRequest(dto: AssistantMessageDto): AssistantMessageDto {
+  const briefShared = dto.shareBriefWithProvider === true && Boolean(dto.briefText?.trim());
+  return dto.contextRequiresBriefConsent === true && !briefShared
+    ? { ...dto, context: undefined, history: [] }
+    : dto;
+}
+
 /** Pure literal retrieval; no model tools, database operations, mutation or raw evidence. */
 export function derivePlanningRetrieval(dto: AssistantMessageDto): PlanningRetrieval {
   const brief = (dto.briefText ?? '').slice(0, 60000);
   const briefShared = dto.shareBriefWithProvider === true && Boolean(brief.trim());
   return {
     local: derive(dto, brief),
-    provider: derive(dto, briefShared ? brief : ''),
+    provider: derive(consentSafeProviderRequest(dto), briefShared ? brief : ''),
     briefUsedLocally: Boolean(brief.trim()),
     briefShared,
   };

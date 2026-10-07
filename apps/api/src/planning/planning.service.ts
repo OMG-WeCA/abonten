@@ -9,9 +9,10 @@ import {
 } from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { demoVisibilitySql, demoDisclosure } from '../common/demo-inventory';
+import { researchDisclosure, type ResearchProvenance } from '../common/research-inventory';
 import { GeographicContextService } from '../enrichment/geographic-context.service';
 import { compactPlanningSnapshot } from './planning-snapshot';
-import { derivePlanningRetrieval } from './planning-retrieval';
+import { derivePlanningRetrieval, consentSafeProviderRequest } from './planning-retrieval';
 import {
   projectPlanningEnrichment,
   type PlanningEnrichmentMetadata,
@@ -42,6 +43,7 @@ import {
   planningCoordinate,
   selectionDistances,
   summarizeBudget,
+  summarizeResearchPrices,
   type FaceCostEstimate,
   type PlanningFace,
   type PlanningRateCard,
@@ -236,7 +238,8 @@ export class PlanningService {
     checkCancelled(signal);
     progress?.('grounding');
     const local = this.assist(dto);
-    const facts = await this.ground(dto, scope, signal);
+    const providerRequest = this.provider?.configured ? consentSafeProviderRequest(dto) : dto;
+    const facts = await this.ground(providerRequest, scope, signal);
     checkCancelled(signal);
     progress?.('grounding', facts.retrieval);
     if (!this.provider?.configured) return { ...local, facts };
@@ -249,7 +252,7 @@ export class PlanningService {
         message: dto.message,
         briefText: briefShared ? dto.briefText : undefined,
         // A previous response can paraphrase a brief. Drop history without consent.
-        history: dto.briefText !== undefined && !briefShared ? [] : (dto.history ?? []),
+        history: dto.briefText !== undefined && !briefShared ? [] : (providerRequest.history ?? []),
         snapshot,
       },
       scope,
@@ -378,7 +381,8 @@ export class PlanningService {
       )) as MarketplacePlanningSite;
       checkCancelled(signal);
       details.set(id, detail);
-      const available = window ? await this.availability(id, window, signal) : null;
+      const available =
+        window && !detail.isResearchReference ? await this.availability(id, window, signal) : null;
       checkCancelled(signal);
       const planningSite = {
         id: detail.id,
@@ -400,34 +404,49 @@ export class PlanningService {
           ? available.find((item) => item.faceId === face.id)?.available
           : undefined;
         const eligibility = window ? faceFlightEligibility(planningSite, face, window) : null;
-        const status =
-          !face.bookable || eligibility?.eligible === false
+        const status = detail.isResearchReference
+          ? ('unknown' as const)
+          : !face.bookable || eligibility?.eligible === false
             ? ('unavailable' as const)
             : availability === true
               ? ('available' as const)
               : availability === false
                 ? ('unavailable' as const)
                 : ('unknown' as const);
-        const estimate: FaceCostEstimate = window
-          ? estimateFaceCost(planningSite, face, window, faceCurrencies.get(face.id), {
-              status,
-              window,
-              checkedAt,
-            })
-          : {
+        const estimate: FaceCostEstimate = detail.isResearchReference
+          ? {
               status: 'unavailable',
               siteId: detail.id,
               faceId: face.id,
-              reason: 'Confirm flight dates before estimating media cost.',
-            };
+              reason:
+                'Research reference: published monthly asking price is indicative; a confirmed full-flight quote is unavailable.',
+            }
+          : window
+            ? estimateFaceCost(planningSite, face, window, faceCurrencies.get(face.id), {
+                status,
+                window,
+                checkedAt,
+              })
+            : {
+                status: 'unavailable',
+                siteId: detail.id,
+                faceId: face.id,
+                reason: 'Confirm flight dates before estimating media cost.',
+              };
         if (selectedFaces.has(face.id)) selectedEstimates.push(estimate);
         return {
           faceId: face.id,
           faceLabel: typeof face.faceLabel === 'string' ? face.faceLabel.slice(0, 80) : null,
-          flightEligible: eligibility?.eligible ?? null,
-          eligibilityReason: eligibility?.reason ?? null,
+          flightEligible: detail.isResearchReference ? null : (eligibility?.eligible ?? null),
+          eligibilityReason: detail.isResearchReference
+            ? 'Research interest only; commercial specifications and availability require operator confirmation.'
+            : (eligibility?.reason ?? null),
           selected: selectedFaces.has(face.id),
-          availability: face.bookable ? status : ('unavailable' as const),
+          availability: detail.isResearchReference
+            ? ('unknown' as const)
+            : face.bookable
+              ? status
+              : ('unavailable' as const),
           estimate,
         };
       });
@@ -452,6 +471,7 @@ export class PlanningService {
       const budgetMatch = candidateBudgetMatch(grounded, intent.budget);
       sites.push({
         ...demoDisclosure(detail.isDemo === true),
+        ...researchDisclosure(detail.isResearchReference === true, detail.researchProvenance),
         siteId: detail.id,
         name: String(detail.name ?? '').slice(0, 160),
         city: String(detail.city ?? '').slice(0, 80),
@@ -493,7 +513,7 @@ export class PlanningService {
     // All included boards retain production metadata even when this budget is exhausted.
     for (const site of sites) {
       checkCancelled(signal);
-      if (!this.geographic || !scope.user || site.isDemo) continue;
+      if (!this.geographic || !scope.user || site.isDemo || site.isResearchReference) continue;
       if (enrichmentReads >= 6) {
         site.geographicContextState = 'read_budget_exhausted';
         continue;
@@ -548,20 +568,36 @@ export class PlanningService {
         enrichmentFailures,
       },
       budget,
+      researchPrices: summarizeResearchPrices(
+        sites.filter((site) => site.faces.some((face) => face.selected)),
+        window,
+        selectionTruncated ? undefined : intent.budget,
+      ),
       distances: selectionDistances(
         sites
           .filter((site) => selectedSites.has(site.siteId))
-          .map((site) => ({ id: site.siteId, latitude: site.latitude, longitude: site.longitude })),
+          .map((site) => ({
+            id: site.siteId,
+            latitude: site.latitude,
+            longitude: site.longitude,
+            isResearchReference: site.isResearchReference,
+            researchProvenance: site.researchProvenance,
+          })),
       ),
       ots: null,
       reach: null,
       assumptions: [
-        'Marketplace-ready public inventory only; brief-aware search reads at most three eight-board pages and includes twelve discovered candidates plus selected boards. Coverage is bounded, not exhaustive.',
+        'Partner marketplace inventory and privately scoped research references only; brief-aware search reads at most three eight-board pages and includes twelve discovered candidates plus selected boards. Coverage is bounded, not exhaustive.',
         'Literal inferred requirements require confirmation. Confirmed controls override them. Candidate budgetMatch is individual-face media affordability, not full-plan fit.',
         'Production metadata is projected for included sites; at most six authorized geographic contexts are read. Read-budget or processing failures mean unknown context, never zero or no real-world features.',
         'Production enrichment is descriptive, with exact units, periods, provenance and freshness. Stale, future, unverified or unknown-freshness inputs cannot establish current audience performance.',
         'UTC start inclusive, end exclusive. Published media estimates exclude tax, production and FX conversion.',
         'Availability is indicative; this request never reserves or books inventory.',
+        ...(sites.some((site) => site.isResearchReference)
+          ? [
+              'Research records are agency-curated public-source references, not partner-verified or bookable supply. Operator-published coordinates are not field verified. Monthly asking prices are indicative, never prorated flight quotes; slots, taxes, production, permits and availability remain unknown. A preliminary monthly subtotal is not confirmed budget fit.',
+            ]
+          : []),
         ...(sites.some((site) => site.isDemo)
           ? [
               'DEMO boards, dimensions, prices and availability are synthetic planning samples, not verified physical inventory or commercially bookable supply. No audience/enrichment is inferred from synthetic pins.',
@@ -597,6 +633,7 @@ export class PlanningService {
     const rows = await this.availability(site.id, query);
     const detail = site as MarketplacePlanningSite;
     const eligibleRows = rows.map((row) => {
+      if (detail.isResearchReference) return { faceId: row.faceId, available: null };
       const face = detail.faces?.find((item) => item.id === row.faceId);
       const eligible =
         face &&
@@ -614,7 +651,9 @@ export class PlanningService {
       faces: eligibleRows,
       reservation: false as const,
       ...demoDisclosure(detail.isDemo === true),
+      ...researchDisclosure(detail.isResearchReference === true, detail.researchProvenance),
       ...(detail.isDemo ? { availabilityKind: 'synthetic_planning_sample' } : {}),
+      ...(detail.isResearchReference ? { availabilityKind: 'research_unconfirmed' } : {}),
     };
   }
 }
@@ -626,6 +665,8 @@ function finite(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 interface MarketplacePlanningSite {
+  isResearchReference?: boolean;
+  researchProvenance?: ResearchProvenance;
   isDemo?: boolean;
   id: string;
   name: string;
@@ -654,6 +695,9 @@ interface MarketplacePlanningSite {
   >;
 }
 interface GroundedSite {
+  isResearchReference?: boolean;
+  researchProvenance?: ResearchProvenance | null;
+  ownershipKind?: 'agency_curated_reference';
   isDemo: boolean;
   commerciallyBookable?: boolean;
   demoProvenance?: string;

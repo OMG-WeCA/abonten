@@ -115,6 +115,7 @@ export function buildPlannerRequest(input: {
   briefText: string;
   briefConfirmed: boolean;
   briefConsentText: string | null;
+  contextMayContainBrief?: boolean;
 }): PlannerRequest {
   const external = isOpenAiReady(input.status);
   const shared =
@@ -123,14 +124,19 @@ export function buildPlannerRequest(input: {
     input.briefText.trim().length > 0 &&
     input.briefConsentText === input.briefText;
   const localBrief = input.status?.mode === 'local' && input.briefConfirmed;
+  // Removing or editing a document does not erase its influence on controls/history.
+  // Withhold both until consent to the current confirmed text is present.
+  const withholdDerived =
+    input.contextMayContainBrief === true && !shared && input.status?.mode !== 'local';
   return {
     message: boundedText(input.message.trim(), 4000),
     locale: input.locale,
-    context: input.context,
-    history: input.messages
+    ...(withholdDerived ? {} : { context: input.context }),
+    history: (withholdDerived ? [] : input.messages)
       .slice(-8)
       .map((item) => ({ role: item.role, content: historyContent(item) })),
     shareBriefWithProvider: shared,
+    ...(input.contextMayContainBrief ? { contextRequiresBriefConsent: true } : {}),
     ...(shared || localBrief ? { briefText: boundedText(input.briefText, 60000) } : {}),
   };
 }

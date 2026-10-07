@@ -34,7 +34,7 @@ async function withSchema(test: (db: DataSource) => Promise<void>) {
     await new GeographicContext1720000000009().up(runner);
     await runner.release();
     await db.query(
-      'CREATE TABLE billboard_sites (id uuid PRIMARY KEY, demo_agency_id uuid, latitude double precision, longitude double precision, country text)',
+      'CREATE TABLE billboard_sites (id uuid PRIMARY KEY, demo_agency_id uuid, research_agency_id uuid, research_provenance jsonb, latitude double precision, longitude double precision, country text)',
     );
     await db.query(
       'CREATE TABLE audit_logs (id uuid DEFAULT gen_random_uuid(), action text, entity_type text, entity_id text, after json, at timestamptz DEFAULT now())',
@@ -97,7 +97,7 @@ describe('geographic context: actual PostGIS and local GDAL', { skip: !databaseU
       const ghSite = randomUUID(),
         ngSite = randomUUID();
       await db.query(
-        "INSERT INTO billboard_sites VALUES($1,5.6,-.2,'Ghana'),($2,6.43,3.42,'NGA')",
+        "INSERT INTO billboard_sites (id,latitude,longitude,country) VALUES($1,5.6,-.2,'Ghana'),($2,6.43,3.42,'NGA')",
         [ghSite, ngSite],
       );
       const poi = await source(db, 'GH', 'pois');
@@ -177,11 +177,10 @@ describe('geographic context: actual PostGIS and local GDAL', { skip: !databaseU
         },
       ]) {
         const id = randomUUID();
-        await db.query("INSERT INTO billboard_sites VALUES($1,$2,$3,'Nigeria')", [
-          id,
-          fixture.latitude,
-          fixture.longitude,
-        ]);
+        await db.query(
+          "INSERT INTO billboard_sites (id,latitude,longitude,country) VALUES($1,$2,$3,'Nigeria')",
+          [id, fixture.latitude, fixture.longitude],
+        );
         for (const [externalId, metres, properties] of [
           [
             fixture.closest,
@@ -230,7 +229,10 @@ describe('geographic context: actual PostGIS and local GDAL', { skip: !databaseU
   it('retains named-nearest compatibility and never treats refs, blank names or roads beyond 1km as names', async () =>
     withSchema(async (db) => {
       const id = randomUUID();
-      await db.query("INSERT INTO billboard_sites VALUES($1,5.6,-.2,'Ghana')", [id]);
+      await db.query(
+        "INSERT INTO billboard_sites (id,latitude,longitude,country) VALUES($1,5.6,-.2,'Ghana')",
+        [id],
+      );
       const roads = await source(db, 'GH', 'roads');
       await featureAtDistance(db, roads, 'named-nearest', 3.24, {
         name: 'Ahmadu Bello Way',
@@ -267,7 +269,10 @@ describe('geographic context: actual PostGIS and local GDAL', { skip: !databaseU
   it('marks incomplete named-road searches and distinguishes outside coverage from no names found', async () =>
     withSchema(async (db) => {
       const id = randomUUID();
-      await db.query("INSERT INTO billboard_sites VALUES($1,5.6,-.2,'Ghana')", [id]);
+      await db.query(
+        "INSERT INTO billboard_sites (id,latitude,longitude,country) VALUES($1,5.6,-.2,'Ghana')",
+        [id],
+      );
       const roads = await source(db, 'GH', 'roads');
       await featureAtDistance(db, roads, 'edge-road', 100, {
         name: 'Mapped edge road',
@@ -318,7 +323,10 @@ describe('geographic context: actual PostGIS and local GDAL', { skip: !databaseU
         const managed = await preservePopulationRaster(tif, checksum);
         await source(db, 'GH', 'population', { raster: managed, checksum });
         const id = randomUUID();
-        await db.query("INSERT INTO billboard_sites VALUES($1,5.6,-.2,'Ghana')", [id]);
+        await db.query(
+          "INSERT INTO billboard_sites (id,latitude,longitude,country) VALUES($1,5.6,-.2,'Ghana')",
+          [id],
+        );
         const context = await service(db).getSiteContext(user, 'own', id);
         const p = context.catchments[0].population;
         assert.equal(p.status, 'partial');

@@ -26,6 +26,7 @@ import { MembershipEntity } from '../auth/entities/membership.entity';
 import { UserCapabilityOverrideEntity } from '../auth/entities/user-capability-override.entity';
 import { BillboardSiteEntity } from '../common/entities/billboard-site.entity';
 import { demoVisibilitySql, demoDisclosure } from '../common/demo-inventory';
+import { researchDisclosure } from '../common/research-inventory';
 import { OrganizationEntity } from '../common/entities/organization.entity';
 import { SiteFaceEntity } from '../common/entities/site-face.entity';
 import { SiteAssetEntity } from '../common/entities/site-asset.entity';
@@ -58,7 +59,7 @@ import type {
 } from './dto/inventory.dto';
 
 const SITE_DETAIL_COLUMNS =
-  'id, organization_id AS "organizationId", (demo_agency_id IS NOT NULL) AS "isDemo", code, name, type, format, sub_format AS "subFormat", ' +
+  'id, organization_id AS "organizationId", (demo_agency_id IS NOT NULL) AS "isDemo", (research_agency_id IS NOT NULL) AS "isResearchReference", research_provenance AS "researchProvenance", code, name, type, format, sub_format AS "subFormat", ' +
   'latitude, longitude, geo_polygon AS "geoPolygon", ' +
   'address, city, region, country, market_id AS "marketId", orientation_deg AS "orientationDeg", ' +
   'viewing_distance AS "viewingDistance", elevation, width, height, area, units, ' +
@@ -69,7 +70,7 @@ const SITE_DETAIL_COLUMNS =
 // Same columns as SITE_DETAIL_COLUMNS but table-qualified with `s.` for the list
 // query, which lateral-joins the newest front photo for list thumbnails.
 const LIST_SITE_COLUMNS =
-  's.id, s.organization_id AS "organizationId", (s.demo_agency_id IS NOT NULL) AS "isDemo", s.code, s.name, s.type, s.format, s.sub_format AS "subFormat", ' +
+  's.id, s.organization_id AS "organizationId", (s.demo_agency_id IS NOT NULL) AS "isDemo", (s.research_agency_id IS NOT NULL) AS "isResearchReference", s.research_provenance AS "researchProvenance", s.code, s.name, s.type, s.format, s.sub_format AS "subFormat", ' +
   's.latitude, s.longitude, s.geo_polygon AS "geoPolygon", ' +
   's.address, s.city, s.region, s.country, s.market_id AS "marketId", s.orientation_deg AS "orientationDeg", ' +
   's.viewing_distance AS "viewingDistance", s.elevation, s.width, s.height, s.area, s.units, ' +
@@ -366,6 +367,7 @@ export class InventoryService {
       items: rows.map((row: Record<string, unknown>) => ({
         ...row,
         ...demoDisclosure(row.isDemo === true),
+        ...researchDisclosure(row.isResearchReference === true, row.researchProvenance),
       })),
       total,
       page,
@@ -405,13 +407,22 @@ export class InventoryService {
       return {
         ...rest,
         ...demoDisclosure(site.isDemo === true),
+        ...researchDisclosure(site.isResearchReference === true, site.researchProvenance),
         faces,
         assets,
         metadata,
         rateCards,
       };
     }
-    return { ...site, ...demoDisclosure(site.isDemo === true), faces, assets, metadata, rateCards };
+    return {
+      ...site,
+      ...demoDisclosure(site.isDemo === true),
+      ...researchDisclosure(site.isResearchReference === true, site.researchProvenance),
+      faces,
+      assets,
+      metadata,
+      rateCards,
+    };
   }
 
   async updateSite(user: AuthenticatedUser, orgId: string, siteId: string, dto: UpdateSiteDto) {
@@ -816,10 +827,12 @@ export class InventoryService {
     // SPEC §5.1 lifecycle: pending_review → approved → listed (two steps); clear any rejection reason.
     await this.db.transaction(async (manager) => {
       const rows = await manager.query(
-        `SELECT status, location_verification AS "locationVerification" FROM billboard_sites WHERE id = $1 FOR UPDATE`,
+        `SELECT status, research_agency_id AS "researchAgencyId", location_verification AS "locationVerification" FROM billboard_sites WHERE id = $1 FOR UPDATE`,
         [siteId],
       );
       if (!rows[0]) throw new NotFoundException('Site not found');
+      if (rows[0].researchAgencyId)
+        throw new ForbiddenException('Research references are read-only');
       if (rows[0].locationVerification?.status === 'mismatch') {
         throw new BadRequestException(
           'Correct the address/pin mismatch and resubmit before listing this site.',
@@ -1569,25 +1582,30 @@ export class InventoryService {
     let status = knownStatus;
     let organizationId: string | undefined;
     let demoAgencyId: string | null | undefined;
+    let researchAgencyId: string | null | undefined;
     if (status === undefined || orgId === undefined) {
       const rows = await repo.query(
-        `SELECT organization_id AS "organizationId", demo_agency_id AS "demoAgencyId", status FROM billboard_sites WHERE id = $1`,
+        `SELECT organization_id AS "organizationId", demo_agency_id AS "demoAgencyId", research_agency_id AS "researchAgencyId", status FROM billboard_sites WHERE id = $1`,
         [siteId],
       );
       if (!rows[0]) throw new NotFoundException('Site not found');
       organizationId = rows[0].organizationId;
       demoAgencyId = rows[0].demoAgencyId;
+      researchAgencyId = rows[0].researchAgencyId;
       status = rows[0].status;
     } else {
       const rows = await repo.query(
-        `SELECT organization_id AS "organizationId", demo_agency_id AS "demoAgencyId" FROM billboard_sites WHERE id = $1`,
+        `SELECT organization_id AS "organizationId", demo_agency_id AS "demoAgencyId", research_agency_id AS "researchAgencyId" FROM billboard_sites WHERE id = $1`,
         [siteId],
       );
       if (!rows[0]) throw new NotFoundException('Site not found');
       organizationId = rows[0].organizationId;
       demoAgencyId = rows[0].demoAgencyId;
+      researchAgencyId = rows[0].researchAgencyId;
     }
     if (demoAgencyId && orgId !== demoAgencyId && orgId !== organizationId)
+      throw new NotFoundException('Site not found');
+    if (researchAgencyId && orgId !== researchAgencyId && orgId !== organizationId)
       throw new NotFoundException('Site not found');
     const caps = await this.effectiveCapabilities(user.userId, orgId);
     const isOwner = organizationId === orgId && caps.has(Capability.INVENTORY_VIEW);
@@ -1687,20 +1705,22 @@ export class InventoryService {
     siteId: string,
   ): Promise<void> {
     const rows = await manager.query(
-      'SELECT organization_id AS "organizationId" FROM billboard_sites WHERE id = $1 FOR UPDATE',
+      'SELECT organization_id AS "organizationId", research_agency_id AS "researchAgencyId" FROM billboard_sites WHERE id = $1 FOR UPDATE',
       [siteId],
     );
     if (!rows[0]) throw new NotFoundException('Site not found');
+    if (rows[0].researchAgencyId) throw new ForbiddenException('Research references are read-only');
     if (rows[0].organizationId !== orgId) throw new ForbiddenException('Not your site');
   }
 
   private async assertOwnership(orgId: string | undefined, siteId: string) {
     const repo = await this.db.repo(BillboardSiteEntity);
     const rows = await repo.query(
-      `SELECT organization_id AS "organizationId" FROM billboard_sites WHERE id = $1`,
+      `SELECT organization_id AS "organizationId", research_agency_id AS "researchAgencyId" FROM billboard_sites WHERE id = $1`,
       [siteId],
     );
     if (!rows[0]) throw new NotFoundException('Site not found');
+    if (rows[0].researchAgencyId) throw new ForbiddenException('Research references are read-only');
     if (rows[0].organizationId !== orgId) throw new ForbiddenException('Not your site');
   }
 
@@ -1716,10 +1736,12 @@ export class InventoryService {
     await this.db.transaction(async (manager) => {
       const fromList = Array.isArray(from) ? from : [from];
       const rows = await manager.query(
-        `SELECT status, location_verification AS "locationVerification" FROM billboard_sites WHERE id = $1 FOR UPDATE`,
+        `SELECT status, research_agency_id AS "researchAgencyId", location_verification AS "locationVerification" FROM billboard_sites WHERE id = $1 FOR UPDATE`,
         [siteId],
       );
       if (!rows[0]) throw new NotFoundException('Site not found');
+      if (rows[0].researchAgencyId)
+        throw new ForbiddenException('Research references are read-only');
       if (to === 'listed' && rows[0].locationVerification?.status === 'mismatch') {
         throw new BadRequestException(
           'Correct the address/pin mismatch and resubmit before relisting this site.',

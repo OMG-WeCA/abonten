@@ -13,6 +13,7 @@ import type {
   PlanningAvailability,
   PlanningWindow,
 } from '../../lib/agency-planning';
+import { ResearchBadge, ResearchReferenceFacts } from './ResearchReferenceFacts';
 import { draftFaceEligibility } from '../../lib/agency-draft';
 import { projectPlanningEnrichment } from '../../lib/agency-enrichment';
 import { AuthBoardVideo, MediaEvidence } from '../sites/BoardMedia';
@@ -25,7 +26,7 @@ export function BoardDetail({
   locale,
   faceId,
   onFace,
-  estimate,
+  estimate: providedEstimate,
   selected,
   canPlan,
   window,
@@ -48,6 +49,7 @@ export function BoardDetail({
   onAdd: () => void;
   onClose: () => void;
 }) {
+  const estimate = site.isResearchReference ? null : providedEstimate;
   const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
   const [context, setContext] = useState<SiteGeographicContext | null>(null);
   const [contextState, setContextState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -77,7 +79,8 @@ export function BoardDetail({
   const availabilityKnown =
     availability.window?.startDate === window.startDate &&
     availability.window.endDate === window.endDate &&
-    availability.status !== 'unknown';
+    availability.status !== 'unknown' &&
+    !site.isResearchReference;
   const population = context?.catchments.find((item) => item.radiusMetres === 1000)?.population;
   const people = population?.status !== 'unavailable' ? population?.value?.people : null;
   const observation =
@@ -99,6 +102,7 @@ export function BoardDetail({
           </p>
           <h2 id="board-heading">
             {site.name} {site.isDemo && <span className="agency-data-badge">DEMO</span>}
+            {site.isResearchReference && <ResearchBadge locale={locale} />}
           </h2>
         </div>
         <button
@@ -110,7 +114,7 @@ export function BoardDetail({
         </button>
       </header>
       <div className="agency-board-scroll">
-        <BoardPhoto site={site} locale={locale} />
+        {!site.isResearchReference && <BoardPhoto site={site} locale={locale} />}
         {site.format === 'digital_led' &&
           site.assets.some(
             (asset) => asset.kind === 'board_video' || asset.mediaType === 'video',
@@ -143,15 +147,17 @@ export function BoardDetail({
             <span>{t('Viewing face', 'Face')}</span>
             <select
               aria-label={
-                site.isDemo
-                  ? t('Sample face', 'Face fictive')
-                  : t('Bookable face', 'Face réservable')
+                site.isResearchReference
+                  ? t('Referenced face', 'Face documentée')
+                  : site.isDemo
+                    ? t('Sample face', 'Face fictive')
+                    : t('Bookable face', 'Face réservable')
               }
               value={faceId}
               onChange={(event) => onFace(event.target.value)}
             >
               {site.faces
-                .filter((item) => item.bookable)
+                .filter((item) => item.bookable || site.isResearchReference)
                 .map((item: SiteFace) => (
                   <option key={item.id} value={item.id}>
                     {item.faceLabel}
@@ -159,18 +165,22 @@ export function BoardDetail({
                 ))}
             </select>
           </label>
-          <div className="agency-price">
-            <strong>
-              {estimate?.status === 'ready'
-                ? money(estimate.amount, estimate.currency, locale)
-                : t('Quote unavailable', 'Devis indisponible')}
-            </strong>
-            <span>
-              {estimate?.status === 'ready'
-                ? `${n(estimate.days)} ${site.isDemo ? t('days · sample media cost', 'jours · coût média fictif') : t('days · media estimate', 'jours · estimation média')}`
-                : estimate?.reason && agencyEvidenceText(estimate.reason, locale)}
-            </span>
-          </div>
+          {site.isResearchReference ? (
+            <ResearchReferenceFacts provenance={site.researchProvenance} locale={locale} />
+          ) : (
+            <div className="agency-price">
+              <strong>
+                {estimate?.status === 'ready'
+                  ? money(estimate.amount, estimate.currency, locale)
+                  : t('Quote unavailable', 'Devis indisponible')}
+              </strong>
+              <span>
+                {estimate?.status === 'ready'
+                  ? `${n(estimate.days)} ${site.isDemo ? t('days · sample media cost', 'jours · coût média fictif') : t('days · media estimate', 'jours · estimation média')}`
+                  : estimate?.reason && agencyEvidenceText(estimate.reason, locale)}
+              </span>
+            </div>
+          )}
           {estimate?.status === 'ready' && (
             <p
               className={`agency-availability ${estimate.availability === 'available' ? 'text-success' : 'text-warning'}`}
@@ -194,7 +204,7 @@ export function BoardDetail({
                   : t('Availability not confirmed', 'Disponibilité non confirmée')}
             </p>
           )}
-          {!availabilityKnown && (
+          {!availabilityKnown && !site.isResearchReference && (
             <p role="status" className="text-warning">
               {t(
                 'Availability unconfirmed for these dates.',
@@ -205,7 +215,7 @@ export function BoardDetail({
               </button>
             </p>
           )}
-          {estimate?.status !== 'ready' && (
+          {estimate?.status !== 'ready' && !site.isResearchReference && (
             <details className="agency-evidence">
               <summary>
                 {t(
@@ -450,6 +460,7 @@ export function BoardDetail({
       </div>
       <footer className="agency-board-footer">
         {canPlan &&
+          !site.isResearchReference &&
           eligibility.eligible &&
           !selected &&
           (estimate?.status !== 'ready' || estimate.availability !== 'available') && (
