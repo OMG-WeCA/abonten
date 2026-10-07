@@ -149,8 +149,26 @@ export function AgencyPlanner(props: PlannerProps) {
       const latest = chatting
         ? thread.querySelector<HTMLElement>('[role="status"]')
         : thread.querySelector<HTMLElement>('.agency-chat-message:last-child');
-      // Open a long reply at its narrative, before its expandable evidence.
-      latest?.scrollIntoView({ block: 'start', behavior: 'instant' });
+      // Scroll only the two content areas; scrolling all ancestors can move the
+      // fixed panel header and composer when the panel has overflow:hidden.
+      if (latest) {
+        thread.scrollTo({
+          top:
+            thread.scrollTop +
+            latest.getBoundingClientRect().top -
+            thread.getBoundingClientRect().top,
+          behavior: 'instant',
+        });
+        const content = thread.closest<HTMLElement>('.agency-planner-scroll');
+        if (content)
+          content.scrollTo({
+            top:
+              content.scrollTop +
+              thread.getBoundingClientRect().top -
+              content.getBoundingClientRect().top,
+            behavior: 'instant',
+          });
+      }
     }
   }, [messages, chatting]);
   const cancelUpload = () => {

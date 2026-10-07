@@ -1683,3 +1683,25 @@
   min-height: 36px;
   margin-top: 4px;
 }
+
+/* Keep the desktop-edge toolbar usable before it changes to the mobile grid. */
+@media (min-width: 900px) and (max-width: 1040px) {
+  .agency-toolbar .agency-search {
+    min-width: 80px;
+  }
+  .agency-toolbar .agency-toolbar-button {
+    width: 44px;
+    min-width: 44px;
+    padding-inline: 0;
+    justify-content: center;
+    position: relative;
+  }
+  .agency-toolbar .agency-toolbar-button > span:not(.agency-filter-count) {
+    display: none;
+  }
+  .agency-toolbar .agency-filter-count {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+  }
+}

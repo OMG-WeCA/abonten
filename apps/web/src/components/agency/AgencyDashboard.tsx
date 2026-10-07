@@ -1231,6 +1231,7 @@ function AgencyWorkspace() {
         </div>
         <button
           className="agency-toolbar-button agency-save-control"
+          aria-label={t('Save plan', 'Enregistrer')}
           disabled={!canPlan || !draftReady || saveBusy}
           onClick={() => {
             setSaveError('');
