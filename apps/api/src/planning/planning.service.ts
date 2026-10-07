@@ -12,6 +12,7 @@ import { demoVisibilitySql, demoDisclosure } from '../common/demo-inventory';
 import { researchDisclosure, type ResearchProvenance } from '../common/research-inventory';
 import { GeographicContextService } from '../enrichment/geographic-context.service';
 import { compactPlanningSnapshot } from './planning-snapshot';
+import { canonicalRecommendationOutput, canonicalPlanningControls } from './planning-output';
 import { derivePlanningRetrieval, consentSafeProviderRequest } from './planning-retrieval';
 import {
   projectPlanningEnrichment,
@@ -242,7 +243,8 @@ export class PlanningService {
     const facts = await this.ground(providerRequest, scope, signal);
     checkCancelled(signal);
     progress?.('grounding', facts.retrieval);
-    if (!this.provider?.configured) return { ...local, facts };
+    if (!this.provider?.configured)
+      return { ...local, ...canonicalPlanningControls(facts, dto.locale ?? 'en'), facts };
     const briefShared = dto.shareBriefWithProvider === true && Boolean(dto.briefText?.trim());
     progress?.('provider');
     const snapshot = compactPlanningSnapshot(facts);
@@ -261,15 +263,16 @@ export class PlanningService {
     );
     progress?.('reference');
     const allowed = new Set(
-      snapshot.sites.flatMap((site) =>
-        site.faces
-          .filter((face) => face.availability !== 'unavailable')
-          .map((face) => `${site.siteId}:${face.faceId}`),
-      ),
+      snapshot.sites
+        .filter((site) => !site.isDemo)
+        .flatMap((site) =>
+          site.faces
+            .filter((face) => face.availability !== 'unavailable')
+            .map((face) => `${site.siteId}:${face.faceId}`),
+        ),
     );
     const recommendations = new Set<string>();
     const groundedRecommendations = model.recommendations.map((rec) => ({
-      ...rec,
       siteId: rec.siteId.toLowerCase(),
       faceId: rec.faceId.toLowerCase(),
     }));
@@ -287,9 +290,8 @@ export class PlanningService {
       provider: 'openai' as const,
       model: PLANNER_MODEL,
       aiAvailable: true,
-      message: model.message,
-      recommendations: groundedRecommendations,
-      questions: model.questions,
+      ...canonicalRecommendationOutput(model, facts, dto.locale ?? 'en'),
+      ...canonicalPlanningControls(facts, dto.locale ?? 'en'),
       briefShared,
       facts,
     };

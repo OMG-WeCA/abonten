@@ -1043,7 +1043,7 @@ export function AgencyPlanner(props: PlannerProps) {
   );
 }
 
-function ReplyFacts({
+export function ReplyFacts({
   reply,
   locale,
   onSelect,
@@ -1088,21 +1088,18 @@ function ReplyFacts({
             : t('Availability needs checking', 'Disponibilité à vérifier');
   const faceSources =
     facts?.sites.flatMap((site) =>
-      site.faces
-        .filter(
-          (face) =>
-            face.selected ||
-            references.some(
-              (candidate) =>
-                candidate.site.siteId === site.siteId && candidate.face.faceId === face.faceId,
-            ),
-        )
-        .map((face) => ({ site, face })),
+      site.faces.filter((face) => face.selected).map((face) => ({ site, face })),
     ) ?? [];
   return (
     <div className="agency-reply-facts">
+      {reply.recommendationSummary && (
+        <RecommendationFacts summary={reply.recommendationSummary} locale={locale} />
+      )}
       {references.length > 0 && (
         <div className="agency-reply-boards">
+          {!reply.recommendationSummary && (
+            <strong>{t('Recommended portfolio', 'Portefeuille recommandé')}</strong>
+          )}
           {references.map(({ reference, site, face }) => (
             <div key={`${site.siteId}:${face.faceId}`}>
               <button
@@ -1116,11 +1113,14 @@ function ReplyFacts({
                   {site.isResearchReference && <ResearchBadge locale={locale} />}
                 </strong>
               </button>
-              <p>
-                {reply.mode === 'local'
-                  ? agencyEvidenceText(reference.reason, locale)
-                  : reference.reason}
-              </p>
+              <p>{[site.city, site.country].filter(Boolean).join(' · ')}</p>
+              {(reply.mode === 'local' || reply.recommendationSummary) && (
+                <p>
+                  {reply.mode === 'local'
+                    ? agencyEvidenceText(reference.reason, locale)
+                    : reference.reason}
+                </p>
+              )}
               {face.faceLabel && (
                 <p>
                   {t('Face', 'Face')}{' '}
@@ -1159,25 +1159,22 @@ function ReplyFacts({
           ))}
         </div>
       )}
-      {Boolean(reply.questions?.length) && (
-        <div className="agency-reply-questions">
-          <strong>{t('To clarify', 'À préciser')}</strong>
-          <ul>
-            {reply.questions!.map((question, index) => (
-              <li key={index}>
-                {reply.mode === 'local' ? agencyEvidenceText(question, locale) : question}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {(reply.mode === 'local' || reply.recommendationSummary) &&
+        Boolean(reply.questions?.length) && (
+          <div className="agency-reply-questions">
+            <strong>{t('To clarify', 'À préciser')}</strong>
+            <ul>
+              {reply.questions!.map((question, index) => (
+                <li key={index}>
+                  {reply.mode === 'local' ? agencyEvidenceText(question, locale) : question}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       {facts && (
-        <details>
-          <summary>
-            {facts.sites.some((site) => site.isResearchReference)
-              ? t('Planning facts and sources', 'Données et sources du plan')
-              : t('Checked planning facts', 'Données de planification vérifiées')}
-          </summary>
+        <details data-testid="current-draft-facts">
+          <summary>{t('Current draft facts', 'Données du brouillon actuel')}</summary>
           <p>
             {t('Checked', 'Vérifiées')} : {displayUtcTimestamp(facts.checkedAt, locale)}
           </p>
@@ -1197,9 +1194,10 @@ function ReplyFacts({
             </p>
           )}
           <p>
-            {facts.sites.some((site) => site.isDemo)
-              ? t('Includes DEMO costs', 'Comprend des coûts DEMO')
-              : t('Published media cost', 'Coût média publié')}{' '}
+            {t('Current draft media cost', 'Coût média du brouillon actuel')}
+            {facts.sites.some((site) => site.isDemo) && (
+              <> · {t('Includes DEMO costs', 'Comprend des coûts DEMO')}</>
+            )}{' '}
             :{' '}
             {Object.entries(facts.budget.totals)
               .map(([code, amount]) => money(amount, code, locale))
@@ -1207,10 +1205,19 @@ function ReplyFacts({
           </p>
           <p>
             {facts.budget.fit === 'within'
-              ? t('Within the stated budget.', 'Dans le budget indiqué.')
+              ? t(
+                  'Current draft within the stated budget.',
+                  'Brouillon actuel dans le budget indiqué.',
+                )
               : facts.budget.fit === 'over'
-                ? t('Above the stated budget.', 'Au-dessus du budget indiqué.')
-                : t('Budget fit remains unconfirmed.', 'Le budget reste à confirmer.')}
+                ? t(
+                    'Current draft above the stated budget.',
+                    'Brouillon actuel au-dessus du budget indiqué.',
+                  )
+                : t(
+                    'Current draft budget fit remains unconfirmed.',
+                    'Le budget du brouillon actuel reste à confirmer.',
+                  )}
           </p>
           {facts.researchPrices && (
             <ResearchPriceBaseline
@@ -1262,6 +1269,9 @@ function ReplyFacts({
               )}
             </div>
           ))}
+          {facts.distances.length > 0 && (
+            <strong>{t('Current draft spacing', 'Distances du brouillon actuel')}</strong>
+          )}
           {facts.distances.slice(0, 10).map((pair) => (
             <p key={`${pair.fromSiteId}:${pair.toSiteId}`}>
               {facts.sites.find((site) => site.siteId === pair.fromSiteId)?.name ??
@@ -1302,5 +1312,138 @@ function ReplyFacts({
         </details>
       )}
     </div>
+  );
+}
+
+function RecommendationFacts({
+  summary,
+  locale,
+}: {
+  summary: NonNullable<PlannerReply['recommendationSummary']>;
+  locale: 'en' | 'fr';
+}) {
+  const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
+  const accepted = summary.status === 'planning_interest' && summary.faceIds.length > 0;
+  return (
+    <section
+      aria-label={t('Recommended portfolio', 'Portefeuille recommandé')}
+      data-testid="recommended-portfolio-facts"
+    >
+      <strong>{t('Recommended portfolio', 'Portefeuille recommandé')}</strong>
+      {!accepted ? (
+        <p role="status">
+          {summary.status === 'budget_exceeded'
+            ? t(
+                'Proposal exceeds the comparable media budget. Clarify priorities or budget.',
+                'La proposition dépasse le budget média comparable. Précisez les priorités ou le budget.',
+              )
+            : t(
+                'No recommendations accepted. Clarify planning priorities.',
+                'Aucune recommandation retenue. Précisez les priorités de planification.',
+              )}
+        </p>
+      ) : (
+        <>
+          <p>
+            {displayNumber(summary.sites.length, locale)} {t('boards', 'panneaux')} ·{' '}
+            {summary.coverage.cities.concat(summary.coverage.countries).join(' · ') ||
+              t('Market unknown', 'Marché inconnu')}
+          </p>
+          {summary.window ? (
+            <p>
+              {displayDateOnly(summary.window.startDate, locale)} →{' '}
+              {displayDateOnly(summary.window.endDate, locale)} ·{' '}
+              {t('end exclusive', 'fin exclusive')}
+            </p>
+          ) : (
+            <p>{t('Dates unconfirmed', 'Dates non confirmées')}</p>
+          )}
+          <ResearchPriceBaseline
+            baseline={summary.researchPrices}
+            locale={locale}
+            currency={
+              summary.requestedBudget?.currency ??
+              summary.researchPrices.sources[0]?.currency ??
+              'NGN'
+            }
+          />
+          {Object.keys(summary.budget.totals).length > 0 && (
+            <p>
+              {t(
+                'Recommended portfolio media subtotal',
+                'Sous-total média du portefeuille recommandé',
+              )}{' '}
+              :{' '}
+              {Object.entries(summary.budget.totals)
+                .map(([currency, amount]) => money(amount, currency, locale))
+                .join(' + ')}
+            </p>
+          )}
+          {!summary.researchPrices.referenceCount && (
+            <p>
+              {summary.budget.fit === 'over'
+                ? t('Above the media budget.', 'Au-dessus du budget média.')
+                : summary.budget.fit === 'within'
+                  ? t(
+                      'Published media subtotal within budget; final charges unconfirmed.',
+                      'Sous-total média publié dans le budget ; frais définitifs non confirmés.',
+                    )
+                  : t(
+                      'Recommended portfolio budget fit unconfirmed.',
+                      'Budget du portefeuille recommandé non confirmé.',
+                    )}
+            </p>
+          )}
+          <p>
+            {summary.availability === 'indicative'
+              ? t(
+                  'Availability indicative · no reservation',
+                  'Disponibilité indicative · sans réservation',
+                )
+              : t(
+                  'Availability unconfirmed · no reservation',
+                  'Disponibilité non confirmée · sans réservation',
+                )}
+          </p>
+          <p>
+            {t(
+              'Subarea coverage unknown. Confirm required neighborhoods with location evidence.',
+              'Couverture des sous-zones inconnue. Confirmez les quartiers requis avec des preuves de localisation.',
+            )}
+          </p>
+          {summary.distances.length > 0 && (
+            <details data-testid="recommended-portfolio-spacing">
+              <summary>
+                {t('Recommended portfolio spacing', 'Distances du portefeuille recommandé')} · km
+              </summary>
+              {summary.distances.slice(0, 10).map((pair) => {
+                const from = summary.sites.find((site) => site.siteId === pair.fromSiteId);
+                const to = summary.sites.find((site) => site.siteId === pair.toSiteId);
+                const research = from?.isResearchReference || to?.isResearchReference;
+                return (
+                  <p key={`${pair.fromSiteId}:${pair.toSiteId}`}>
+                    {from?.name ?? t('Board', 'Panneau')} ↔ {to?.name ?? t('Board', 'Panneau')} :{' '}
+                    {pair.value === null
+                      ? t('Unavailable', 'Indisponible')
+                      : `${research ? '≈ ' : ''}${displayNumber(pair.value, locale, { maximumFractionDigits: research ? 1 : 2 })} km`}{' '}
+                    · {t('straight-line', 'à vol d’oiseau')}
+                    {research && (
+                      <>
+                        {' '}
+                        ·{' '}
+                        {t(
+                          'published points · accuracy unknown',
+                          'positions publiées · précision inconnue',
+                        )}
+                      </>
+                    )}
+                  </p>
+                );
+              })}
+            </details>
+          )}
+        </>
+      )}
+    </section>
   );
 }

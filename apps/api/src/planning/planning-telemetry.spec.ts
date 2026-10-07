@@ -4,11 +4,7 @@ import { HttpException, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../common/database.service';
 import { MarketplaceService } from '../marketplace/marketplace.service';
-import {
-  OpenAiPlannerProvider,
-  type ModelPlan,
-  type ProviderInput,
-} from './openai-planner.provider';
+import { OpenAiPlannerProvider, type ProviderInput } from './openai-planner.provider';
 import { PlanningService } from './planning.service';
 import {
   emitPlanningTelemetry,
@@ -27,8 +23,16 @@ const input: ProviderInput = {
   history: [{ role: 'user', content: sensitive }],
   snapshot: { label: sensitive },
 };
-const plan: ModelPlan = { message: sensitive, recommendations: [], questions: [] };
-function completed(value = plan, extra: object = {}, headers: Record<string, string> = {}) {
+const plan = {
+  recommendations: [],
+  adviceCodes: ['confirm_quotes'],
+  questionCodes: ['confirm_market'],
+};
+function completed(
+  value: unknown = plan,
+  extra: object = {},
+  headers: Record<string, string> = {},
+) {
   return new Response(
     JSON.stringify({
       status: 'completed',
@@ -202,7 +206,7 @@ describe('content-free bounded agency planning telemetry', () => {
       },
       scope,
     );
-    assert.equal(reply.message, sensitive);
+    assert.doesNotMatch(reply.message, /SECRET_KEY|PRIVATE_BRIEF/);
     assert.deepEqual(
       events.map((event) => [event.event, event.outcome, event.status]),
       [
@@ -313,7 +317,7 @@ describe('content-free bounded agency planning telemetry', () => {
         {
           siteId: 'abcdefab-0000-4000-8000-000000000001',
           faceId: 'bcdefabc-0000-4000-8000-000000000001',
-          reason: sensitive,
+          reasonCode: 'planning_interest',
         },
       ],
     };

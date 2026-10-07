@@ -490,7 +490,7 @@ When the server has an approved OpenAI credential, the planner uses the fixed
 `gpt-6-luna` model through the Responses API. Chat carries a bounded conversation
 and a server-loaded marketplace snapshot; canonical pricing, availability and
 geodesic calculations remain authoritative facts separate from model commentary.
-Model recommendations must reference faces in that snapshot. For a provisional research shortlist, admitted research face IDs remain selectable interest despite unknown commercial availability; they must not be represented as bookable supply. When one shortlist is requested, recommendation IDs describe one portfolio and alternatives stay in prose. Its preliminary exact-calendar-month, same-currency asking subtotal must respect the planning ceiling; missing prices cannot become zero, a confirmed fit or a stated remaining balance. Structured response array/string bounds are communicated to the provider and enforced again on return. The model cannot
+Model recommendations must reference faces in that snapshot. For a provisional research shortlist, admitted research face IDs remain selectable interest despite unknown commercial availability; they must not be represented as bookable supply. When one shortlist is requested, recommendation IDs describe one portfolio; alternatives are not added to that portfolio. Its preliminary exact-calendar-month, same-currency asking subtotal must respect the planning ceiling; missing prices cannot become zero, a confirmed fit or a stated remaining balance. Structured response array/string bounds are communicated to the provider and enforced again on return. The model cannot
 book inventory, execute code or invoke tools. Confirmed brief text is shared only
 after explicit consent for that brief; consent resets when the brief changes.
 Without consent, brief text and potentially brief-derived conversation are kept
@@ -590,6 +590,22 @@ without authorization. An internally authored campaign brief is planning work an
 must not assert instructions from a real client. Uploaded briefs remain inert and
 provider sharing remains independently consented; confirming extracted controls
 alone does not permit transmitting brief-derived constraints to the model.
+
+**Canonical planner output amendment (2026-10-07, MVP §5.3).** Provider output
+selects admitted site/face identifiers and bounded, vetted advice/question/reason
+codes. Unconstrained model prose is never returned publicly or retained as chat
+history. The server derives concise English/French recommendation text and a
+separate proposal summary from those identifiers and authorized source facts.
+Proposed totals, source-qualified asking prices, dates, distances and missing data
+are recomputed independently from the current selection. A proposal whose known
+budget-currency subtotal already exceeds its comparable media ceiling is withheld
+with clarification, even if other prices or currencies remain unresolved;
+unknown prices, mixed currencies, partial months and mixed research/ordinary stock
+cannot establish whole-plan fit or a remaining reserve. Geography is limited to
+explicitly sourced city/country facts; neighborhoods and subarea coverage remain
+unknown unless separately evidenced. The canonical accepted summary describes only
+the returned recommendations, including a coherent empty summary when withheld.
+Raw model text cannot invent costs, source facts, geographic coverage or availability.
 
 **Key user stories.**
 

@@ -4,11 +4,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ResearchPriceBaseline } from '../components/agency/ResearchReferenceFacts';
 import { BoardDetail } from '../components/agency/BoardDetail';
 import { PlannerDataUseDialog } from '../components/agency/PlannerDataUseDialog';
-import { AgencyPlanner } from '../components/agency/AgencyPlanner';
+import { AgencyPlanner, ReplyFacts } from '../components/agency/AgencyPlanner';
 import { prettyFormat } from '../components/sites/sites-ui';
 import { GeographicContextSnapshot } from '../components/sites/GeographicContextPanel';
 import type { ContextMetric, SiteGeographicContext } from '@abonten/contracts/enrichment';
 import type { SiteDetail } from './sites-api';
+import type { PlannerReply, PlannerFacts } from './agency-api';
+import { canonicalRecommendationOutput } from '../../../api/src/planning/planning-output';
 import { researchSourceUrl, researchAskingPrice, researchFaceLabel } from './research-reference';
 import {
   estimateFaceCost,
@@ -601,4 +603,170 @@ test('only the controlled research face label is localized', () => {
   ]) {
     assert.equal(researchFaceLabel(label, true, 'fr'), label);
   }
+});
+
+function canonicalReplyFixture(
+  locale: 'en' | 'fr',
+  budgetAmount = 22000000,
+  selected = false,
+): PlannerReply {
+  const monthly = { startDate: '2026-11-01', endDate: '2026-12-01' };
+  const facts: PlannerFacts = {
+    checkedAt: '2026-10-07T12:00:00Z',
+    window: monthly,
+    requestedBudget: { amount: budgetAmount, currency: 'NGN' },
+    sites: [4500000, 4500000, 5500000, 4000000].map((amount, index) => ({
+      siteId: `reference-${index}`,
+      name: ['KING OF MARINA 2.0', 'LEKKI GATEWAY', 'OSBORNE HEIGHTS', 'TOWER OF OWORO'][index],
+      city: 'Lagos',
+      country: 'Nigeria',
+      latitude: 6.45 + index * 0.01,
+      longitude: 3.39 + index * 0.01,
+      isResearchReference: true,
+      researchProvenance: {
+        ...researched.researchProvenance!,
+        askingPrice: { ...researched.researchProvenance!.askingPrice!, amount },
+      },
+      faces: [
+        {
+          faceId: `face-${index}`,
+          faceLabel: 'Reported display',
+          selected: selected && index === 0,
+          availability: 'unknown',
+          estimate: {
+            status: 'unavailable',
+            siteId: `reference-${index}`,
+            faceId: `face-${index}`,
+            reason:
+              'Research interest only; a confirmed full-flight quote and commercial availability are unavailable.',
+          },
+        },
+      ],
+    })),
+    budget: summarizeBudget([]),
+    distances: [],
+    ots: null,
+    reach: null,
+    assumptions: [],
+  };
+  facts.researchPrices = summarizeResearchPrices(
+    facts.sites.filter((site) => site.faces.some((face) => face.selected)),
+    monthly,
+    facts.requestedBudget,
+  );
+  const output = canonicalRecommendationOutput(
+    {
+      recommendations: facts.sites.map((site) => ({
+        siteId: site.siteId,
+        faceId: site.faces[0].faceId,
+        reasonCode: 'source_monthly_price',
+        reason: 'HALLUCINATED MAINLAND GUARANTEE',
+      })),
+      message: 'HALLUCINATED MAINLAND GUARANTEE',
+      questions: ['HALLUCINATED MAINLAND GUARANTEE'],
+      questionCodes: ['prioritize_areas'],
+    },
+    { ...facts, requestedBudget: facts.requestedBudget! },
+    locale,
+  );
+  return {
+    mode: 'openai',
+    provider: 'openai',
+    model: 'gpt-6-luna',
+    aiAvailable: true,
+    constraints: {
+      budget: null,
+      currency: null,
+      cities: [],
+      startDate: null,
+      endDate: null,
+      evidence: [],
+    },
+    missing: [],
+    requiresConfirmation: true,
+    ...output,
+    facts,
+  };
+}
+
+test('recommended portfolio and empty current draft retain separate budgets, periods and coverage states', () => {
+  for (const locale of ['en', 'fr'] as const) {
+    const reply = canonicalReplyFixture(locale);
+    const html = renderToStaticMarkup(<ReplyFacts reply={reply} locale={locale} onSelect={noop} />);
+    const draftIndex = html.indexOf('data-testid="current-draft-facts"');
+    const portfolio = html.slice(0, draftIndex),
+      draft = html.slice(draftIndex);
+    assert.ok(portfolio.includes('data-testid="recommended-portfolio-facts"'));
+    assert.ok(portfolio.includes('data-testid="recommended-portfolio-spacing"'));
+    assert.ok(
+      portfolio.includes(
+        locale === 'fr'
+          ? 'positions publiées · précision inconnue'
+          : 'published points · accuracy unknown',
+      ),
+    );
+    assert.ok(portfolio.includes(locale === 'fr' ? '18 500 000' : '18,500,000'));
+    assert.ok(portfolio.includes(locale === 'fr' ? '3 500 000' : '3,500,000'));
+    assert.ok(portfolio.includes(locale === 'fr' ? '01 nov. 2026' : '01 Nov 2026'));
+    assert.ok(portfolio.includes(locale === 'fr' ? 'fin exclusive' : 'end exclusive'));
+    assert.ok(
+      portfolio.includes(
+        locale === 'fr' ? 'Couverture des sous-zones inconnue' : 'Subarea coverage unknown',
+      ),
+    );
+    assert.ok(portfolio.includes('Lagos · Nigeria'));
+    assert.ok(portfolio.includes(locale === 'fr' ? 'Support publié' : 'Reported display'));
+    assert.ok(
+      draft.includes(
+        locale === 'fr' ? 'Coût média du brouillon actuel' : 'Current draft media cost',
+      ),
+    );
+    assert.ok(!draft.includes(locale === 'fr' ? '18 500 000' : '18,500,000'));
+    assert.ok(!draft.includes('KING OF MARINA 2.0'));
+    assert.ok(!draft.includes('recommended-portfolio-spacing'));
+    assert.ok(!html.includes('HALLUCINATED'));
+    assert.ok(
+      html.includes(
+        locale === 'fr' ? 'Quelles zones sont obligatoires' : 'Which areas must be covered',
+      ),
+    );
+  }
+});
+
+test('accepted recommendation totals do not replace the narrower current draft source subtotal', () => {
+  const reply = canonicalReplyFixture('en', 22000000, true);
+  const html = renderToStaticMarkup(<ReplyFacts reply={reply} locale="en" onSelect={noop} />);
+  const index = html.indexOf('data-testid="current-draft-facts"');
+  assert.ok(html.slice(0, index).includes('18,500,000'));
+  assert.ok(html.slice(index).includes('4,500,000'));
+  assert.ok(!html.slice(index).includes('18,500,000'));
+  assert.ok(!html.slice(index).includes('LEKKI GATEWAY'));
+});
+
+test('over-budget rejected portfolios show no accepted cards or misleading recommended subtotal', () => {
+  for (const locale of ['en', 'fr'] as const) {
+    const reply = canonicalReplyFixture(locale, 10000000);
+    assert.equal(reply.recommendationSummary!.status, 'budget_exceeded');
+    const html = renderToStaticMarkup(<ReplyFacts reply={reply} locale={locale} onSelect={noop} />);
+    assert.ok(
+      html.includes(
+        locale === 'fr'
+          ? 'dépasse le budget média comparable'
+          : 'exceeds the comparable media budget',
+      ),
+    );
+    assert.ok(!html.includes('KING OF MARINA 2.0'));
+    assert.ok(!html.includes(locale === 'fr' ? '18 500 000' : '18,500,000'));
+    assert.ok(!html.includes('research-price-baseline'));
+  }
+});
+
+test('legacy openai replies cannot repeat raw reasons or questions without the new canonical summary', () => {
+  const reply = canonicalReplyFixture('en');
+  delete reply.recommendationSummary;
+  reply.recommendations![0].reason = 'HALLUCINATED MAINLAND GUARANTEE';
+  reply.questions = ['HALLUCINATED MAINLAND GUARANTEE'];
+  const html = renderToStaticMarkup(<ReplyFacts reply={reply} locale="en" onSelect={noop} />);
+  assert.ok(!html.includes('HALLUCINATED'));
+  assert.ok(html.includes('KING OF MARINA 2.0'));
 });

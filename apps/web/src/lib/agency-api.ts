@@ -54,7 +54,13 @@ export interface PlannerReply {
   recommendations?: { siteId: string; faceId: string; reason: string }[];
   questions?: string[];
   facts?: PlannerFacts;
+  recommendationSummary?: PlannerRecommendationSummary;
 }
+
+/** Canonical server summary covers accepted recommendations, independently of the current draft. */
+export type PlannerRecommendationSummary = ReturnType<
+  typeof import('../../../api/src/planning/planning-output').canonicalRecommendationOutput
+>['recommendationSummary'];
 
 export interface PlannerContext {
   selectedSiteIds?: string[];

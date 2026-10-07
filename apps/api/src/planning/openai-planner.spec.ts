@@ -9,6 +9,7 @@ import {
   PLANNER_MODEL,
   type ModelPlan,
   type ProviderInput,
+  validateModelPlan,
 } from './openai-planner.provider';
 import { PlanningService } from './planning.service';
 import { AssistantMessageDto } from './dto/planning.dto';
@@ -26,7 +27,12 @@ const plan: ModelPlan = {
   recommendations: [],
   questions: ['Which market?'],
 };
-function completed(value: unknown = plan, overrides: object = {}) {
+const wirePlan = {
+  recommendations: [],
+  adviceCodes: ['confirm_quotes'],
+  questionCodes: ['confirm_market'],
+};
+function completed(value: unknown = wirePlan, overrides: object = {}) {
   return new Response(
     JSON.stringify({
       status: 'completed',
@@ -89,15 +95,14 @@ describe('fixed OpenAI planner transport using synthetic providers only', () => 
       assert.equal(body.text.format.schema.additionalProperties, false);
       const properties = body.text.format.schema.properties;
       assert.equal(properties.recommendations.maxItems, 12);
-      assert.equal(properties.questions.maxItems, 5);
+      assert.equal(properties.questionCodes.maxItems, 5);
+      assert.equal(properties.adviceCodes.maxItems, 5);
+      assert.equal(properties.message, undefined);
+      assert.equal(properties.questions, undefined);
+      assert.equal(properties.recommendations.items.properties.reason, undefined);
       assert.equal(properties.recommendations.items.properties.siteId.format, 'uuid');
-      assert.equal(new RegExp(properties.message.pattern).test('x'.repeat(4001)), false);
-      assert.equal(new RegExp(properties.questions.items.pattern).test('x'.repeat(501)), false);
-      assert.equal(
-        new RegExp(properties.recommendations.items.properties.reason.pattern).test(
-          'x'.repeat(1001),
-        ),
-        false,
+      assert.ok(
+        properties.recommendations.items.properties.reasonCode.enum.includes('compare_location'),
       );
       assert.match(body.instructions, /untrusted DATA/);
       assert.match(body.instructions, /Never claim a reservation/);
@@ -111,9 +116,41 @@ describe('fixed OpenAI planner transport using synthetic providers only', () => 
         { ...input, locale: 'fr', history: [{ role: 'assistant', content: 'Earlier chat' }] },
         scope,
       ),
-      plan,
+      validateModelPlan(wirePlan),
     );
     assert.equal(calls, 1);
+  });
+  it('admits only enumerated qualitative intents and never accepts factual narrative channels', () => {
+    const badObservedText =
+      'One shortlist: Marina, Osborne, Lekki totals NGN14.5m. Shortlist Marina+Lekki NGN9m. No candidate represents the mainland approach.';
+    assert.throws(
+      () =>
+        validateModelPlan({
+          recommendations: [],
+          adviceCodes: [],
+          questionCodes: [],
+          message: badObservedText,
+        }),
+      status(502),
+    );
+    assert.throws(
+      () =>
+        validateModelPlan({
+          recommendations: [{ siteId: siteA, faceId: faceA, reasonCode: 'no_mainland_inventory' }],
+          adviceCodes: [],
+          questionCodes: [],
+        }),
+      status(502),
+    );
+    const safe = validateModelPlan({
+      recommendations: [{ siteId: siteA, faceId: faceA, reasonCode: 'compare_location' }],
+      adviceCodes: ['clarify_coverage'],
+      questionCodes: ['prioritize_areas'],
+    });
+    assert.equal(safe.message, '');
+    assert.deepEqual(safe.questions, []);
+    assert.equal(safe.recommendations[0].reason, '');
+    assert.deepEqual(safe.adviceCodes, ['clarify_coverage']);
   });
   it('rejects unconfigured credentials without a network request', async () => {
     let called = false;
@@ -132,16 +169,22 @@ describe('fixed OpenAI planner transport using synthetic providers only', () => 
   });
   it('rejects malformed, extra, missing, incomplete, refused and tool-shaped responses', async () => {
     for (const response of [
-      completed({ ...plan, message: '' }),
+      completed({ ...wirePlan, message: 'Untrusted factual prose' }),
+      completed({ ...wirePlan, adviceCodes: ['invented_claim'] }),
+      completed({ ...wirePlan, questionCodes: ['confirm_dates', 'confirm_dates'] }),
+      completed({
+        ...wirePlan,
+        recommendations: [{ siteId: 'not-uuid', faceId: faceA, reasonCode: 'planning_interest' }],
+      }),
       completed({ ...plan, booking: true }),
       completed({ message: 'Missing fields' }),
-      completed(plan, { status: 'incomplete' }),
-      completed(plan, {
+      completed(wirePlan, { status: 'incomplete' }),
+      completed(wirePlan, {
         output: [
           { type: 'message', role: 'assistant', content: [{ type: 'refusal', refusal: 'No' }] },
         ],
       }),
-      completed(plan, { output: [{ type: 'function_call', name: 'book' }] }),
+      completed(wirePlan, { output: [{ type: 'function_call', name: 'book' }] }),
       new Response('{invalid'),
     ]) {
       await assert.rejects(provider(async () => response).complete(input, scope), status(502));
@@ -238,7 +281,7 @@ describe('fixed OpenAI planner transport using synthetic providers only', () => 
       await api.complete(input, { userId: `another-${i}`, orgId: scope.orgId });
     await assert.rejects(api.complete(input, { userId: 'final', orgId: scope.orgId }), status(429));
     now += 60000;
-    assert.deepEqual(await api.complete(input, scope), plan);
+    assert.deepEqual(await api.complete(input, scope), validateModelPlan(wirePlan));
   });
   it('limits one active request per user/org and four globally', async () => {
     const api = provider(waitingFetch(), 1000);
@@ -398,7 +441,8 @@ describe('server-grounded agency planning and brief consent', () => {
       },
       scope,
     );
-    assert.equal(reply.constraints.budget, 20000);
+    assert.equal(reply.constraints.budget, null);
+    assert.equal(reply.facts.requestedBudget, null);
     assert.equal(reply.briefShared, false);
     assert.equal(calls.input?.briefText, undefined);
     assert.deepEqual(calls.input?.history, []);
@@ -501,7 +545,11 @@ describe('server-grounded agency planning and brief consent', () => {
       ],
     };
     const reply = await fixture({ response }).service.plan({ message: 'Help', context }, scope);
-    assert.deepEqual(reply.recommendations, response.recommendations);
+    assert.deepEqual(
+      reply.recommendations.map(({ siteId, faceId }) => ({ siteId, faceId })),
+      response.recommendations.map(({ siteId, faceId }) => ({ siteId, faceId })),
+    );
+    assert.notEqual(reply.recommendations[0].reason, response.recommendations[0].reason);
     assert.equal(reply.facts.budget.totals.NGN, 2800);
     assert.equal(reply.mode, 'openai');
   });
