@@ -1,3 +1,4 @@
+import type { PlanningFitPreferences } from '@abonten/contracts/planning-draft';
 import type { ResearchProvenance } from '../../../api/src/common/research-inventory';
 import { apiJson } from './api';
 import type { SiteDetail } from './sites-api';
@@ -55,6 +56,7 @@ export interface PlannerReply {
   questions?: string[];
   facts?: PlannerFacts;
   recommendationSummary?: PlannerRecommendationSummary;
+  assessment?: PlanningAssessment;
 }
 
 /** Canonical server summary covers accepted recommendations, independently of the current draft. */
@@ -62,7 +64,18 @@ export type PlannerRecommendationSummary = ReturnType<
   typeof import('../../../api/src/planning/planning-output').canonicalRecommendationOutput
 >['recommendationSummary'];
 
+export interface PlanningAssessment {
+  version: string;
+  provisional: true;
+  config: import('../../../api/src/planning/planning-scoring').BriefFitConfig;
+  assessments: import('../../../api/src/planning/planning-scoring').PlanningFaceAssessment[];
+  portfolio: import('../../../api/src/planning/planning-scoring').PlanningPortfolioAssessment;
+  recalculated: true;
+  evidenceScope: string;
+}
+
 export interface PlannerContext {
+  fitPreferences?: PlanningFitPreferences;
   selectedSiteIds?: string[];
   selectedFaceIds?: string[];
   faceCurrencies?: { faceId: string; currency: string }[];
@@ -167,6 +180,22 @@ export function askPlanner(
     method: 'POST',
     headers: { ...headers(orgId), 'Content-Type': 'application/json' },
     body: JSON.stringify(message),
+    timeoutMs: 45000,
+    signal,
+  });
+}
+
+/** Read-only deterministic scoring; never calls an AI provider or changes saved plans. */
+export function assessPlanner(
+  orgId: string,
+  context: PlannerContext,
+  locale: 'en' | 'fr',
+  signal?: AbortSignal,
+): Promise<PlannerReply> {
+  return apiJson(`${PLANNING_BASE}/assess`, {
+    method: 'POST',
+    headers: { ...headers(orgId), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ locale, context }),
     timeoutMs: 45000,
     signal,
   });

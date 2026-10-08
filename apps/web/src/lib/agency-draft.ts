@@ -1,3 +1,5 @@
+import type { PlanningFitPreferences } from '@abonten/contracts/planning-draft';
+import { parsePlanningFitPreferences } from './planning-fit-preferences';
 import {
   faceFlightEligibility,
   planningDays,
@@ -57,6 +59,8 @@ export function summarizeDraftBudget(
 }
 export interface AgencyDraft {
   version: 1;
+  fitPreferences?: PlanningFitPreferences;
+  scoringVersion?: string;
   window: PlanningWindow;
   country: string;
   query: string;
@@ -100,6 +104,15 @@ export function parseAgencyDraft(raw: string | null): AgencyDraft | null {
       row.faces.length > MAX_DRAFT_FACES
     )
       return null;
+    const fitPreferences =
+      row.fitPreferences === undefined
+        ? undefined
+        : parsePlanningFitPreferences(row.fitPreferences);
+    if (
+      fitPreferences === null ||
+      (row.scoringVersion !== undefined && !bounded(row.scoringVersion, 64))
+    )
+      return null;
     const faces: AgencyDraftFace[] = [];
     const seen = new Set<string>();
     for (const input of row.faces) {
@@ -128,6 +141,8 @@ export function parseAgencyDraft(raw: string | null): AgencyDraft | null {
       budget: row.budget,
       currency: row.currency,
       faces,
+      ...(fitPreferences ? { fitPreferences } : {}),
+      ...(typeof row.scoringVersion === 'string' ? { scoringVersion: row.scoringVersion } : {}),
       ...(row.briefDerivedContext === true ? { briefDerivedContext: true as const } : {}),
     };
   } catch {

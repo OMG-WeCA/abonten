@@ -1,5 +1,7 @@
 'use client';
 
+import type { PlanningFaceAssessment } from '../../../../api/src/planning/planning-scoring';
+import { BriefFitScore } from './BriefFitScore';
 import { useId } from 'react';
 import { ArrowLeft, ArrowUpRight, Columns3, Plus, Trash2 } from 'lucide-react';
 import type { SiteDetail } from '../../lib/sites-api';
@@ -25,6 +27,7 @@ import { researchFaceLabel } from '../../lib/research-reference';
 export interface AgencyCompareProps {
   shortlist: Array<{ site: SiteDetail; faceId: string; pricingCurrency?: string }>;
   estimates: FaceCostEstimate[];
+  fitAssessments?: PlanningFaceAssessment[];
   availabilityFor: (siteId: string, faceId: string) => PlanningAvailability;
   window: PlanningWindow;
   locale: 'en' | 'fr';
@@ -127,6 +130,9 @@ export function AgencyCompare(props: AgencyCompareProps) {
               <CompareFace
                 key={`${item.site.id}:${item.faceId}`}
                 item={item}
+                fitAssessment={props.fitAssessments?.find(
+                  (face) => face.faceId === item.faceId && face.siteId === item.site.id,
+                )}
                 estimate={estimates.find(
                   (estimate) => estimate.faceId === item.faceId && estimate.siteId === item.site.id,
                 )}
@@ -146,6 +152,7 @@ export function AgencyCompare(props: AgencyCompareProps) {
 
 function CompareFace({
   item,
+  fitAssessment,
   estimate,
   availability,
   window,
@@ -154,6 +161,7 @@ function CompareFace({
   onRemove,
 }: {
   item: AgencyCompareProps['shortlist'][number];
+  fitAssessment?: PlanningFaceAssessment;
   estimate?: FaceCostEstimate;
   availability: PlanningAvailability;
   window: PlanningWindow;
@@ -219,6 +227,7 @@ function CompareFace({
         {site.isDemo && <span className="agency-data-badge">DEMO</span>}
         {site.isResearchReference && <ResearchBadge locale={locale} />}
       </header>
+      <BriefFitScore assessment={fitAssessment} locale={locale} />
       {site.isResearchReference ? (
         <ResearchReferenceFacts provenance={site.researchProvenance} locale={locale} />
       ) : (

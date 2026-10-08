@@ -408,7 +408,8 @@ describe('server-grounded agency planning and brief consent', () => {
     assert.equal(reply.briefShared, false);
     assert.equal(reply.constraints.budget, 20000);
     assert.equal(calls.input, undefined);
-    assert.deepEqual(reply.facts.sites, []);
+    assert.equal(reply.facts.sites.length, 1);
+    assert.equal(reply.assessment.portfolio.status, 'insufficient_evidence');
   });
   it('recomputes prices, face availability, flight, budget and WGS84 distances from authorized server reads', async () => {
     const { service, calls } = fixture();
@@ -547,7 +548,10 @@ describe('server-grounded agency planning and brief consent', () => {
     const reply = await fixture({ response }).service.plan({ message: 'Help', context }, scope);
     assert.deepEqual(
       reply.recommendations.map(({ siteId, faceId }) => ({ siteId, faceId })),
-      response.recommendations.map(({ siteId, faceId }) => ({ siteId, faceId })),
+      [
+        { siteId: siteA, faceId: faceA },
+        { siteId: siteB, faceId: faceB },
+      ],
     );
     assert.notEqual(reply.recommendations[0].reason, response.recommendations[0].reason);
     assert.equal(reply.facts.budget.totals.NGN, 2800);
@@ -711,7 +715,8 @@ describe('server-grounded agency planning and brief consent', () => {
     assert.equal(quote.facts.sites[0].faces[0].flightEligible, true);
     assert.equal(quote.facts.sites[0].faces[0].availability, 'available');
     assert.equal(quote.facts.sites[0].faces[0].estimate.status, 'unavailable');
-    assert.equal(quote.recommendations.length, 1);
+    assert.equal(quote.recommendations.length, 0);
+    assert.equal(quote.assessment.portfolio.status, 'insufficient_evidence');
   });
   it('preserves mixed published currencies without pretending they fit a single-currency budget', async () => {
     const { service } = fixture({ secondCurrency: 'GHS' });

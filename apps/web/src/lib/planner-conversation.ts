@@ -1,3 +1,4 @@
+import { parsePlanningFitPreferences } from './planning-fit-preferences';
 import type { AssistantStatus, PlannerContext, PlannerReply, PlannerRequest } from './agency-api';
 import { planningDays, type PlanningWindow } from './agency-planning';
 import { parseAmount } from './number-format';
@@ -62,7 +63,12 @@ export function buildPlannerContext(
   input:
     | Pick<
         PlannerContext,
-        'selectedSiteIds' | 'selectedFaceIds' | 'faceCurrencies' | 'selectionTruncated' | 'filters'
+        | 'selectedSiteIds'
+        | 'selectedFaceIds'
+        | 'faceCurrencies'
+        | 'selectionTruncated'
+        | 'filters'
+        | 'fitPreferences'
       >
     | undefined,
   window: PlanningWindow,
@@ -87,7 +93,9 @@ export function buildPlannerContext(
         .map((item) => [item.faceId, { faceId: item.faceId, currency: item.currency }]),
     ).values(),
   ].slice(0, 24);
+  const fitPreferences = parsePlanningFitPreferences(input?.fitPreferences);
   return {
+    ...(fitPreferences ? { fitPreferences } : {}),
     selectedSiteIds: ids(input?.selectedSiteIds, 12),
     selectedFaceIds,
     ...(faceCurrencies.length ? { faceCurrencies } : {}),

@@ -100,3 +100,12 @@ export class SiteOptionsResponse {
   })
   reservation!: false;
 }
+
+export class PlannerAssessmentResponse extends PlannerReplyResponse {
+  @ApiProperty({
+    type: Object,
+    description:
+      'Versioned deterministic face assessments and bounded portfolio; supported score contribution, uncertainty range, evidence confidence, factor provenance and diagnosed infeasibility. No provider call or reservation.',
+  })
+  assessment!: object;
+}

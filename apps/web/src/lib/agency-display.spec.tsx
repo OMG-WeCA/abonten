@@ -1,3 +1,5 @@
+import { BriefFitScore } from '../components/agency/BriefFitScore';
+import { BriefFitPreferences } from '../components/agency/BriefFitPreferences';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -153,6 +155,8 @@ test('planner renders French decimal distances, cost assumptions and UTC checks 
     />,
   );
   assert.ok(html.includes('12,34'));
+  assert.ok(html.includes('Les notes affichées sont recalculées selon les sources actuelles'));
+  assert.ok(html.includes('réouverture d’un plan enregistré'));
   assert.ok(html.includes('fin exclusive'));
   assert.ok(html.includes('01 oct. 2026'));
   assert.ok(html.includes('12:34:56 UTC'));
@@ -866,4 +870,103 @@ test('shortlist DEMO cost label stays absent until its ready estimate contribute
         included,
       );
     }
+});
+
+test('brief-fit display separates supported range from confidence and leaves missing factors unknown in English and French', async () => {
+  const assessment: import('../../../api/src/planning/planning-scoring').PlanningFaceAssessment = {
+    version: 'brief-fit-v1-provisional:balanced',
+    siteId: site.id,
+    faceId: site.faces[0].id,
+    score: 24,
+    range: { lower: 24, upper: 94 },
+    evidenceCoverage: 30,
+    evidenceConfidence: 16.5,
+    confidenceLabel: 'low',
+    eligible: true,
+    provisional: true,
+    exclusions: [],
+    weights: { geography: 30, audience: 20, visibility: 30, contribution: 10, value: 10 },
+    reasons: ['country_match'],
+    unknowns: ['directional_geometry_unverified'],
+    factors: [
+      {
+        key: 'visibility',
+        weight: 30,
+        score: null,
+        range: { lower: 0, upper: 100 },
+        coverage: 0,
+        confidence: 0,
+        provenance: [],
+        sources: [],
+        reasons: [],
+        unknowns: ['directional_geometry_unverified'],
+      },
+    ],
+  };
+  const en = renderToStaticMarkup(<BriefFitScore assessment={assessment} locale="en" />);
+  assert.ok(en.includes('24–94 /100'));
+  assert.ok(en.includes('Confidence low'));
+  assert.ok(en.includes('Supported contribution'));
+  assert.ok(en.includes('Directional geometry unverified'));
+  assert.ok(en.includes('Unknown'));
+  assert.ok(!en.includes('0–100 /100'));
+  assert.ok(en.includes('not measured effectiveness'));
+  const fr = renderToStaticMarkup(<BriefFitScore assessment={assessment} locale="fr" />);
+  assert.ok(fr.includes('Confiance faible'));
+  assert.ok(fr.includes('Géométrie directionnelle non vérifiée'));
+  assert.ok(!fr.includes('country_match'));
+  assert.ok(!fr.includes('directional_geometry_unverified'));
+  assert.ok(!fr.includes('Unknown'));
+  const missing = renderToStaticMarkup(
+    <BriefFitScore
+      assessment={{ ...assessment, score: null, range: { lower: 0, upper: 100 } }}
+      locale="en"
+    />,
+  );
+  assert.ok(missing.includes('Brief fit <b>Unknown'));
+  assert.ok(!missing.includes('0–100 /100'));
+});
+
+test('brief-fit source prose stays escaped and priorities expose localized confirmed controls', async () => {
+  const score: import('../../../api/src/planning/planning-scoring').PlanningFaceAssessment = {
+    version: 'test-policy',
+    siteId: site.id,
+    faceId: site.faces[0].id,
+    score: 10,
+    range: { lower: 10, upper: 100 },
+    evidenceCoverage: 10,
+    evidenceConfidence: 5,
+    confidenceLabel: 'low',
+    eligible: true,
+    provisional: true,
+    exclusions: [],
+    weights: { geography: 30, audience: 20, visibility: 30, contribution: 10, value: 10 },
+    reasons: [],
+    unknowns: [],
+    factors: [
+      {
+        key: 'value',
+        weight: 10,
+        score: 100,
+        range: { lower: 100, upper: 100 },
+        coverage: 100,
+        confidence: 55,
+        provenance: ['owner_reported'],
+        sources: ['<img src=x onerror=alert(1)>'],
+        reasons: ['supported_fit_per_budget_share'],
+        unknowns: [],
+      },
+    ],
+  };
+  const markup = renderToStaticMarkup(<BriefFitScore assessment={score} locale="fr" />);
+  assert.ok(markup.includes('&lt;img'));
+  assert.ok(!markup.includes('<img'));
+  assert.ok(markup.includes('Déclaré par le propriétaire'));
+  const preferences = renderToStaticMarkup(
+    <BriefFitPreferences value={{ version: 1 }} locale="fr" onChange={noop} />,
+  );
+  assert.ok(preferences.includes('Priorités du brief'));
+  assert.ok(preferences.includes('Confirmez les priorités avant de noter'));
+  assert.ok(preferences.includes('Sens d’approche'));
+  assert.ok(preferences.includes('Appliquer les priorités'));
 });

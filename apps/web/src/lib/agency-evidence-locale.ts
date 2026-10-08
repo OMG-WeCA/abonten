@@ -5,6 +5,10 @@ import { displayUiText } from './display-ui-text';
 
 const frenchText = new Map<string, string>([
   [
+    'The canonical planning context exceeds the bounded model input. Reduce selections or use local assessment.',
+    'Le contexte de planification dépasse la limite d’entrée du modèle. Réduisez la sélection ou utilisez l’évaluation locale.',
+  ],
+  [
     'Research reference: operator-published coordinates are not field verified. Site-specific enrichment and audience exposure remain unavailable.',
     'Référence de recherche : les coordonnées publiées par l’opérateur ne sont pas vérifiées sur le terrain. Les données enrichies propres au site et l’exposition restent indisponibles.',
   ],

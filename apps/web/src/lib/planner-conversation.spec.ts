@@ -307,3 +307,35 @@ test('local assistance retains confirmed brief context while the server receives
   assert.equal(request.contextRequiresBriefConsent, true);
   assert.equal(request.shareBriefWithProvider, false);
 });
+
+test('confirmed fit priorities carry no client evidence and remain behind the existing brief consent boundary', () => {
+  const fitPreferences = {
+    version: 1 as const,
+    targetAreas: ['Ikoyi'],
+    daypart: 'night' as const,
+    goal: 'coverage' as const,
+    score: 100,
+    geometry: { verified: true },
+  };
+  const context = buildPlannerContext({ fitPreferences }, window, '10000000', 'NGN');
+  assert.deepEqual(context.fitPreferences, {
+    version: 1,
+    targetAreas: ['Ikoyi'],
+    daypart: 'night',
+    goal: 'coverage',
+  });
+  assert.equal(JSON.stringify(context).includes('verified'), false);
+  assert.equal(
+    buildPlannerRequest({ ...defaults, context, contextMayContainBrief: true }).context,
+    undefined,
+  );
+  assert.deepEqual(
+    buildPlannerRequest({
+      ...defaults,
+      context,
+      contextMayContainBrief: true,
+      briefConsentText: defaults.briefText,
+    }).context?.fitPreferences,
+    context.fitPreferences,
+  );
+});

@@ -35,12 +35,14 @@ const metadata = (index: number) => [
     expiresAt: '2027-09-01T00:00:00Z',
   },
 ];
-function fixture(options: {
-  failGeo?: boolean;
-  deniedGeo?: boolean;
-  removed?: number;
-  missingCoordinates?: boolean;
-} = {}) {
+function fixture(
+  options: {
+    failGeo?: boolean;
+    deniedGeo?: boolean;
+    removed?: number;
+    missingCoordinates?: boolean;
+  } = {},
+) {
   const calls = {
     queries: [] as MarketplaceQueryDto[],
     details: [] as string[],
@@ -225,7 +227,12 @@ test('discovers an affordable source-backed board on page three outside the init
     (candidate.enrichment.visibility.provenance as { source: string }).source,
     'Licensed field survey QA fixture',
   );
-  assert.equal(reply.facts.sites.find((site) => site.siteId === id(21))?.budgetMatch, 'unknown');
+  // The incompatible-currency candidate is not prioritized into the bounded fit slice.
+  assert.equal(
+    reply.facts.sites.some((site) => site.siteId === id(21)),
+    false,
+  );
+  assert.ok(reply.facts.retrieval.candidatesOmitted > 0);
   assert.equal(
     reply.facts.sites.filter((site) => site.geographicContextState === 'read_budget_exhausted')
       .length,

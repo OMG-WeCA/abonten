@@ -270,10 +270,15 @@ test('actual service response removes all raw model prose and follows canonical 
     { userId: 'qa', orgId: 'org' },
   );
   if (output.mode !== 'openai') assert.fail('Expected external planner response');
-  assert.deepEqual(output.recommendationSummary!.siteIds, ids.slice(0, 2));
+  assert.deepEqual(
+    output.recommendationSummary!.siteIds,
+    output.assessment.portfolio.selectedSiteIds,
+  );
+  assert.ok(output.recommendationSummary!.siteIds.includes(ids[2]!));
+  assert.notDeepEqual(output.recommendationSummary!.siteIds, ids.slice(0, 2));
   assert.deepEqual(output.facts.researchPrices.totals, { NGN: 5500000 });
-  assert.deepEqual(output.recommendationSummary!.researchPrices.totals, { NGN: 9000000 });
-  assert.equal(output.recommendationSummary!.researchPrices.unquotedReserve, 1000000);
+  assert.deepEqual(output.recommendationSummary!.researchPrices.totals, { NGN: 9500000 });
+  assert.equal(output.recommendationSummary!.researchPrices.unquotedReserve, 500000);
   assert.equal(output.constraints.budget, 10000000);
   assert.equal(output.constraints.startDate, '2026-11-01');
   assert.deepEqual(output.missing, []);

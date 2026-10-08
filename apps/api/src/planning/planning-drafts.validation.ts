@@ -1,6 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { isUUID } from 'class-validator';
-import type { AgencyPlanningDraftV1 } from '@abonten/contracts/planning-draft';
+import type {
+  AgencyPlanningDraftV1,
+  PlanningFitPreferences,
+} from '@abonten/contracts/planning-draft';
 import { PLANNING_CURRENCIES, planningDays } from './planning-math';
 
 const invalid = () => new BadRequestException('Invalid personal planning draft.');
@@ -20,10 +23,51 @@ function currency(value: unknown): string {
     throw invalid();
   return value;
 }
+export function normalizeFitPreferences(value: unknown): PlanningFitPreferences {
+  const input = object(value, [
+    'version',
+    'targetAreas',
+    'targetCorridors',
+    'audienceTags',
+    'approachDirection',
+    'daypart',
+    'goal',
+  ]);
+  if (input.version !== 1) throw invalid();
+  const result: PlanningFitPreferences = { version: 1 };
+  for (const key of ['targetAreas', 'targetCorridors', 'audienceTags'] as const) {
+    if (input[key] === undefined) continue;
+    if (!Array.isArray(input[key]) || input[key].length > 8) throw invalid();
+    const values = input[key].map((value) => text(value, 80).trim());
+    if (
+      values.some((value) => !value) ||
+      new Set(values.map((value) => value.toLocaleLowerCase('en'))).size !== values.length
+    )
+      throw invalid();
+    result[key] = values;
+  }
+  if (input.approachDirection !== undefined) {
+    if (!['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].includes(String(input.approachDirection)))
+      throw invalid();
+    result.approachDirection =
+      input.approachDirection as PlanningFitPreferences['approachDirection'];
+  }
+  if (input.daypart !== undefined) {
+    if (!['any', 'day', 'night'].includes(String(input.daypart))) throw invalid();
+    result.daypart = input.daypart as PlanningFitPreferences['daypart'];
+  }
+  if (input.goal !== undefined) {
+    if (!['balanced', 'coverage', 'value'].includes(String(input.goal))) throw invalid();
+    result.goal = input.goal as PlanningFitPreferences['goal'];
+  }
+  return result;
+}
 export function normalizePlanningDraft(value: unknown): AgencyPlanningDraftV1 {
   const input = object(value, [
     'version',
     'briefDerivedContext',
+    'fitPreferences',
+    'scoringVersion',
     'window',
     'country',
     'query',
@@ -62,6 +106,12 @@ export function normalizePlanningDraft(value: unknown): AgencyPlanningDraftV1 {
   return {
     version: 1,
     ...(input.briefDerivedContext === true ? { briefDerivedContext: true as const } : {}),
+    ...(input.fitPreferences === undefined
+      ? {}
+      : { fitPreferences: normalizeFitPreferences(input.fitPreferences) }),
+    ...(input.scoringVersion === undefined
+      ? {}
+      : { scoringVersion: text(input.scoringVersion, 64) }),
     window,
     country: text(input.country, 80),
     query: text(input.query, 200),

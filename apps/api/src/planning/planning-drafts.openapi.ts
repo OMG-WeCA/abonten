@@ -12,6 +12,41 @@ const draftSchema: SchemaObject = {
       description:
         'Origin marker only. Brief-derived controls require fresh explicit consent before provider sharing; this marker is not consent.',
     },
+    fitPreferences: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['version'],
+      properties: {
+        version: { type: 'integer', enum: [1] },
+        targetAreas: {
+          type: 'array',
+          maxItems: 8,
+          uniqueItems: true,
+          items: { type: 'string', minLength: 1, maxLength: 80 },
+        },
+        targetCorridors: {
+          type: 'array',
+          maxItems: 8,
+          uniqueItems: true,
+          items: { type: 'string', minLength: 1, maxLength: 80 },
+        },
+        audienceTags: {
+          type: 'array',
+          maxItems: 8,
+          uniqueItems: true,
+          items: { type: 'string', minLength: 1, maxLength: 80 },
+        },
+        approachDirection: { type: 'string', enum: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] },
+        daypart: { type: 'string', enum: ['any', 'day', 'night'] },
+        goal: { type: 'string', enum: ['balanced', 'coverage', 'value'] },
+      },
+    },
+    scoringVersion: {
+      type: 'string',
+      maxLength: 64,
+      description:
+        'Informational last-used method. Current scores are recalculated; no cached scores are stored.',
+    },
     window: {
       type: 'object',
       additionalProperties: false,

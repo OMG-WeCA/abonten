@@ -697,7 +697,7 @@ describe('versioned planning HTTP authorization and validation', () => {
         `site-options/${siteId}?startDate=2026-12-01&endDate=2027-01-01`,
       ])
         assert.equal((await fetch(`${base}/${path}`)).status, 401);
-      for (const path of ['assistant', 'briefs'])
+      for (const path of ['assistant', 'briefs', 'assess'])
         assert.equal((await fetch(`${base}/${path}`, { method: 'POST' })).status, 401);
       assert.equal(
         (await fetch(`${base}/assistant/status`, { headers: { ...auth, 'X-Org-Id': 'agency-b' } }))
@@ -731,7 +731,7 @@ describe('versioned planning HTTP authorization and validation', () => {
       assert.equal(maximumBrief.status, 201, await maximumBrief.clone().text());
       assert.match(
         ((await maximumBrief.json()) as { message: string }).message,
-        /Confirmez le budget/,
+        /Aucune recommandation retenue/,
       );
       const invalidLocale = await fetch(`${base}/assistant`, {
         method: 'POST',
@@ -797,6 +797,60 @@ describe('versioned planning HTTP authorization and validation', () => {
         { faceId: 'public-face-a', available: false },
       ]);
 
+      const assessment = await fetch(`${base}/assess`, {
+        method: 'POST',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          locale: 'fr',
+          context: {
+            window: { startDate: '2026-12-01', endDate: '2027-01-01' },
+            budget: { amount: 5000, currency: 'NGN' },
+            fitPreferences: { version: 1, goal: 'value' },
+          },
+        }),
+      });
+      assert.equal(assessment.status, 201);
+      const assessmentReply = (await assessment.json()) as {
+        assessment: { version: string; portfolio: { version: string; status: string } };
+        mode: string;
+      };
+      assert.equal(assessmentReply.mode, 'local');
+      assert.equal(
+        assessmentReply.assessment.version,
+        assessmentReply.assessment.portfolio.version,
+      );
+      assert.equal(syntheticProvider.calls.length, 0);
+      for (const context of [
+        { fitPreferences: { version: 2 } },
+        { fitPreferences: { version: 1, daypart: 'midnight' } },
+        {
+          fitPreferences: {
+            version: 1,
+            targetAreas: Array.from({ length: 9 }, (_, i) => `Area ${i}`),
+          },
+        },
+      ]) {
+        assert.equal(
+          (
+            await fetch(`${base}/assess`, {
+              method: 'POST',
+              headers: { ...auth, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ context }),
+            })
+          ).status,
+          400,
+        );
+      }
+      assert.equal(
+        (
+          await fetch(`${base}/assess`, {
+            method: 'POST',
+            headers: { ...auth, 'X-Org-Id': 'foreign-agency', 'Content-Type': 'application/json' },
+            body: '{}',
+          })
+        ).status,
+        403,
+      );
       syntheticProvider.configured = true;
       const configured = await fetch(`${base}/assistant/status`, { headers: auth });
       assert.equal(((await configured.json()) as { model: string }).model, 'gpt-6-luna');

@@ -65,7 +65,54 @@ export class PlannerFaceCurrencyDto {
   @IsIn(['NGN', 'GHS', 'XAF', 'XOF', 'USD', 'EUR'])
   currency!: string;
 }
+export class PlannerFitPreferencesDto {
+  @ApiProperty({ enum: [1] }) @IsIn([1]) version!: 1;
+  @ApiPropertyOptional({ type: [String], maxItems: 8 })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(80, { each: true })
+  targetAreas?: string[];
+  @ApiPropertyOptional({ type: [String], maxItems: 8 })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(80, { each: true })
+  targetCorridors?: string[];
+  @ApiPropertyOptional({ type: [String], maxItems: 8 })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(80, { each: true })
+  audienceTags?: string[];
+  @ApiPropertyOptional({ enum: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] })
+  @IsOptional()
+  @IsIn(['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'])
+  approachDirection?: 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
+  @ApiPropertyOptional({ enum: ['any', 'day', 'night'] })
+  @IsOptional()
+  @IsIn(['any', 'day', 'night'])
+  daypart?: 'any' | 'day' | 'night';
+  @ApiPropertyOptional({ enum: ['balanced', 'coverage', 'value'] })
+  @IsOptional()
+  @IsIn(['balanced', 'coverage', 'value'])
+  goal?: 'balanced' | 'coverage' | 'value';
+}
 export class PlannerContextDto {
+  @ApiPropertyOptional({ type: PlannerFitPreferencesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PlannerFitPreferencesDto)
+  fitPreferences?: PlannerFitPreferencesDto;
   @ApiPropertyOptional({
     default: false,
     description:
@@ -161,6 +208,19 @@ export class AssistantMessageDto {
   @ValidateNested({ each: true })
   @Type(() => PlannerHistoryDto)
   history?: PlannerHistoryDto[];
+  @ApiPropertyOptional({ type: PlannerContextDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PlannerContextDto)
+  context?: PlannerContextDto;
+}
+
+/** Read-only deterministic assessment: no document, history or provider transfer. */
+export class PlannerAssessmentDto {
+  @ApiPropertyOptional({ enum: ['en', 'fr'], default: 'en' })
+  @IsOptional()
+  @IsIn(['en', 'fr'])
+  locale?: 'en' | 'fr';
   @ApiPropertyOptional({ type: PlannerContextDto })
   @IsOptional()
   @ValidateNested()

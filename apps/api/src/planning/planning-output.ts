@@ -10,6 +10,7 @@ import type { ResearchProvenance } from '../common/research-inventory';
 
 export const RECOMMENDATION_REASON_CODES = [
   'planning_interest',
+  'brief_fit',
   'source_specs',
   'source_monthly_price',
   'compare_location',
@@ -71,6 +72,8 @@ export interface CanonicalFacts {
 const LABELS = {
   en: {
     planning_interest: 'Planning interest; operator confirmation required.',
+    brief_fit:
+      'Deterministic provisional brief fit; inspect factor evidence and confirm with the operator.',
     source_specs: 'Compare the recorded display specifications.',
     source_monthly_price: 'Published monthly asking price; current operator quote required.',
     compare_location: 'Compare source coordinates; verify the physical location.',
@@ -93,6 +96,8 @@ const LABELS = {
   },
   fr: {
     planning_interest: 'Intérêt de planification ; confirmation de l’opérateur requise.',
+    brief_fit:
+      'Adéquation provisoire déterministe au brief ; examinez les facteurs et confirmez avec l’opérateur.',
     source_specs: 'Comparez les caractéristiques enregistrées des écrans.',
     source_monthly_price: 'Prix mensuel publié ; devis actuel de l’opérateur requis.',
     compare_location: 'Comparez les coordonnées sources ; vérifiez l’emplacement physique.',

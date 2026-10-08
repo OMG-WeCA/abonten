@@ -220,3 +220,47 @@ test('research references can be retained as interest without confirming availab
     'unavailable',
   );
 });
+
+test('additive planning preferences reopen safely without cached scores or changing legacy drafts', () => {
+  const fitPreferences = {
+    version: 1,
+    targetAreas: ['Ikoyi', 'ikoyi'],
+    targetCorridors: ['A source road'],
+    audienceTags: ['professionals'],
+    daypart: 'night',
+    goal: 'coverage',
+    approachDirection: 'N',
+    score: 99,
+    sources: ['invented'],
+  };
+  const parsed = parseAgencyDraft(
+    JSON.stringify({
+      ...draft,
+      fitPreferences,
+      scoringVersion: 'brief-fit-v1-provisional:coverage',
+      assessment: { score: 99 },
+    }),
+  );
+  assert.deepEqual(parsed?.fitPreferences, {
+    version: 1,
+    targetAreas: ['ikoyi'],
+    targetCorridors: ['A source road'],
+    audienceTags: ['professionals'],
+    daypart: 'night',
+    goal: 'coverage',
+    approachDirection: 'N',
+  });
+  assert.equal(parsed?.scoringVersion, 'brief-fit-v1-provisional:coverage');
+  assert.equal(JSON.stringify(parsed).includes('invented'), false);
+  assert.equal(JSON.stringify(parsed).includes('99'), false);
+  assert.deepEqual(parseAgencyDraft(JSON.stringify(draft)), draft);
+  for (const preferences of [
+    { version: 2 },
+    { version: 1, audienceTags: ['x'.repeat(81)] },
+    { version: 1, targetAreas: Array(9).fill('Lagos') },
+    { version: 1, daypart: 'all-night' },
+    { version: 1, approachDirection: 'side' },
+    { version: 1, goal: 'measured_reach' },
+  ])
+    assert.equal(parseAgencyDraft(JSON.stringify({ ...draft, fitPreferences: preferences })), null);
+});

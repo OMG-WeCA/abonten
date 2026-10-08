@@ -1,4 +1,5 @@
 'use client';
+import type { PlanningFitPreferences } from '@abonten/contracts/planning-draft';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -40,6 +41,8 @@ import {
   type AgencyDraft,
 } from '../../lib/agency-draft';
 import {
+  assessPlanner,
+  type PlanningAssessment,
   getAgencySite as getBoard,
   searchAgencySites as searchBoards,
   type AgencyMarketplaceSite as MarketplaceBoard,
@@ -54,6 +57,7 @@ import {
   type PlanningWindow,
 } from '../../lib/agency-planning';
 import type { SiteDetail } from '../../lib/sites-api';
+import { buildPlannerContext } from '../../lib/planner-conversation';
 import { buildPlannerSelection } from '../../lib/planner-selection';
 import { AgencyMap } from './AgencyMap';
 import { BoardDetail, money } from './BoardDetail';
@@ -173,6 +177,11 @@ function AgencyWorkspace() {
   const [query, setQuery] = useState('');
   const [format, setFormat] = useState('');
   const [briefDerivedContext, setBriefDerivedContext] = useState(false);
+  const [fitPreferences, setFitPreferences] = useState<PlanningFitPreferences>();
+  const [scoringVersion, setScoringVersion] = useState<string>();
+  const [assessment, setAssessment] = useState<PlanningAssessment>();
+  const [assessmentState, setAssessmentState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [assessmentRetry, setAssessmentRetry] = useState(0);
   const [budget, setBudget] = useState('');
   const [currency, setCurrency] = useState(org?.defaultCurrency || 'NGN');
   const [boards, setBoards] = useState<MarketplaceBoard[]>([]);
@@ -273,6 +282,11 @@ function AgencyWorkspace() {
     setReplayPending(false);
     setShortlist([]);
     setOptions({});
+    setAssessment(undefined);
+    if (!stored) {
+      setFitPreferences(undefined);
+      setScoringVersion(undefined);
+    }
     setSelectedId(null);
     setNotice('');
     setDraftNotice('');
@@ -285,6 +299,8 @@ function AgencyWorkspace() {
       setBudget(stored.budget);
       setBriefDerivedContext(stored.briefDerivedContext === true);
       setCurrency(stored.currency);
+      setFitPreferences(stored.fitPreferences);
+      setScoringVersion(stored.scoringVersion);
       pendingDraftRef.current = stored.faces;
       draftFaceOrderRef.current = stored.faces.map((ref) => ref.faceId);
       setUnrestoredFaces(stored.faces);
@@ -475,6 +491,8 @@ function AgencyWorkspace() {
         budget,
         currency,
         ...(briefDerivedContext ? { briefDerivedContext: true } : {}),
+        ...(fitPreferences ? { fitPreferences } : {}),
+        ...(scoringVersion ? { scoringVersion } : {}),
         faces: orderPlanningFaces(
           [
             ...shortlist.map((item) => ({
@@ -534,7 +552,7 @@ function AgencyWorkspace() {
   useEffect(() => {
     recommendationRef.current?.abort();
     setRecommending(false);
-  }, [budget, currency, country, query, format]);
+  }, [budget, currency, country, query, format, fitPreferences, locale]);
 
   // A new flight always rechecks availability and invalidates in-progress recommendations.
   useEffect(() => {
@@ -619,6 +637,73 @@ function AgencyWorkspace() {
     );
     return () => controller.abort();
   }, [orgId, selectedId, window, validWindow, retry]);
+
+  const scoreSelection = buildPlannerSelection(shortlist, selectedId);
+  const assessmentIds = scoreSelection.selectedSiteIds.join(',');
+  const assessmentFaceIds = scoreSelection.selectedFaceIds.join(',');
+  const assessmentCurrencies = JSON.stringify(scoreSelection.faceCurrencies);
+  const assessmentTruncated = scoreSelection.selectionTruncated;
+  useEffect(() => {
+    const controller = new AbortController();
+    setAssessment(undefined);
+    setAssessmentState('loading');
+    if (!draftReady || !validWindow || restoringDraft) return () => controller.abort();
+    const timer = globalThis.setTimeout(() => {
+      void assessPlanner(
+        orgId,
+        buildPlannerContext(
+          {
+            filters: { country, search: query, format },
+            fitPreferences,
+            selectedSiteIds: assessmentIds.split(',').filter(Boolean),
+            selectedFaceIds: assessmentFaceIds.split(',').filter(Boolean),
+            faceCurrencies: JSON.parse(assessmentCurrencies) as {
+              faceId: string;
+              currency: string;
+            }[],
+            selectionTruncated: assessmentTruncated,
+          },
+          window,
+          budget,
+          currency,
+        ),
+        locale,
+        controller.signal,
+      ).then(
+        (reply) => {
+          if (!controller.signal.aborted) {
+            setAssessment(reply.assessment);
+            setAssessmentState(reply.assessment ? 'ready' : 'error');
+          }
+        },
+        () => {
+          if (!controller.signal.aborted) setAssessmentState('error');
+        },
+      );
+    }, 250);
+    return () => {
+      controller.abort();
+      globalThis.clearTimeout(timer);
+    };
+  }, [
+    orgId,
+    country,
+    query,
+    format,
+    fitPreferences,
+    window,
+    budget,
+    currency,
+    locale,
+    assessmentIds,
+    assessmentFaceIds,
+    assessmentCurrencies,
+    assessmentTruncated,
+    draftReady,
+    validWindow,
+    restoringDraft,
+    assessmentRetry,
+  ]);
 
   useEffect(
     () => () => {
@@ -754,6 +839,8 @@ function AgencyWorkspace() {
       );
       return;
     }
+    recommendationRef.current?.abort();
+    setRecommending(false);
     if (!draftFaceOrderRef.current.includes(faceId)) draftFaceOrderRef.current.push(faceId);
     pendingDraftRef.current = pendingDraftRef.current.filter((ref) => ref.faceId !== faceId);
     setUnrestoredFaces((refs) => refs.filter((ref) => ref.faceId !== faceId));
@@ -784,97 +871,76 @@ function AgencyWorkspace() {
     recommendationRef.current = controller;
     setRecommending(true);
     setActionError('');
-    const candidates: Array<{ item: ShortlistFace; cost: number }> = [];
-    let failed = 0;
     try {
-      // Bounded requests for the visible marketplace results; no private inventory or model output.
-      for (let start = 0; start < boards.length; start += 4) {
-        if (controller.signal.aborted) return;
-        await Promise.all(
-          boards.slice(start, start + 4).map(async (board) => {
-            try {
-              const [site, snapshot] = await Promise.all([
-                getBoard(orgId, board.id, controller.signal),
-                getSiteOptions(orgId, board.id, window, controller.signal),
-              ]);
-              if (controller.signal.aborted) return;
-              setShortlist((current) =>
-                current.some((item) => item.site.id === site.id)
-                  ? current.map((item) => (item.site.id === site.id ? { ...item, site } : item))
-                  : current,
-              );
-              setOptions((current) => ({ ...current, [site.id]: { ...snapshot, window } }));
-              const priced = site.faces
-                .filter(
-                  (face) =>
-                    face.bookable &&
-                    snapshot.faces.some((option) => option.faceId === face.id && option.available),
-                )
-                .map((face) => ({
-                  face,
-                  estimate: estimateFaceCost(site, face, window, currency, {
-                    status: 'available',
-                    window,
-                    checkedAt: snapshot.checkedAt,
-                  }),
-                }))
-                .filter(
-                  (
-                    item,
-                  ): item is typeof item & {
-                    estimate: Extract<FaceCostEstimate, { status: 'ready' }>;
-                  } => item.estimate.status === 'ready',
-                )
-                .sort((a, b) => a.estimate.amount - b.estimate.amount);
-              if (priced[0])
-                candidates.push({
-                  item: { site, faceId: priced[0].face.id, pricingCurrency: currency },
-                  cost: priced[0].estimate.amount,
-                });
-            } catch {
-              if (!controller.signal.aborted) failed += 1;
-            }
-          }),
-        );
-      }
+      // This explicit action rebuilds the portfolio; the server loads all evidence and enforces the budget.
+      const reply = await assessPlanner(
+        orgId,
+        buildPlannerContext(
+          {
+            filters: { country, search: query, format },
+            fitPreferences,
+            selectedSiteIds: [],
+            selectedFaceIds: [],
+          },
+          window,
+          budget,
+          currency,
+        ),
+        locale,
+        controller.signal,
+      );
       if (controller.signal.aborted) return;
-      if (boards.length > 0 && failed === boards.length) {
-        setActionError(
+      const refs = reply.recommendations ?? [];
+      if (!reply.assessment || reply.assessment.portfolio.status !== 'ready' || !refs.length) {
+        setNotice(
           t(
-            'Boards could not be checked. Your draft shortlist is preserved; retry when the connection recovers.',
-            'Les panneaux n’ont pas pu être vérifiés. Votre sélection est conservée ; réessayez après reconnexion.',
+            'No supported portfolio satisfies these constraints. Your existing shortlist is preserved; review the budget, dates and missing evidence.',
+            'Aucun portefeuille étayé ne satisfait ces contraintes. La sélection actuelle est conservée ; vérifiez le budget, les dates et les données manquantes.',
           ),
         );
         return;
       }
-      candidates.sort(
-        (a, b) => a.cost - b.cost || a.item.site.name.localeCompare(b.item.site.name),
-      );
-      let remaining = budgetAmount;
-      const proposal: ShortlistFace[] = [];
-      for (const candidate of candidates)
-        if (candidate.cost <= remaining) {
-          proposal.push(candidate.item);
-          remaining -= candidate.cost;
-        }
-      // Explicit action replaces the draft; a cancelled or stale request never does.
+      const sites = new globalThis.Map<string, SiteDetail>();
+      for (let start = 0; start < refs.length; start += 4) {
+        await Promise.all(
+          refs.slice(start, start + 4).map(async (ref) => {
+            if (sites.has(ref.siteId)) return;
+            const site = await getBoard(orgId, ref.siteId, controller.signal);
+            sites.set(ref.siteId, site);
+          }),
+        );
+        if (controller.signal.aborted) return;
+      }
+      const proposal = refs.map((ref): ShortlistFace => {
+        const site = sites.get(ref.siteId);
+        if (!site || !site.faces.some((face) => face.id === ref.faceId))
+          throw new Error('The proposed face could not be rechecked.');
+        return { site, faceId: ref.faceId, pricingCurrency: currency };
+      });
+      if (controller.signal.aborted) return;
+      // A failure, cancellation or changed control never replaces the current draft.
       draftFaceOrderRef.current = proposal.map((item) => item.faceId);
       setShortlist(proposal);
       pendingDraftRef.current = [];
       setUnrestoredFaces([]);
       setUnavailableDraftFaces([]);
+      setScoringVersion(reply.assessment.version);
+      setAssessment(reply.assessment);
       setPlannerOpen(true);
       setNotice(
-        proposal.length
-          ? t(
-              `Shortlisted ${proposal.length} boards by lowest published media cost. ${failed ? `${failed} boards could not be checked.` : ''}`,
-              `${displayNumber(proposal.length, locale, { maximumFractionDigits: 0 })} panneaux sélectionnés par coût média croissant.${failed ? ` ${displayNumber(failed, locale, { maximumFractionDigits: 0 })} panneaux n’ont pas pu être vérifiés.` : ''}`,
-            )
-          : t(
-              'No checked faces fit this budget, currency and flight. Adjust the constraints.',
-              'Aucune face vérifiée ne correspond au budget, à la devise et aux dates.',
-            ),
+        t(
+          `Selected ${proposal.length} faces by supported brief fit under the media ceiling. Provisional; verify quotes and availability.`,
+          `${displayNumber(proposal.length, locale)} faces choisies selon la pertinence étayée et le plafond média. Provisoire ; vérifier les devis et la disponibilité.`,
+        ),
       );
+    } catch {
+      if (!controller.signal.aborted)
+        setActionError(
+          t(
+            'Scoring could not be completed. Your shortlist is preserved; retry when ready.',
+            'La notation n’a pas abouti. Votre sélection est conservée ; réessayez.',
+          ),
+        );
     } finally {
       if (!controller.signal.aborted) setRecommending(false);
     }
@@ -916,6 +982,8 @@ function AgencyWorkspace() {
     setUnavailableDraftFaces([]);
   };
   const removeSelection = (id: string) => {
+    recommendationRef.current?.abort();
+    setRecommending(false);
     draftFaceOrderRef.current = draftFaceOrderRef.current.filter((face) => face !== id);
     pendingDraftRef.current = pendingDraftRef.current.filter((ref) => ref.faceId !== id);
     setShortlist((items) => items.filter((item) => item.faceId !== id));
@@ -931,6 +999,8 @@ function AgencyWorkspace() {
     budget,
     currency,
     ...(briefDerivedContext ? { briefDerivedContext: true } : {}),
+    ...(fitPreferences ? { fitPreferences } : {}),
+    ...(scoringVersion ? { scoringVersion } : {}),
     faces: orderPlanningFaces(
       [
         ...shortlist.map((item) => ({
@@ -1593,6 +1663,12 @@ function AgencyWorkspace() {
             orgId={orgId}
             locale={locale}
             faceId={faceId}
+            fitAssessment={
+              assessment &&
+              [...assessment.portfolio.selectedAssessments, ...assessment.assessments].find(
+                (item) => item.faceId === faceId && item.siteId === detail.id,
+              )
+            }
             onFace={(id) => {
               preferredFaceRef.current = { siteId: detail.id, faceId: id };
               setFaceId(id);
@@ -1636,6 +1712,11 @@ function AgencyWorkspace() {
               </div>
             )}
             <AgencyCompare
+              fitAssessments={
+                assessment
+                  ? [...assessment.portfolio.selectedAssessments, ...assessment.assessments]
+                  : undefined
+              }
               unresolvedCount={unrestoredFaces.length}
               shortlist={shortlist}
               estimates={estimates}
@@ -1686,9 +1767,16 @@ function AgencyWorkspace() {
           currency={currency}
           onCurrency={setCurrency}
           shortlist={shortlist}
+          fitPreferences={fitPreferences}
+          onFitPreferences={setFitPreferences}
+          assessment={assessment}
+          assessmentState={assessmentState}
+          onRetryAssessment={() => setAssessmentRetry((attempt) => attempt + 1)}
+          storedScoringVersion={scoringVersion}
           plannerSelectionOmittedFaces={plannerSelection.omittedFaces}
           plannerContext={{
             filters: { country, search: query, format },
+            fitPreferences,
             selectedSiteIds: plannerSelection.selectedSiteIds,
             selectedFaceIds: plannerSelection.selectedFaceIds,
             faceCurrencies: plannerSelection.faceCurrencies,

@@ -1,4 +1,7 @@
 'use client';
+import type { PlanningFitPreferences } from '@abonten/contracts/planning-draft';
+import { BriefFitPreferences } from './BriefFitPreferences';
+import { BriefFitScore } from './BriefFitScore';
 import { useUnsavedNavigation } from '../../lib/unsaved-navigation';
 
 import { useEffect, useRef, useState } from 'react';
@@ -12,6 +15,7 @@ import {
   type ExtractedBrief,
   type PlannerContext,
   type PlannerReply,
+  type PlanningAssessment,
 } from '../../lib/agency-api';
 import {
   buildPlannerContext,
@@ -53,6 +57,12 @@ interface PlannerProps {
   currency: string;
   onCurrency: (value: string) => void;
   shortlist: ShortlistFace[];
+  fitPreferences?: PlanningFitPreferences;
+  onFitPreferences?: (value: PlanningFitPreferences) => void;
+  assessment?: PlanningAssessment;
+  assessmentState?: 'loading' | 'ready' | 'error';
+  onRetryAssessment?: () => void;
+  storedScoringVersion?: string;
   estimates: FaceCostEstimate[];
   summary: ReturnType<typeof summarizeBudget>;
   distances: ReturnType<typeof selectionDistances>;
@@ -67,7 +77,12 @@ interface PlannerProps {
   notice: string;
   plannerContext?: Pick<
     PlannerContext,
-    'filters' | 'selectedSiteIds' | 'selectedFaceIds' | 'faceCurrencies' | 'selectionTruncated'
+    | 'filters'
+    | 'selectedSiteIds'
+    | 'selectedFaceIds'
+    | 'faceCurrencies'
+    | 'selectionTruncated'
+    | 'fitPreferences'
   >;
   plannerSelectionOmittedFaces?: number;
 }
@@ -493,6 +508,87 @@ export function AgencyPlanner(props: PlannerProps) {
               )
             : `${displayDateOnly(props.window.startDate, locale)} → ${displayDateOnly(props.window.endDate, locale)} · ${t('end exclusive', 'fin exclusive')}`}
         </p>
+        {props.onFitPreferences && (
+          <BriefFitPreferences
+            value={props.fitPreferences}
+            onChange={props.onFitPreferences}
+            locale={locale}
+            disabled={!props.canPlan}
+          />
+        )}
+        <p className="agency-assumption-note">
+          {t(
+            'Deterministic, provisional brief-fit scoring · no audience or reach claim. Displayed scores are recalculated from current sources when controls change or saved plans reopen.',
+            'Notation déterministe et provisoire · aucune mesure d’audience ou de couverture. Les notes affichées sont recalculées selon les sources actuelles après modification des paramètres ou réouverture d’un plan enregistré.',
+          )}
+        </p>
+        {props.assessmentState === 'loading' && (
+          <p role="status" className="agency-assumption-note">
+            {t('Updating brief fit…', 'Mise à jour de la pertinence…')}
+          </p>
+        )}
+        {props.assessmentState === 'error' && (
+          <p role="alert" className="agency-assumption-note">
+            {t(
+              'Brief fit unavailable. Your shortlist is kept.',
+              'Pertinence indisponible. Votre sélection est conservée.',
+            )}{' '}
+            <button className="agency-text-button" onClick={props.onRetryAssessment}>
+              {t('Retry scoring', 'Réessayer la notation')}
+            </button>
+          </p>
+        )}
+        {props.assessment && (
+          <details className="agency-distance-list">
+            <summary>
+              {t('Scoring method', 'Méthode de notation')} · {props.assessment.version}
+            </summary>
+            <p>
+              {t(
+                'Provisional product weights, pending local calibration',
+                'Poids produit provisoires, avant calibration locale',
+              )}{' '}
+              : {t('geography', 'géographie')}{' '}
+              {displayNumber(props.assessment.config.weights.geography, locale)}%,{' '}
+              {t('audience', 'audience')}{' '}
+              {displayNumber(props.assessment.config.weights.audience, locale)}%,{' '}
+              {t('visibility/exposure', 'visibilité/exposition')}{' '}
+              {displayNumber(props.assessment.config.weights.visibility, locale)}%,{' '}
+              {t('geographic contribution', 'apport géographique')}{' '}
+              {displayNumber(props.assessment.config.weights.contribution, locale)}%,{' '}
+              {t('value', 'valeur')} {displayNumber(props.assessment.config.weights.value, locale)}
+              %.{' '}
+              {t(
+                'Unknown factors remain unknown; the supported contribution is never renormalized.',
+                'Les critères inconnus restent inconnus ; la contribution étayée n’est jamais renormalisée.',
+              )}
+            </p>
+            <p>
+              {t(
+                'Bounded deterministic portfolio search. Geographic overlap is a planning proxy, not deduplicated reach. Availability and commercial quotes still need verification.',
+                'Recherche déterministe bornée du portefeuille. Le chevauchement géographique est un indicateur de planification, pas une couverture dédupliquée. Disponibilité et devis restent à vérifier.',
+              )}
+            </p>
+            {props.storedScoringVersion &&
+              props.storedScoringVersion !== props.assessment.version && (
+                <p>
+                  {t(
+                    'Saved methodology changed; scores were recalculated.',
+                    'La méthode enregistrée a changé ; les notes ont été recalculées.',
+                  )}
+                </p>
+              )}
+            {(props.assessment.portfolio.truncated ||
+              (props.plannerSelectionOmittedFaces ?? 0) > 0) && (
+              <p>
+                {t(
+                  'This assessment covers a bounded subset; unassessed faces have no score and whole-plan fit remains unconfirmed.',
+                  'Cette évaluation couvre un sous-ensemble borné ; les autres faces n’ont pas de note et le budget global reste non confirmé.',
+                )}
+              </p>
+            )}
+          </details>
+        )}
         {brief && (
           <div className="agency-brief">
             <div className="agency-brief-heading">
@@ -675,6 +771,16 @@ export function AgencyPlanner(props: PlannerProps) {
                   >
                     <X size={14} />
                   </button>
+                  <BriefFitScore
+                    assessment={
+                      props.assessment &&
+                      [
+                        ...props.assessment.portfolio.selectedAssessments,
+                        ...props.assessment.assessments,
+                      ].find((face) => face.faceId === item.faceId && face.siteId === item.site.id)
+                    }
+                    locale={locale}
+                  />
                   {item.site.isResearchReference ? (
                     <p role="status" className="text-muted">
                       {t(
@@ -747,8 +853,8 @@ export function AgencyPlanner(props: PlannerProps) {
           {props.recommending
             ? t('Checking boards…', 'Vérification des panneaux…')
             : shortlist.length
-              ? t('Rebuild shortlist within budget', 'Recréer une sélection selon le budget')
-              : t('Find boards within budget', 'Trouver des panneaux selon le budget')}
+              ? t('Rebuild for brief & budget', 'Recréer selon brief et budget')
+              : t('Build for brief & budget', 'Créer selon brief et budget')}
         </button>
         {props.recommending && (
           <button
@@ -760,8 +866,8 @@ export function AgencyPlanner(props: PlannerProps) {
         )}
         <p className="agency-assumption-note">
           {t(
-            'Replaces shortlist · one face per board, lowest media cost first · no reservation.',
-            'Remplace la sélection · une face par panneau, coût média croissant · aucune réservation.',
+            'Replaces shortlist · supported brief fit under budget · no reservation.',
+            'Remplace la sélection · pertinence étayée selon le budget · aucune réservation.',
           )}
         </p>
         {props.notice && (
@@ -1135,6 +1241,19 @@ export function ReplyFacts({
                     ? agencyEvidenceText(reference.reason, locale)
                     : reference.reason}
                 </p>
+              )}
+              {reply.assessment && (
+                <BriefFitScore
+                  assessment={
+                    reply.assessment.portfolio.selectedAssessments.find(
+                      (item) => item.faceId === face.faceId && item.siteId === site.siteId,
+                    ) ??
+                    reply.assessment.assessments.find(
+                      (item) => item.faceId === face.faceId && item.siteId === site.siteId,
+                    )
+                  }
+                  locale={locale}
+                />
               )}
               {face.faceLabel && (
                 <p>

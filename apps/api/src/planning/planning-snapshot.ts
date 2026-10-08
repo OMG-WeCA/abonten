@@ -2,6 +2,13 @@
  * Full canonical facts remain in the API response. Numeric prices/distances and
  * identifiers are never rewritten. Enrichment and nonselected face detail are reduced explicitly. */
 const SNAPSHOT_LIMIT = 96 * 1024;
+export class PlanningSnapshotTooLargeError extends Error {
+  constructor() {
+    super(
+      'The canonical planning context exceeds the bounded model input. Reduce selections or use local assessment.',
+    );
+  }
+}
 type ObjectValue = Record<string, unknown>;
 type SnapshotFacts = { sites: readonly { enrichment: unknown; faces?: readonly unknown[] }[] };
 type CompactSnapshot<T extends SnapshotFacts> = Omit<T, 'sites'> & {
@@ -59,6 +66,27 @@ function compact(value: unknown, key = ''): unknown {
 export function compactPlanningSnapshot<T extends SnapshotFacts>(facts: T): CompactSnapshot<T> {
   const snapshot: ObjectValue = {
     ...facts,
+    ...('assessment' in facts && object(facts.assessment) && object(facts.assessment.portfolio)
+      ? {
+          assessment: {
+            version: facts.assessment.version,
+            provisional: true,
+            config: facts.assessment.config,
+            portfolio: {
+              version: facts.assessment.portfolio.version,
+              status: facts.assessment.portfolio.status,
+              selectedFaceIds: facts.assessment.portfolio.selectedFaceIds,
+              selectedSiteIds: facts.assessment.portfolio.selectedSiteIds,
+              cost: facts.assessment.portfolio.cost,
+              budgetRemaining: facts.assessment.portfolio.budgetRemaining,
+              confirmedBudgetFit: false,
+              algorithm: facts.assessment.portfolio.algorithm,
+              diagnostics: facts.assessment.portfolio.diagnostics,
+            },
+            contextDetailReduced: true,
+          },
+        }
+      : {}),
     sites: facts.sites.map((site) => ({
       ...site,
       ...(Array.isArray(site.faces) ? { faces: [...site.faces] } : {}),
@@ -103,7 +131,16 @@ export function compactPlanningSnapshot<T extends SnapshotFacts>(facts: T): Comp
       let removable = -1;
       for (let faceIndex = faces.length - 1; faceIndex >= 0; faceIndex--) {
         const face: unknown = faces[faceIndex];
-        if (object(face) && face.selected !== true) {
+        if (
+          object(face) &&
+          face.selected !== true &&
+          !(
+            object(snapshot.assessment) &&
+            object(snapshot.assessment.portfolio) &&
+            Array.isArray(snapshot.assessment.portfolio.selectedFaceIds) &&
+            snapshot.assessment.portfolio.selectedFaceIds.includes(face.faceId)
+          )
+        ) {
           removable = faceIndex;
           break;
         }
@@ -113,5 +150,7 @@ export function compactPlanningSnapshot<T extends SnapshotFacts>(facts: T): Comp
       context.omittedNonselectedFaces = Number(context.omittedNonselectedFaces) + 1;
     }
   }
+  if (Buffer.byteLength(JSON.stringify(snapshot), 'utf8') > SNAPSHOT_LIMIT)
+    throw new PlanningSnapshotTooLargeError();
   return snapshot as unknown as CompactSnapshot<T>;
 }

@@ -32,12 +32,13 @@ import { RequireCapabilities } from '../capabilities/require-capabilities.decora
 import { PlanningService } from './planning.service';
 import { BriefAdmissionInterceptor, type BriefUploadRequest } from './brief-admission.interceptor';
 import { BriefExtractionService } from './brief-extraction.service';
-import { AssistantMessageDto, SiteOptionsQueryDto } from './dto/planning.dto';
+import { AssistantMessageDto, PlannerAssessmentDto, SiteOptionsQueryDto } from './dto/planning.dto';
 import { BRIEF_MAX_BYTES } from './brief-parser';
 import {
   AssistantStatusResponse,
   ExtractedBriefResponse,
   PlannerReplyResponse,
+  PlannerAssessmentResponse,
   SiteOptionsResponse,
 } from './dto/planning-response.dto';
 
@@ -98,6 +99,52 @@ export class PlanningController {
     res.once('close', cancel);
     try {
       return await this.service.plan(
+        dto,
+        {
+          userId: req.user.userId,
+          user: req.user,
+          orgId:
+            typeof req.headers['x-org-id'] === 'string'
+              ? req.headers['x-org-id']
+              : (req.user.activeOrgId ?? ''),
+        },
+        abort.signal,
+      );
+    } finally {
+      req.off('aborted', cancel);
+      res.off('close', cancel);
+    }
+  }
+
+  @Post('assess')
+  @ApiOperation({
+    summary:
+      'Read-only, server-grounded deterministic brief-fit scoring and budgeted portfolio; no AI provider transfer',
+  })
+  @ApiResponse({ status: 201, type: PlannerAssessmentResponse })
+  @ApiResponse({ status: 400, description: 'Invalid confirmed preferences, selection or flight' })
+  @ApiResponse({
+    status: 429,
+    description:
+      'Process-local four assessment workers or thirty user/org requests per minute; manual retry',
+  })
+  @ApiResponse({
+    status: 504,
+    description: 'Thirty-second local assessment deadline; manual retry',
+  })
+  async assess(
+    @Body() dto: PlannerAssessmentDto,
+    @Req() req: Request & { user: AuthenticatedUser },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const abort = new AbortController();
+    const cancel = () => {
+      if (!res.writableEnded) abort.abort();
+    };
+    req.once('aborted', cancel);
+    res.once('close', cancel);
+    try {
+      return await this.service.assess(
         dto,
         {
           userId: req.user.userId,

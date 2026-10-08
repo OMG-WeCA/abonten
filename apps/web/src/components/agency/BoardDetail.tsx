@@ -19,6 +19,8 @@ import { projectPlanningEnrichment } from '../../lib/agency-enrichment';
 import { AuthBoardVideo, MediaEvidence } from '../sites/BoardMedia';
 import { GeographicContextContent } from '../sites/GeographicContextPanel';
 import { prettyFormat, prettyIllumination } from '../sites/sites-ui';
+import type { PlanningFaceAssessment } from '../../../../api/src/planning/planning-scoring';
+import { BriefFitScore } from './BriefFitScore';
 import { researchFaceLabel } from '../../lib/research-reference';
 
 export function BoardDetail({
@@ -26,6 +28,7 @@ export function BoardDetail({
   orgId,
   locale,
   faceId,
+  fitAssessment,
   onFace,
   estimate: providedEstimate,
   selected,
@@ -40,6 +43,7 @@ export function BoardDetail({
   orgId: string;
   locale: 'en' | 'fr';
   faceId: string;
+  fitAssessment?: PlanningFaceAssessment;
   onFace: (id: string) => void;
   estimate: FaceCostEstimate | null;
   selected: boolean;
@@ -115,6 +119,7 @@ export function BoardDetail({
         </button>
       </header>
       <div className="agency-board-scroll">
+        <BriefFitScore assessment={fitAssessment} locale={locale} />
         {!site.isResearchReference && <BoardPhoto site={site} locale={locale} />}
         {site.format === 'digital_led' &&
           site.assets.some(

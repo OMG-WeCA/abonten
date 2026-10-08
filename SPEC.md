@@ -610,6 +610,40 @@ Cost inclusion labels refer only to selected faces contributing priced estimates
 to the displayed draft subtotal; retrieved but unselected or unpriced DEMO records
 must not label a real-only or empty draft as including DEMO costs.
 
+**Brief-fit planning amendment (2026-10-08, MVP §5.3 / V1 scoring).** The agency
+planner uses one server-side deterministic face-level assessment and budgeted
+portfolio selector for automatic suggestions and AI proposals. Confirmed optional
+preferences identify target areas, corridors, audience tags, approach direction,
+daypart and planning goal; existing country/city/format/flight/budget constraints
+remain authoritative. Client and model scores or invented enrichment are not
+accepted. The versioned default product policy weights geographic fit 30%, audience
+fit 20%, directional visibility and usable exposure 30%, incremental geographic or
+corridor contribution 10%, and value 10%. These configurable provisional weights
+are product choices, not empirical measurement coefficients or certification.
+
+Unsupported factors remain null with explicit uncertainty bounds; the displayed
+supported score contribution/range is never renormalized over missing evidence.
+Evidence coverage, confidence and verified/owner-reported/modeled/unknown provenance
+are separate from fit. Optional traffic is not a prerequisite. Unknown prices cannot
+establish budget fit; unknown availability is provisional planning interest only.
+Directional evidence considers face and approach bearings, distance, obstruction,
+speed/dwell and lighting when supported, without a universal roadside penalty.
+Research coordinates cannot establish precise angular geometry. Digital exposure
+needs schedule/daypart, spot/loop and dwell context; share of time alone is insufficient.
+Geographic redundancy is a planning proxy, never deduplicated reach. No unsupported
+OTS, reach, exposure probability or CPM is produced. MRC 2025 sections 3.2/3.3,
+Route attention guidance and Geopath 2019 inform measurement distinctions; the WOO
+2026 public summary is contextual only, its gated full text has not been reviewed.
+
+Portfolio selection applies comparable full-flight currency-qualified costs, or
+explicitly preliminary exact-calendar-month research asking comparisons, and hard
+constraints using a disclosed bounded deterministic search, with stable ties
+and diagnosed infeasibility. AI cannot override its admitted recommendations.
+Existing real inventory and saved plans are preserved. Optional draft-v1 preferences
+are additive; reopened plans disclose current scoring version and recalculation.
+Compact English/French scores, confidence and reasons expand into factor evidence
+and assumptions, including on mobile.
+
 **Key user stories.**
 
 - As a planner, I can draw a polygon over Lagos and see all bookable billboards inside it with KPI

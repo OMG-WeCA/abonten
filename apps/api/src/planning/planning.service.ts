@@ -6,13 +6,23 @@ import {
   Injectable,
   Inject,
   Optional,
+  PayloadTooLargeException,
 } from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { demoVisibilitySql, demoDisclosure } from '../common/demo-inventory';
 import { researchDisclosure, type ResearchProvenance } from '../common/research-inventory';
 import { GeographicContextService } from '../enrichment/geographic-context.service';
-import { compactPlanningSnapshot } from './planning-snapshot';
+import { compactPlanningSnapshot, PlanningSnapshotTooLargeError } from './planning-snapshot';
 import { canonicalRecommendationOutput, canonicalPlanningControls } from './planning-output';
+import { planningScoringCandidates } from './planning-scoring-adapter';
+import {
+  effectiveBriefFitConfig,
+  scorePlanningFace,
+  selectPlanningPortfolio,
+  type PlanningScoringBrief,
+  type PlanningFaceAssessment,
+} from './planning-scoring';
+import { normalizeFitPreferences } from './planning-drafts.validation';
 import { derivePlanningRetrieval, consentSafeProviderRequest } from './planning-retrieval';
 import {
   projectPlanningEnrichment,
@@ -31,7 +41,7 @@ import {
   type PlanningOutcome,
   type PlanningTelemetrySink,
 } from './planning-telemetry';
-import { AssistantMessageDto, SiteOptionsQueryDto } from './dto/planning.dto';
+import { AssistantMessageDto, PlannerAssessmentDto, SiteOptionsQueryDto } from './dto/planning.dto';
 import {
   OpenAiPlannerProvider,
   PLANNER_MODEL,
@@ -113,6 +123,89 @@ export class PlanningService {
       constraints,
       missing,
       requiresConfirmation: true as const,
+    };
+  }
+
+  private activeAssessments = 0;
+  private readonly assessmentRequests = new Map<string, { started: number; count: number }>();
+
+  async assess(
+    dto: PlannerAssessmentDto,
+    scope: { userId: string; orgId: string; user?: AuthenticatedUser },
+    signal?: AbortSignal,
+  ) {
+    if (!scope.userId || !scope.orgId)
+      throw new ForbiddenException('An authorized organization context is required.');
+    checkCancelled(signal);
+    const now = Date.now();
+    const key = `${scope.orgId}:${scope.userId}`;
+    for (const [key, entry] of this.assessmentRequests)
+      if (now - entry.started >= 60000) this.assessmentRequests.delete(key);
+    const entry = this.assessmentRequests.get(key) ?? { started: now, count: 0 };
+    if (this.activeAssessments >= 4 || entry.count >= 30)
+      throw new HttpException('Planning assessment capacity reached. Please retry manually.', 429);
+    if (this.assessmentRequests.size >= 2048 && !this.assessmentRequests.has(key))
+      throw new HttpException('Planning assessment capacity reached. Please retry manually.', 429);
+    entry.count++;
+    this.assessmentRequests.set(key, entry);
+    this.activeAssessments++;
+    const abort = new AbortController();
+    let timedOut = false;
+    const cancel = () => abort.abort();
+    signal?.addEventListener('abort', cancel, { once: true });
+    if (signal?.aborted) cancel();
+    const timer = setTimeout(() => {
+      timedOut = true;
+      abort.abort();
+    }, 30000);
+    let stop: () => void = () => {};
+    const interrupted = new Promise<never>((_resolve, reject) => {
+      stop = () =>
+        reject(
+          new HttpException(
+            timedOut
+              ? 'Planning assessment timed out. Please retry manually.'
+              : 'The planner request was cancelled.',
+            timedOut ? 504 : 499,
+          ),
+        );
+      abort.signal.addEventListener('abort', stop, { once: true });
+      if (abort.signal.aborted) stop();
+    });
+    const running = this.performAssessment(dto, scope, abort.signal).finally(() => {
+      this.activeAssessments--;
+    });
+    try {
+      return await Promise.race([running, interrupted]);
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', cancel);
+      abort.signal.removeEventListener('abort', stop);
+    }
+  }
+
+  private async performAssessment(
+    dto: PlannerAssessmentDto,
+    scope: { userId: string; orgId: string; user?: AuthenticatedUser },
+    signal = new AbortController().signal,
+  ) {
+    if (!scope.userId || !scope.orgId)
+      throw new ForbiddenException('An authorized organization context is required.');
+    checkCancelled(signal);
+    if (dto.context?.fitPreferences) normalizeFitPreferences(dto.context.fitPreferences);
+    const request: AssistantMessageDto = {
+      locale: dto.locale,
+      context: dto.context,
+      message: 'Assess confirmed planning controls.',
+    };
+    const facts = await this.ground(request, scope, signal, true);
+    checkCancelled(signal);
+    return {
+      ...this.assist(request),
+      ...canonicalRecommendationOutput(deterministicChoice(facts), facts, dto.locale ?? 'en'),
+      ...canonicalPlanningControls(facts, dto.locale ?? 'en'),
+      assessment: facts.assessment,
+      facts,
     };
   }
 
@@ -244,10 +337,23 @@ export class PlanningService {
     checkCancelled(signal);
     progress?.('grounding', facts.retrieval);
     if (!this.provider?.configured)
-      return { ...local, ...canonicalPlanningControls(facts, dto.locale ?? 'en'), facts };
+      return {
+        ...local,
+        ...canonicalRecommendationOutput(deterministicChoice(facts), facts, dto.locale ?? 'en'),
+        ...canonicalPlanningControls(facts, dto.locale ?? 'en'),
+        assessment: facts.assessment,
+        facts,
+      };
     const briefShared = dto.shareBriefWithProvider === true && Boolean(dto.briefText?.trim());
     progress?.('provider');
-    const snapshot = compactPlanningSnapshot(facts);
+    let snapshot: ReturnType<typeof compactPlanningSnapshot<typeof facts>>;
+    try {
+      snapshot = compactPlanningSnapshot(facts);
+    } catch (error) {
+      if (error instanceof PlanningSnapshotTooLargeError)
+        throw new PayloadTooLargeException(error.message);
+      throw error;
+    }
     const model = await this.provider.complete(
       {
         locale: dto.locale ?? 'en',
@@ -290,7 +396,12 @@ export class PlanningService {
       provider: 'openai' as const,
       model: PLANNER_MODEL,
       aiAvailable: true,
-      ...canonicalRecommendationOutput(model, facts, dto.locale ?? 'en'),
+      ...canonicalRecommendationOutput(
+        { ...model, recommendations: deterministicChoice(facts).recommendations },
+        facts,
+        dto.locale ?? 'en',
+      ),
+      assessment: facts.assessment,
       ...canonicalPlanningControls(facts, dto.locale ?? 'en'),
       briefShared,
       facts,
@@ -301,11 +412,16 @@ export class PlanningService {
     dto: AssistantMessageDto,
     scope: { userId: string; orgId: string; user?: AuthenticatedUser },
     signal: AbortSignal,
+    localOnly = false,
   ) {
-    const context = dto.context;
+    const context =
+      this.provider?.configured && !localOnly
+        ? consentSafeProviderRequest(dto).context
+        : dto.context;
+    if (context?.fitPreferences) normalizeFitPreferences(context.fitPreferences);
     const retrieval = derivePlanningRetrieval(dto);
     // Only the consent-safe intent may influence any facts or choices sent externally.
-    const intent = this.provider?.configured ? retrieval.provider : retrieval.local;
+    const intent = this.provider?.configured && !localOnly ? retrieval.provider : retrieval.local;
     const window = intent.window;
     if (
       context?.window &&
@@ -346,9 +462,9 @@ export class PlanningService {
     const ids = new Set(selectedSites);
     const discovered = new Set<string>();
     let pagesRead = 0;
-    let searchHasMore = false;
+    let searchHasMore: boolean;
     const queue = intent.queries.map((filters) => ({ filters, page: 1 }));
-    if (this.provider?.configured) {
+    {
       // Round-robin unions share one strict read budget, never three pages per city.
       while (queue.length && pagesRead < intent.maxPages) {
         checkCancelled(signal);
@@ -424,11 +540,18 @@ export class PlanningService {
                 'Research reference: published monthly asking price is indicative; a confirmed full-flight quote is unavailable.',
             }
           : window
-            ? estimateFaceCost(planningSite, face, window, faceCurrencies.get(face.id), {
-                status,
+            ? estimateFaceCost(
+                planningSite,
+                face,
                 window,
-                checkedAt,
-              })
+                faceCurrencies.get(face.id) ??
+                  (selectedFaces.has(face.id) ? undefined : intent.budget?.currency),
+                {
+                  status,
+                  window,
+                  checkedAt,
+                },
+              )
             : {
                 status: 'unavailable',
                 siteId: detail.id,
@@ -452,23 +575,9 @@ export class PlanningService {
           estimate,
         };
       });
-      const faceRank = (face: (typeof grounded)[number]) => {
-        if (face.availability === 'unavailable') return 3;
-        if (
-          !intent.budget ||
-          face.estimate.status !== 'ready' ||
-          face.estimate.currency !== intent.budget.currency
-        )
-          return 1;
-        return face.estimate.amount <= intent.budget.amount ? 0 : 2;
-      };
-      const includedFaces = [
-        ...grounded.filter((face) => face.selected),
-        ...grounded
-          .filter((face) => !face.selected)
-          .sort((a, b) => faceRank(a) - faceRank(b))
-          .slice(0, 8),
-      ];
+      // Score the complete bounded face read before cutting presentation detail.
+      // No affordability prefilter can discard a higher-fit expensive face.
+      const includedFaces = grounded;
       const evaluatedAllFaces = grounded.length === detail.faces.length;
       const budgetMatch = candidateBudgetMatch(grounded, intent.budget);
       sites.push({
@@ -505,9 +614,45 @@ export class PlanningService {
     const found = new Set(sites.flatMap((site) => site.faces.map((face) => face.faceId)));
     if ([...selectedFaces].some((id) => !found.has(id)))
       throw new BadRequestException('A selected face is unavailable to this planner.');
+    const scoringBrief: PlanningScoringBrief = {
+      window: window ?? { startDate: '', endDate: '' },
+      ...(intent.budget ? { budget: intent.budget } : {}),
+      ...(intent.filters.country ? { targetCountry: intent.filters.country } : {}),
+      ...(intent.filters.city ? { targetCity: intent.filters.city } : {}),
+      ...(intent.filters.format ? { formats: [intent.filters.format] } : {}),
+      ...(context?.fitPreferences ? { fitPreferences: context.fitPreferences } : {}),
+      maxFaces: 12,
+      lockedFaceIds: [...selectedFaces],
+    };
+    const initialRanks = new Map<string, PlanningFaceAssessment>();
+    for (const site of sites) {
+      for (const candidate of planningScoringCandidates(
+        site,
+        details.get(site.siteId)!,
+        window,
+        checkedAt,
+      )) {
+        initialRanks.set(candidate.faceId, scorePlanningFace(candidate, scoringBrief));
+      }
+      site.faces = [
+        ...site.faces.filter((face) => face.selected),
+        ...site.faces
+          .filter((face) => !face.selected)
+          .sort((a, b) => assessmentRank(initialRanks.get(a.faceId), initialRanks.get(b.faceId)))
+          .slice(0, 8),
+      ];
+      site.facesOmitted = site.facesEvaluated - site.faces.length;
+    }
     const candidates = sites.filter((site) => !selectedSites.has(site.siteId));
-    const rank = { within: 0, unknown: 1, over: 2 };
-    candidates.sort((a, b) => rank[a.budgetMatch] - rank[b.budgetMatch]);
+    const bestAssessment = (site: GroundedSite) =>
+      site.faces
+        .map((face) => initialRanks.get(face.faceId))
+        .filter((value): value is PlanningFaceAssessment => Boolean(value))
+        .sort(assessmentRank)[0];
+    candidates.sort(
+      (a, b) =>
+        assessmentRank(bestAssessment(a), bestAssessment(b)) || a.siteId.localeCompare(b.siteId),
+    );
     sites = [...sites.filter((site) => selectedSites.has(site.siteId)), ...candidates.slice(0, 12)];
     let enrichmentReads = 0;
     let enrichmentFailures = 0;
@@ -539,6 +684,20 @@ export class PlanningService {
         site.geographicContextState = 'temporarily_unavailable';
       }
     }
+    const scoringCandidates = sites.flatMap((site) =>
+      planningScoringCandidates(site, details.get(site.siteId)!, window, checkedAt),
+    );
+    const portfolio = selectPlanningPortfolio(scoringCandidates, scoringBrief);
+    const assessment = {
+      version: portfolio.version,
+      provisional: true as const,
+      config: effectiveBriefFitConfig(scoringBrief),
+      assessments: portfolio.assessments,
+      portfolio,
+      recalculated: true as const,
+      evidenceScope:
+        'Current authorized bounded candidate read; no stored scores, reservation, measured reach or certification.',
+    };
     const budget = summarizeBudget(selectedEstimates, intent.budget ?? undefined);
     const selectionTruncated = context?.selectionTruncated === true;
     if (selectionTruncated) {
@@ -552,6 +711,7 @@ export class PlanningService {
       checkedAt,
       window,
       sites,
+      assessment,
       selectionTruncated,
       requestedBudget: intent.budget,
       filters: intent.filters,
@@ -564,7 +724,7 @@ export class PlanningService {
         hasMore: searchHasMore,
         exhaustive: false as const,
         ranking:
-          'Canonical same-currency flight affordability first; stable marketplace order within each group. Not an audience or optimal portfolio ranking.',
+          'Versioned deterministic supported brief-fit contribution, then evidence confidence and stable identifiers. Bounded search; not measured effectiveness or an exhaustive optimum.',
         enrichmentReadLimit: 6,
         enrichmentReads,
         enrichmentFailures,
@@ -590,7 +750,7 @@ export class PlanningService {
       reach: null,
       assumptions: [
         'Partner marketplace inventory and privately scoped research references only; brief-aware search reads at most three eight-board pages and includes twelve discovered candidates plus selected boards. Coverage is bounded, not exhaustive.',
-        'Literal inferred requirements require confirmation. Confirmed controls override them. Candidate budgetMatch is individual-face media affordability, not full-plan fit.',
+        'Literal inferred requirements require confirmation. Confirmed controls override them. Candidate budgetMatch is descriptive individual-face affordability; deterministic brief-fit is the recommendation objective, not cheapest-first.',
         'Production metadata is projected for included sites; at most six authorized geographic contexts are read. Read-budget or processing failures mean unknown context, never zero or no real-world features.',
         'Production enrichment is descriptive, with exact units, periods, provenance and freshness. Stale, future, unverified or unknown-freshness inputs cannot establish current audience performance.',
         'UTC start inclusive, end exclusive. Published media estimates exclude tax, production and FX conversion.',
@@ -771,4 +931,30 @@ function candidateBudgetMatch(
   )
     return 'unknown';
   return 'over';
+}
+
+function assessmentRank(a?: PlanningFaceAssessment, b?: PlanningFaceAssessment): number {
+  return (
+    Number(b?.eligible ?? false) - Number(a?.eligible ?? false) ||
+    (b?.score ?? -1) - (a?.score ?? -1) ||
+    (b?.evidenceConfidence ?? 0) - (a?.evidenceConfidence ?? 0) ||
+    (a?.faceId ?? '').localeCompare(b?.faceId ?? '')
+  );
+}
+function deterministicChoice(facts: {
+  sites: GroundedSite[];
+  assessment: { portfolio: { selectedFaceIds: string[]; status: string } };
+}) {
+  const selected =
+    facts.assessment.portfolio.status === 'ready' ? facts.assessment.portfolio.selectedFaceIds : [];
+  return {
+    recommendations: selected.flatMap((faceId) => {
+      const site = facts.sites.find((site) => site.faces.some((face) => face.faceId === faceId));
+      return site ? [{ siteId: site.siteId, faceId, reasonCode: 'brief_fit' }] : [];
+    }),
+    adviceCodes: ['compare_sources', 'confirm_quotes', 'confirm_availability'],
+    questionCodes: selected.length
+      ? ['confirm_availability', 'request_operator_quote']
+      : ['confirm_budget', 'confirm_dates', 'prioritize_areas'],
+  };
 }
