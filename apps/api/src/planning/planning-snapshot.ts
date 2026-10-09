@@ -81,6 +81,8 @@ export function compactPlanningSnapshot<T extends SnapshotFacts>(facts: T): Comp
               budgetRemaining: facts.assessment.portfolio.budgetRemaining,
               confirmedBudgetFit: false,
               algorithm: facts.assessment.portfolio.algorithm,
+              objective: facts.assessment.portfolio.objective,
+              provisionalObjective: facts.assessment.portfolio.provisionalObjective,
               diagnostics: facts.assessment.portfolio.diagnostics,
             },
             contextDetailReduced: true,

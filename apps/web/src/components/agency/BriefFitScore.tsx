@@ -7,7 +7,7 @@ import { displayNumber } from '../../lib/locale-format';
 const factorLabels: Record<PlanningFitFactor['key'], [string, string]> = {
   geography: ['Geographic fit', 'Pertinence géographique'],
   audience: ['Audience fit', 'Pertinence audience'],
-  visibility: ['Visibility & usable exposure', 'Visibilité et exposition utile'],
+  visibility: ['Campaign exposure policy', 'Politique d’exposition de campagne'],
   contribution: ['Geographic contribution', 'Apport géographique'],
   value: ['Fit for media spend', 'Pertinence par coût média'],
 };
@@ -53,6 +53,47 @@ const codeLabels: Record<string, [string, string]> = {
   digital_schedule_unknown: [
     'Purchased digital schedule and flight coverage unknown',
     'Programmation numérique achetée et période couverte inconnues',
+  ],
+  legibility_distance_exceeded: [
+    'Viewing distance exceeds sourced legibility distance',
+    'Distance de vue supérieure à la distance de lisibilité source',
+  ],
+  legibility_distance_supported: [
+    'Viewing distance assessed against sourced legibility',
+    'Distance de vue évaluée selon la lisibilité source',
+  ],
+  legibility_distance_unknown: ['Legibility distance unknown', 'Distance de lisibilité inconnue'],
+  provisional_interest_exposure_unknown: [
+    'Provisional planning interest; usable exposure unknown',
+    'Intérêt de planification provisoire ; exposition utile inconnue',
+  ],
+  purchased_daypart_coverage: [
+    'Purchased schedule coverage assessed',
+    'Couverture de la programmation achetée évaluée',
+  ],
+  readable_spot_duration_policy: [
+    'Creative duration assessed against dwell',
+    'Durée de la création évaluée selon le temps de vue',
+  ],
+  static_continuous_daylight_policy: [
+    'Uncalibrated static daylight delivery policy',
+    'Politique de diffusion statique en journée non calibrée',
+  ],
+  usable_exposure_impossible: [
+    'Known exposure incompatibility blocks automatic selection',
+    'Incompatibilité d’exposition connue excluant la sélection automatique',
+  ],
+  advertiser_allocation_unserved: [
+    'No purchased advertiser allocation for this flight',
+    'Aucune allocation achetée pour l’annonceur durant cette période',
+  ],
+  dwell_unusable: [
+    'Known dwell cannot support usable exposure',
+    'Temps de vue connu insuffisant pour une exposition utile',
+  ],
+  sourced_static_daypart_coverage: [
+    'Sourced static campaign daypart assessed',
+    'Moment de diffusion statique étayé évalué',
   ],
   target_area_unknown: ['Target-area match unverified', 'Correspondance des zones non vérifiée'],
   target_corridor_match: ['Sourced target corridor matches', 'Axe cible étayé correspondant'],
@@ -220,10 +261,14 @@ export function BriefFitScore({
       </p>
     );
   const n = (value: number) => displayNumber(value, locale, { maximumFractionDigits: 0 });
+  const fitNumber = (value: number) =>
+    value > 0 && value < 0.01
+      ? `<${displayNumber(0.01, locale)}`
+      : displayNumber(value, locale, { maximumFractionDigits: 2 });
   const range =
     assessment.score === null
       ? t('Unknown', 'Inconnue')
-      : `${n(assessment.range.lower)}–${n(assessment.range.upper)} /100`;
+      : `${fitNumber(assessment.range.lower)}–${fitNumber(assessment.range.upper)} /100`;
   const confidence =
     assessment.confidenceLabel === 'high'
       ? t('High', 'Élevée')
@@ -241,7 +286,7 @@ export function BriefFitScore({
           {t('Brief fit', 'Pertinence brief')} <b>{range}</b>
         </strong>
         <span className="agency-data-badge">
-          {t('Confidence', 'Confiance')} {confidence.toLowerCase()} ·{' '}
+          {t('Evidence confidence', 'Confiance des données')} {confidence.toLowerCase()} ·{' '}
           {n(assessment.evidenceConfidence)}%
         </span>
       </div>
@@ -250,18 +295,19 @@ export function BriefFitScore({
           {t('Outside confirmed constraints', 'Hors des contraintes confirmées')}
         </p>
       )}
+      <ExposurePolicy assessment={assessment} locale={locale} />
       {concise.length > 0 && <p className="agency-fit-reasons">{concise.join(' · ')}</p>}
       <details>
         <summary>{t('Factors & evidence', 'Critères et données')}</summary>
         <p>
           {t(
-            'Provisional product index, not measured effectiveness. The range includes missing evidence; it is not a statistical confidence interval.',
-            'Indice produit provisoire, sans mesure d’efficacité. La plage inclut les données manquantes ; ce n’est pas un intervalle de confiance statistique.',
+            'Uncalibrated planning index, not measured exposure, OTS or effectiveness. The range includes missing evidence; it is not a statistical confidence interval.',
+            'Indice de planification non calibré, sans mesure d’exposition, d’OTS ou d’efficacité. La plage inclut les données manquantes ; ce n’est pas un intervalle de confiance statistique.',
           )}
         </p>
         <p>
           {t('Supported contribution', 'Contribution étayée')}{' '}
-          {assessment.score === null ? '—' : n(assessment.score)} /100 ·{' '}
+          {assessment.score === null ? '—' : fitNumber(assessment.score)} /100 ·{' '}
           {t('Evidence coverage', 'Couverture des données')} {n(assessment.evidenceCoverage)}%
         </p>
         {assessment.factors.map((factor) => (
@@ -272,7 +318,7 @@ export function BriefFitScore({
             <p>
               {factor.score === null
                 ? t('Unknown', 'Inconnu')
-                : `${n(factor.range.lower)}–${n(factor.range.upper)} /100`}{' '}
+                : `${fitNumber(factor.range.lower)}–${fitNumber(factor.range.upper)} /100`}{' '}
               · {t('Evidence', 'Données')} {n(factor.coverage)}% · {t('Confidence', 'Confiance')}{' '}
               {n(factor.confidence)}%
             </p>
@@ -303,6 +349,138 @@ export function BriefFitScore({
         ))}
         <p className="agency-fit-version">
           {t('Scoring version', 'Version de notation')} : {assessment.version}
+        </p>
+      </details>
+    </div>
+  );
+}
+
+/** Server-owned policy components are displayed separately; no exposure or audience is inferred here. */
+function ExposurePolicy({
+  assessment,
+  locale,
+}: {
+  assessment: PlanningFaceAssessment;
+  locale: 'en' | 'fr';
+}) {
+  const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
+  const exposure = assessment.exposure;
+  if (!exposure)
+    return (
+      <p className="agency-fit-reasons">
+        {t(
+          'Campaign exposure not assessed · recheck with the current scoring version',
+          'Exposition de campagne non évaluée · vérifier selon la version actuelle',
+        )}
+      </p>
+    );
+  const index = (value: number | null) => {
+    if (value === null) return t('Unknown', 'Inconnu');
+    const percent = value * 100;
+    return `${percent > 0 && percent < 0.01 ? `<${displayNumber(0.01, locale)}` : displayNumber(percent, locale, { maximumFractionDigits: 2 })} /100`;
+  };
+  return (
+    <div className="agency-exposure-policy" data-testid="campaign-exposure-policy">
+      <dl>
+        <div>
+          <dt>{t('Physical visibility index', 'Indice de visibilité physique')}</dt>
+          <dd>{index(exposure.physical.value)}</dd>
+        </div>
+        <div>
+          <dt>{t('Campaign usable-exposure index', 'Indice d’exposition utile de campagne')}</dt>
+          <dd>{index(exposure.usable.value)}</dd>
+        </div>
+      </dl>
+      <p className="agency-fit-reasons">
+        {exposure.status === 'unusable'
+          ? t(
+              'Known incompatible exposure · excluded from automatic plans',
+              'Exposition incompatible connue · exclue des plans automatiques',
+            )
+          : assessment.utilityTier === 'ineligible'
+            ? t(
+                'Excluded by confirmed planning constraints',
+                'Exclue selon les contraintes de planification confirmées',
+              )
+            : assessment.utilityTier === 'provisional_interest'
+              ? t(
+                  'Provisional interest only · exposure unknown; no demonstrated performance improvement',
+                  'Intérêt provisoire uniquement · exposition inconnue ; aucune amélioration de performance démontrée',
+                )
+              : t(
+                  'Uncalibrated exposure policy · no measured OTS or attention',
+                  'Politique d’exposition non calibrée · aucune mesure d’OTS ou d’attention',
+                )}
+      </p>
+      <details>
+        <summary>{t('Exposure policy details', 'Détails de la politique d’exposition')}</summary>
+        <p>
+          {t(
+            'Necessary physical conditions combine without compensation. Purchased allocation, matching-flight schedule and dwell scale campaign exposure and ranking utility.',
+            'Les conditions physiques nécessaires se combinent sans compensation. L’allocation achetée, la programmation correspondant aux dates et le temps de vue modulent l’exposition de campagne et le classement.',
+          )}
+        </p>
+        {(
+          [
+            ['physical', t('Physical visibility index', 'Indice de visibilité physique')],
+            ['delivery', t('Purchased delivery index', 'Indice de diffusion achetée')],
+            [
+              'usable',
+              t('Campaign usable-exposure index', 'Indice d’exposition utile de campagne'),
+            ],
+          ] as const
+        ).map(([key, label]) => {
+          const component = exposure[key];
+          return (
+            <div key={key} className="agency-fit-factor">
+              <strong>
+                {label} <span>{index(component.value)}</span>
+              </strong>
+              {component.value === null && (
+                <p>
+                  {t(
+                    'Policy bounds with missing evidence',
+                    'Bornes de politique avec données manquantes',
+                  )}{' '}
+                  :{' '}
+                  {displayNumber(component.range.lower * 100, locale, { maximumFractionDigits: 2 })}
+                  –
+                  {displayNumber(component.range.upper * 100, locale, { maximumFractionDigits: 2 })}{' '}
+                  /100
+                </p>
+              )}
+              <p>
+                {t('Evidence confidence', 'Confiance des données')}{' '}
+                {displayNumber(component.confidence, locale, { maximumFractionDigits: 0 })}%
+              </p>
+              <p>
+                {component.provenance.length
+                  ? component.provenance
+                      .map((item) => provenanceLabels[item][locale === 'fr' ? 1 : 0])
+                      .join(' · ')
+                  : t('Unknown provenance', 'Provenance inconnue')}
+              </p>
+              {[
+                ...component.reasons.slice(0, 2).map((code) => briefFitEvidenceText(code, locale)),
+                ...component.unknowns
+                  .slice(0, 2)
+                  .map((code) => briefFitEvidenceText(code, locale, true)),
+              ].map((text, i) => (
+                <p key={i}>{text}</p>
+              ))}
+              {component.sources.length > 0 && (
+                <small>
+                  {t('Sources', 'Sources')}: {component.sources.slice(0, 4).join(' · ')}
+                </small>
+              )}
+            </div>
+          );
+        })}
+        <p>
+          {t(
+            'These are uncalibrated policy indices, not exposure probabilities or measured impressions. Unknown exposure is never an assumed full multiplier.',
+            'Ces indices de politique non calibrés ne sont ni des probabilités d’exposition ni des impressions mesurées. Une exposition inconnue ne reçoit jamais un multiplicateur complet supposé.',
+          )}
         </p>
       </details>
     </div>

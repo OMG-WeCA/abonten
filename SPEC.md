@@ -644,6 +644,23 @@ are additive; reopened plans disclose current scoring version and recalculation.
 Compact English/French scores, confidence and reasons expand into factor evidence
 and assumptions, including on mobile.
 
+**Usable-exposure correction (2026-10-09, §5.3).** Physical visibility, purchased
+campaign exposure, brief-fit utility and evidence confidence are distinct. Known
+incompatible approach/facing or an impossible requested exposure excludes a face
+from automatic portfolios; obstruction, dwell, geography or cheap prices cannot
+compensate. Direction, obstruction, legibility, dwell and applicable lighting are
+necessary conditions combined without additive compensation. Digital advertiser
+allocation, matching-flight schedule/daypart and dwell attenuate the whole usable
+exposure and the utility actually optimized, rather than only one factor. These
+indices remain explicitly uncalibrated heuristics, not measured OTS or attention.
+Missing exposure stays unknown. Coordinate/price-only planning interest may remain
+provisional with a separately disclosed evidence-poor planning policy; it must not
+outrank supported usable exposure by gaining an assumed full exposure multiplier.
+Unknown geographic overlap never receives a novelty bonus over known overlap;
+dropping evidence cannot increase conservative incremental portfolio utility.
+Full-portfolio regressions cover wrong-facing cheap pairs, tiny digital allocation,
+missing overlap evidence, supported alternatives and sparse-data continuity.
+
 **Key user stories.**
 
 - As a planner, I can draw a polygon over Lagos and see all bookable billboards inside it with KPI

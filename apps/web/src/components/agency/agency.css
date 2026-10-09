@@ -1802,3 +1802,39 @@
   grid-template-columns: 1fr 1fr;
   gap: 9px;
 }
+
+.agency-exposure-policy {
+  margin-top: 9px;
+  font-size: 10px;
+}
+.agency-exposure-policy dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
+}
+.agency-exposure-policy dt {
+  min-width: 0;
+  color: var(--color-muted);
+}
+.agency-exposure-policy dd {
+  white-space: nowrap;
+  font-weight: 650;
+}
+.agency-exposure-policy details {
+  margin-top: 7px;
+}
+.agency-exposure-policy details > p {
+  margin-top: 8px;
+  line-height: 1.6;
+  color: var(--color-muted);
+}
+
+.agency-shortlist-row > .agency-fit-score {
+  flex: 0 0 100%;
+  margin-top: 0;
+  border-radius: 0;
+  border-inline: 0;
+  border-bottom: 0;
+}

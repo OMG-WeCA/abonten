@@ -927,11 +927,19 @@ function AgencyWorkspace() {
       setScoringVersion(reply.assessment.version);
       setAssessment(reply.assessment);
       setPlannerOpen(true);
+      const exposureUnknown = reply.assessment.portfolio.selectedAssessments.some(
+        (face) => face.utilityTier === 'provisional_interest',
+      );
       setNotice(
-        t(
-          `Selected ${proposal.length} faces by supported brief fit under the media ceiling. Provisional; verify quotes and availability.`,
-          `${displayNumber(proposal.length, locale)} faces choisies selon la pertinence étayée et le plafond média. Provisoire ; vérifier les devis et la disponibilité.`,
-        ),
+        exposureUnknown
+          ? t(
+              `Selected ${proposal.length} faces as provisional planning interest under the media ceiling. Exposure remains unverified; no performance improvement is demonstrated.`,
+              `${displayNumber(proposal.length, locale)} faces retenues comme intérêt de planification provisoire selon le plafond média. Exposition non vérifiée ; aucune amélioration de performance démontrée.`,
+            )
+          : t(
+              `Selected ${proposal.length} faces using the uncalibrated exposure policy under the media ceiling. Verify quotes and availability; this is not measured effectiveness.`,
+              `${displayNumber(proposal.length, locale)} faces choisies selon la politique d’exposition non calibrée et le plafond média. Vérifier devis et disponibilité ; aucune efficacité mesurée.`,
+            ),
       );
     } catch {
       if (!controller.signal.aborted)

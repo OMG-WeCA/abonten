@@ -105,7 +105,7 @@ export class PlannerAssessmentResponse extends PlannerReplyResponse {
   @ApiProperty({
     type: Object,
     description:
-      'Versioned deterministic face assessments and bounded portfolio; supported score contribution, uncertainty range, evidence confidence, factor provenance and diagnosed infeasibility. No provider call or reservation.',
+      'Versioned deterministic face assessments and bounded portfolio; separate physical/delivery/usable exposure policy indices, supported utility and qualified provisional interest, uncertainty range, evidence confidence, factor provenance and diagnosed infeasibility. No provider call or reservation.',
   })
   assessment!: object;
 }

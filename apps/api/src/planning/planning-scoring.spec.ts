@@ -89,7 +89,8 @@ test('outward face normal meets reverse travel heading, with no roadside penalty
     geometry: { ...northbound.geometry, approachHeadingDeg: evidence(180) },
   });
   assert.equal(getFactor(northbound, 'visibility').score, 100);
-  assert.equal(getFactor(southbound, 'visibility').score, 50);
+  assert.equal(getFactor(southbound, 'visibility').score, 0);
+  assert.equal(scorePlanningFace(southbound, brief).eligible, false);
   // Moving across the road while retaining surveyed orientation/distance is not penalized.
   const across = candidate('across', 5_000_000, {
     coordinates: { latitude: 6.4503, longitude: 3.4 },
@@ -113,7 +114,8 @@ test('opposite advertising faces on one structure need face-specific bearings', 
   assert.ok(
     getFactor(unknownFacing, 'visibility').unknowns.includes('directional_geometry_unverified'),
   );
-  assert.equal(getFactor(unknownFacing, 'visibility').coverage, 50);
+  assert.equal(getFactor(unknownFacing, 'visibility').coverage, 0);
+  assert.equal(scorePlanningFace(unknownFacing, brief).score, null);
 });
 test('confirmed approach preference changes directional fit without inventing source direction', () => {
   const north = {
@@ -239,7 +241,8 @@ test('digital spot loop schedule daypart and dwell affect policy index; share-of
     const factor = getFactor(incomplete, 'visibility');
     assert.ok(factor.unknowns.includes('exposure_context_unknown'));
     assert.equal(factor.score, null);
-    assert.deepEqual(factor.range, { lower: 0, upper: 100 });
+    assert.equal(factor.range.lower, 0);
+    assert.ok(factor.range.upper > 0 && factor.range.upper <= 100);
   }
   const noWindow = { ...digital, digital: { ...digital.digital, scheduleWindow: undefined } };
   assert.equal(getFactor(noWindow, 'visibility').score, null);
@@ -513,4 +516,201 @@ test('derived value confidence is bounded by underlying supported evidence, not 
     cost: { ...candidate('owner').cost!, provenance: 'verified' },
   });
   assert.equal(getFactor(item, 'value').confidence, 55);
+});
+
+test('full portfolio excludes two richly evidenced wrong-facing bargains instead of offsetting with fit and price', () => {
+  const proper = candidate('proper', 9_000_000);
+  const wrong = (id: string) =>
+    candidate(id, 4_000_000, { geometry: { ...proper.geometry, faceBearingDeg: evidence(0) } });
+  const result = selectPlanningPortfolio([wrong('cheap-a'), wrong('cheap-b'), proper], brief);
+  assert.deepEqual(result.selectedFaceIds, ['proper']);
+  assert.equal(result.cost!.amount, 9_000_000);
+  for (const bad of result.assessments.filter((item) => item.faceId !== 'proper')) {
+    assert.equal(bad.exposure.physical.value, 0);
+    assert.equal(bad.exposure.usable.value, 0);
+    assert.equal(bad.planningUtility.supported, 0);
+    assert.equal(bad.eligible, false);
+    assert.ok(bad.exclusions.includes('directional_approach_mismatch'));
+  }
+});
+test('one-second advertiser allocation in an hour-long loop attenuates the whole portfolio utility', () => {
+  const proper = candidate('proper', 9_000_000);
+  const scarce = (id: string) =>
+    candidate(id, 4_000_000, {
+      format: 'digital_led',
+      digital: {
+        spotLengthSeconds: evidence(1),
+        loopLengthSeconds: evidence(3600),
+        advertiserSpotsPerLoop: evidence(1),
+        scheduleDaypartCoverage: evidence({ day: 1, night: 1 }),
+        scheduleWindow: window,
+      },
+    });
+  const result = selectPlanningPortfolio([scarce('digital-a'), scarce('digital-b'), proper], brief);
+  assert.deepEqual(result.selectedFaceIds, ['proper']);
+  for (const item of result.assessments.filter((item) => item.faceId !== 'proper')) {
+    assert.equal(item.exposure.physical.value, 1);
+    assert.ok(item.exposure.delivery.value! < 0.001);
+    assert.ok(item.planningUtility.supported < 0.1);
+    assert.ok(item.score! < 0.1);
+  }
+});
+test('tiny positive purchased daypart coverage scales the entire score and cannot beat normal delivery', () => {
+  const proper = candidate('proper', 9_000_000);
+  const tiny = (id: string) =>
+    candidate(id, 4_000_000, {
+      format: 'digital_led',
+      digital: {
+        spotLengthSeconds: evidence(10),
+        loopLengthSeconds: evidence(60),
+        advertiserSpotsPerLoop: evidence(1),
+        scheduleDaypartCoverage: evidence({ day: 0.000001, night: 1 }),
+        scheduleWindow: window,
+      },
+    });
+  const ordinary = {
+    ...tiny('ordinary'),
+    digital: {
+      ...tiny('ordinary').digital,
+      scheduleDaypartCoverage: evidence({ day: 1, night: 1 }),
+    },
+  };
+  const reduced = scorePlanningFace(tiny('tiny'), brief);
+  assert.ok(
+    reduced.planningUtility.supported <
+      scorePlanningFace(ordinary, brief).planningUtility.supported * 0.000002,
+  );
+  assert.deepEqual(
+    selectPlanningPortfolio([tiny('tiny-a'), tiny('tiny-b'), proper], brief).selectedFaceIds,
+    ['proper'],
+  );
+});
+test('removing sourced city does not award unknown overlap a full novelty multiplier', () => {
+  const selected = candidate('first');
+  const duplicate = candidate('duplicate', 4_000_000, { geography: { ...selected.geography } });
+  const unknown = { ...duplicate, geography: { ...duplicate.geography, city: undefined } };
+  const knownAssessment = scorePlanningFace(duplicate, brief, DEFAULT_BRIEF_FIT_CONFIG, [selected]);
+  const unknownAssessment = scorePlanningFace(unknown, brief, DEFAULT_BRIEF_FIT_CONFIG, [selected]);
+  assert.equal(knownAssessment.planningUtility.overlapMultiplier, 0.2);
+  assert.equal(unknownAssessment.planningUtility.overlapMultiplier, 0.2);
+  assert.deepEqual(unknownAssessment.planningUtility.overlapRange, { lower: 0.2, upper: 1 });
+  assert.ok(
+    unknownAssessment.planningUtility.supported <= knownAssessment.planningUtility.supported,
+  );
+});
+test('required physical conditions remain noncompensatory even when another condition is missing', () => {
+  for (const geometry of [
+    { ...candidate('a').geometry, faceBearingDeg: evidence(0), dwellSeconds: undefined },
+    { ...candidate('a').geometry, faceBearingDeg: evidence(90), dwellSeconds: undefined },
+    { ...candidate('a').geometry, unobstructedFraction: evidence(0), faceBearingDeg: undefined },
+    { ...candidate('a').geometry, dwellSeconds: evidence(0), faceBearingDeg: undefined },
+    { ...candidate('a').geometry, legibilityDistanceM: evidence(0), dwellSeconds: undefined },
+    {
+      ...candidate('a').geometry,
+      dwellSeconds: undefined,
+      viewablePathM: evidence(0),
+      speedKph: evidence(40),
+    },
+  ]) {
+    const item = scorePlanningFace(candidate('zero', 4_000_000, { geometry }), brief);
+    assert.equal(item.exposure.usable.value, 0);
+    assert.equal(item.eligible, false);
+    assert.equal(item.planningUtility.supported, 0);
+    assert.equal(item.planningUtility.provisional, 0);
+  }
+});
+test('unknown exposure is a separate interest tier and cannot displace a supported eligible face', () => {
+  const proper = candidate('proper', 9_000_000);
+  const unknown = (id: string) =>
+    candidate(id, 4_000_000, { geometry: undefined, coordinateStatus: 'owner_reported' });
+  const result = selectPlanningPortfolio(
+    [unknown('unknown-a'), unknown('unknown-b'), proper],
+    brief,
+  );
+  assert.deepEqual(result.selectedFaceIds, ['proper']);
+  const fallback = selectPlanningPortfolio([unknown('unknown-a'), unknown('unknown-b')], brief);
+  assert.equal(fallback.status, 'ready');
+  assert.equal(fallback.objective, 0);
+  assert.ok(fallback.provisionalObjective > 0);
+  assert.ok(fallback.diagnostics.includes('provisional_interest_exposure_unknown'));
+  for (const item of fallback.selectedAssessments) {
+    assert.equal(item.score, null);
+    assert.equal(item.utilityTier, 'provisional_interest');
+    assert.equal(item.exposure.usable.value, null);
+    assert.equal(item.planningUtility.exposureMultiplier, null);
+    assert.equal(item.planningUtility.supported, 0);
+  }
+});
+test('sourced zero advertiser allocation is unusable even with absent geometry, dwell and loop', () => {
+  const zero = candidate('zero', 4_000_000, {
+    format: 'digital_led',
+    geometry: undefined,
+    digital: { advertiserSpotsPerLoop: evidence(0), scheduleWindow: window },
+  });
+  const assessment = scorePlanningFace(zero, brief);
+  assert.equal(assessment.exposure.delivery.value, 0);
+  assert.equal(assessment.exposure.usable.value, 0);
+  assert.equal(assessment.eligible, false);
+  assert.ok(assessment.exclusions.includes('advertiser_allocation_unserved'));
+  assert.deepEqual(
+    selectPlanningPortfolio([zero, candidate('proper', 9_000_000)], brief).selectedFaceIds,
+    ['proper'],
+  );
+  const otherFlight = {
+    ...zero,
+    digital: {
+      ...zero.digital,
+      scheduleWindow: { startDate: '2026-12-01', endDate: '2027-01-01' },
+    },
+  };
+  assert.equal(scorePlanningFace(otherFlight, brief).exposure.delivery.value, null);
+});
+test('sourced static daypart coverage overrides the default daylight placement policy and attenuates utility', () => {
+  const full = candidate('full', 9_000_000);
+  const zero = candidate('zero', 4_000_000, {
+    geometry: { ...full.geometry, daypartCoverage: evidence({ day: 0, night: 1 }) },
+  });
+  const partial = candidate('partial', 4_000_000, {
+    geometry: { ...full.geometry, daypartCoverage: evidence({ day: 0.000001, night: 1 }) },
+  });
+  assert.equal(scorePlanningFace(zero, brief).eligible, false);
+  assert.equal(scorePlanningFace(zero, brief).exposure.usable.value, 0);
+  assert.ok(scorePlanningFace(partial, brief).planningUtility.supported < 0.001);
+  assert.deepEqual(selectPlanningPortfolio([zero, partial, full], brief).selectedFaceIds, ['full']);
+});
+test('sourced zero static night coverage is decisive without lighting dwell or physical geometry', () => {
+  const item = candidate('night-zero', 4_000_000, {
+    geometry: { daypartCoverage: evidence({ day: 1, night: 0 }) },
+  });
+  const night = {
+    ...brief,
+    fitPreferences: { ...brief.fitPreferences, daypart: 'night' as const },
+  };
+  const assessment = scorePlanningFace(item, night);
+  assert.equal(assessment.exposure.physical.value, null);
+  assert.equal(assessment.exposure.delivery.value, 0);
+  assert.equal(assessment.exposure.usable.value, 0);
+  assert.equal(assessment.eligible, false);
+  assert.ok(assessment.exclusions.includes('daypart_unserved'));
+  assert.equal(assessment.planningUtility.provisional, 0);
+  assert.equal(selectPlanningPortfolio([item], night).status, 'infeasible');
+});
+test('sourced zero static coverage across both dayparts is decisive without other exposure evidence', () => {
+  const item = candidate('all-day-zero', 4_000_000, {
+    geometry: { daypartCoverage: evidence({ day: 0, night: 0 }) },
+  });
+  const any = { ...brief, fitPreferences: { ...brief.fitPreferences, daypart: 'any' as const } };
+  const assessment = scorePlanningFace(item, any);
+  assert.equal(assessment.exposure.delivery.value, 0);
+  assert.equal(assessment.exposure.usable.value, 0);
+  assert.equal(assessment.eligible, false);
+  assert.ok(assessment.exclusions.includes('daypart_unserved'));
+  assert.equal(assessment.planningUtility.supported, 0);
+  assert.equal(assessment.planningUtility.provisional, 0);
+  assert.equal(selectPlanningPortfolio([item], any).status, 'infeasible');
+  // One served daypart plus unknown lighting remains unknown, never a zero
+  // invented from the absent lighting evidence.
+  const partlyServed = { ...item, geometry: { daypartCoverage: evidence({ day: 1, night: 0 }) } };
+  assert.equal(scorePlanningFace(partlyServed, any).exposure.delivery.value, null);
+  assert.equal(scorePlanningFace(partlyServed, any).eligible, true);
 });

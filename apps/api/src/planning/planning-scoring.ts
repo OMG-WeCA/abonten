@@ -2,7 +2,7 @@ import { planningDays, straightLineDistanceKm, type PlanningWindow } from './pla
 
 /** Product-policy indices, not measured effectiveness or a measurement certification.
  * All coefficients are provisional, versioned and configurable for local calibration. */
-export const BRIEF_FIT_VERSION = 'brief-fit-v1-provisional';
+export const BRIEF_FIT_VERSION = 'brief-fit-v2-provisional';
 export type ScoringProvenance = 'verified' | 'owner_reported' | 'modeled' | 'unknown';
 export interface ScoringEvidence<T> {
   value: T;
@@ -83,6 +83,7 @@ export interface BriefFitConfig {
   provisional: true;
   weights: Record<BriefFitFactorKey, number>;
   provenanceConfidence: Record<ScoringProvenance, number>;
+  /** Legacy v1 diagnostic weights only; v2 required exposure conditions multiply. */
   visibilityWeights: { geometry: number; obstruction: number; dwell: number; lighting: number };
   usefulDwellSeconds: number;
   redundantContributionFraction: number;
@@ -133,6 +134,32 @@ export interface PlanningFaceAssessment {
   reasons: string[];
   unknowns: string[];
   weights: Record<BriefFitFactorKey, number>;
+  exposure: PlanningExposureAssessment;
+  utilityTier: 'supported_exposure' | 'provisional_interest' | 'ineligible';
+  planningUtility: {
+    supported: number;
+    provisional: number;
+    overlapMultiplier: number;
+    exposureMultiplier: number | null;
+    overlapRange: { lower: number; upper: number };
+  };
+}
+/** All values/ranges are uncalibrated policy indices in [0,1], not probabilities. */
+export interface PlanningExposureComponent {
+  value: number | null;
+  range: { lower: number; upper: number };
+  confidence: number;
+  provenance: ScoringProvenance[];
+  sources: string[];
+  reasons: string[];
+  unknowns: string[];
+}
+export interface PlanningExposureAssessment {
+  physical: PlanningExposureComponent;
+  delivery: PlanningExposureComponent;
+  usable: PlanningExposureComponent;
+  status: 'supported' | 'unknown' | 'unusable';
+  method: 'uncalibrated_multiplicative_policy';
 }
 export interface PlanningPortfolioAssessment {
   version: string;
@@ -151,6 +178,7 @@ export interface PlanningPortfolioAssessment {
   confirmedBudgetFit: false;
   provisional: true;
   objective: number;
+  provisionalObjective: number;
   algorithm: 'bounded_beam_search';
   candidateCount: number;
   searchPoolCount: number;
@@ -468,11 +496,11 @@ function angularDifference(a: number, b: number): number {
 }
 function dwellEvidence(candidate: PlanningScoringCandidate): ScoringEvidence<number> | undefined {
   const geo = candidate.geometry;
-  if (numeric(geo?.dwellSeconds, 0.001)) return geo.dwellSeconds;
+  if (numeric(geo?.dwellSeconds, 0)) return geo.dwellSeconds;
   if (
     verifiedPoint(candidate) &&
     numeric(geo?.speedKph, 0.001) &&
-    numeric(geo?.viewablePathM, 0.001) &&
+    numeric(geo?.viewablePathM, 0) &&
     geo.speedKph.provenance === 'verified' &&
     geo.viewablePathM.provenance === 'verified'
   ) {
@@ -493,58 +521,91 @@ function daypartValue(
     ? values.reduce((sum, item) => sum + item, 0) / values.length
     : null;
 }
-function visibilitySignals(
+/** Necessary conditions multiply. Missing conditions retain an interval; a known
+ * zero proves unusability even when other conditions have not been surveyed. */
+function exposureComponent(terms: Signal[], config: BriefFitConfig): PlanningExposureComponent {
+  const zeros = terms.filter((term) => term.value === 0);
+  const decisive = zeros.length ? zeros : terms;
+  const unknown = !zeros.length && terms.some((term) => term.value === null);
+  const upper = zeros.length
+    ? 0
+    : terms.reduce((product, term) => product * (term.value === null ? 1 : clamp(term.value)), 1);
+  const evidence = decisive.flatMap((term) => term.evidence);
+  return {
+    value: unknown ? null : upper,
+    range: { lower: unknown ? 0 : upper, upper },
+    confidence:
+      unknown || !evidence.length
+        ? 0
+        : round(
+            100 * Math.min(...evidence.map((item) => config.provenanceConfidence[item.provenance])),
+          ),
+    provenance: [...new Set(evidence.map((item) => item.provenance))],
+    sources: [...new Set(evidence.map((item) => item.source))].sort(),
+    reasons: [
+      ...new Set(
+        terms.filter((term) => term.value !== null && term.reason).map((term) => term.reason!),
+      ),
+    ],
+    unknowns: [
+      ...new Set(
+        terms.filter((term) => term.value === null && term.unknown).map((term) => term.unknown!),
+      ),
+    ],
+  };
+}
+function combineExposure(
+  physical: PlanningExposureComponent,
+  delivery: PlanningExposureComponent,
+): PlanningExposureComponent {
+  const zero = physical.value === 0 || delivery.value === 0;
+  const knownProduct = physical.value !== null && delivery.value !== null;
+  return {
+    value: zero ? 0 : knownProduct ? physical.value! * delivery.value! : null,
+    range: {
+      lower: physical.range.lower * delivery.range.lower,
+      upper: physical.range.upper * delivery.range.upper,
+    },
+    confidence: zero
+      ? Math.max(
+          physical.value === 0 ? physical.confidence : 0,
+          delivery.value === 0 ? delivery.confidence : 0,
+        )
+      : knownProduct
+        ? Math.min(physical.confidence, delivery.confidence)
+        : 0,
+    provenance: [...new Set([...physical.provenance, ...delivery.provenance])],
+    sources: [...new Set([...physical.sources, ...delivery.sources])].sort(),
+    reasons: [...new Set([...physical.reasons, ...delivery.reasons])],
+    unknowns: [...new Set([...physical.unknowns, ...delivery.unknowns])],
+  };
+}
+export function assessPlanningExposure(
   candidate: PlanningScoringCandidate,
   brief: PlanningScoringBrief,
-  config: BriefFitConfig,
-): Signal[] {
+  config: BriefFitConfig = DEFAULT_BRIEF_FIT_CONFIG,
+): PlanningExposureAssessment {
+  validateConfig(config);
   const geo = candidate.geometry;
-  const daypart = brief.fitPreferences?.daypart ?? 'any';
-  if (candidate.format === 'digital_led') {
-    const digital = candidate.digital;
-    const schedule = digital?.scheduleDaypartCoverage;
-    const matchingWindow =
-      digital?.scheduleWindow?.startDate === brief.window.startDate &&
-      digital.scheduleWindow.endDate === brief.window.endDate;
-    const coverage =
-      matchingWindow && known(schedule) ? daypartValue(schedule.value, daypart) : null;
-    if (coverage === 0)
-      return [signal(0, [schedule!], 'daypart_unserved', 'exposure_context_unknown')];
-    const spot = digital?.spotLengthSeconds;
-    const loop = digital?.loopLengthSeconds;
-    const spots = digital?.advertiserSpotsPerLoop;
-    if (
-      !numeric(spot, 0.001) ||
-      !numeric(loop, 0.001) ||
-      !numeric(spots, 1) ||
-      !Number.isInteger(spots.value) ||
-      spot.value * spots.value > loop.value ||
-      coverage === null ||
-      !dwellEvidence(candidate)
-    )
-      return [signal(null, [], 'digital_rotation_dwell_policy', 'exposure_context_unknown')];
-  }
-  if (
-    candidate.format !== 'digital_led' &&
-    daypart === 'night' &&
-    known(geo?.nightLighting) &&
-    geo.nightLighting.value === false
-  )
-    return [signal(0, [geo.nightLighting], 'daypart_unserved', 'lighting_schedule_unknown')];
   const bearing = geo?.faceBearingDeg;
   const approach = geo?.approachHeadingDeg;
   const distance = geo?.viewingDistanceM;
   const limit = geo?.legibilityDistanceM;
-  const precise =
+  const directionVerified =
     verifiedPoint(candidate) &&
     numeric(bearing, 0, 359.999) &&
     numeric(approach, 0, 359.999) &&
+    bearing.provenance === 'verified' &&
+    approach.provenance === 'verified';
+  const distanceVerified =
+    verifiedPoint(candidate) &&
     numeric(distance, 0.001) &&
-    numeric(limit, 0.001) &&
-    [bearing, approach, distance, limit].every((item) => item!.provenance === 'verified');
-  let geometry: number | null = null;
-  if (precise) {
-    const angleFit = Math.max(
+    numeric(limit, 0) &&
+    distance.provenance === 'verified' &&
+    limit.provenance === 'verified';
+  let direction: number | null = null;
+  if (directionVerified) {
+    const facing = Math.max(
       0,
       Math.cos((angularDifference(bearing!.value, (approach!.value + 180) % 360) * Math.PI) / 180),
     );
@@ -557,95 +618,180 @@ function visibilitySignals(
           ),
         )
       : 1;
-    geometry = angleFit * approachFit * clamp(limit!.value / distance!.value);
+    direction = facing * approachFit;
+    if (direction < 1e-12) direction = 0; // Numeric cleanup at perpendicular; no empirical cutoff.
   }
-  const result = [
-    signal(
-      geometry,
-      precise ? [bearing!, approach!, distance!, limit!] : [],
-      'verified_directional_geometry',
-      'directional_geometry_unverified',
-      config.visibilityWeights.geometry,
-    ),
-  ];
-  result.push(
-    signal(
-      numeric(geo?.unobstructedFraction, 0, 1) ? geo.unobstructedFraction.value : null,
-      numeric(geo?.unobstructedFraction, 0, 1) ? [geo.unobstructedFraction] : [],
-      'unobstructed_sightline',
-      'obstruction_unknown',
-      config.visibilityWeights.obstruction,
-    ),
+  const physical = exposureComponent(
+    [
+      signal(
+        direction,
+        directionVerified ? [bearing!, approach!] : [],
+        direction === 0 ? 'directional_approach_mismatch' : 'verified_directional_geometry',
+        'directional_geometry_unverified',
+      ),
+      signal(
+        distanceVerified ? Number(distance!.value <= limit!.value) : null,
+        distanceVerified ? [distance!, limit!] : [],
+        distanceVerified && distance!.value > limit!.value
+          ? 'legibility_distance_exceeded'
+          : 'legibility_distance_supported',
+        'legibility_distance_unknown',
+      ),
+      signal(
+        numeric(geo?.unobstructedFraction, 0, 1) ? geo.unobstructedFraction.value : null,
+        numeric(geo?.unobstructedFraction, 0, 1) ? [geo.unobstructedFraction] : [],
+        'unobstructed_sightline',
+        'obstruction_unknown',
+      ),
+    ],
+    config,
   );
+  const daypart = brief.fitPreferences?.daypart ?? 'any';
   const dwell = dwellEvidence(candidate);
-  let dwellUtility: number | null = dwell ? clamp(dwell.value / config.usefulDwellSeconds) : null;
-  const dwellSources: ScoringEvidence<unknown>[] = dwell ? [dwell] : [];
+  const terms: Signal[] = [];
   if (candidate.format === 'digital_led') {
     const digital = candidate.digital;
     const schedule = digital?.scheduleDaypartCoverage;
-    const spot = digital?.spotLengthSeconds;
-    const loop = digital?.loopLengthSeconds;
-    const spots = digital?.advertiserSpotsPerLoop;
-    const coverage = known(schedule) ? daypartValue(schedule.value, daypart) : null;
-    const usable =
-      numeric(spot, 0.001) &&
-      numeric(loop, 0.001) &&
-      numeric(spots, 1) &&
-      Number.isInteger(spots.value) &&
-      spot.value * spots.value <= loop.value &&
-      coverage !== null &&
-      dwell !== undefined;
-    // A rotation/dwell planning index only: neither exposure probability nor audience.
-    dwellUtility = usable
-      ? coverage! *
-        clamp(dwell!.value / spot!.value) *
-        clamp((dwell!.value * spots!.value) / loop!.value)
-      : null;
-    if (usable) dwellSources.push(spot!, loop!, spots!, schedule!);
-  }
-  result.push(
-    signal(
-      dwellUtility,
-      dwellSources,
-      candidate.format === 'digital_led' ? 'digital_rotation_dwell_policy' : 'dwell_policy',
-      'exposure_context_unknown',
-      config.visibilityWeights.dwell,
-    ),
-  );
-  if (daypart !== 'day') {
-    let lighting: number | null = null;
-    const lightingSources: ScoringEvidence<unknown>[] = [];
-    if (candidate.format === 'digital_led') {
-      const schedule = candidate.digital?.scheduleDaypartCoverage;
-      if (known(schedule)) {
-        lighting = daypartValue(schedule.value, daypart);
-        lightingSources.push(schedule);
-      }
-    } else if (known(geo?.nightLighting) && typeof geo.nightLighting.value === 'boolean') {
-      lightingSources.push(geo.nightLighting);
-      if (!geo.nightLighting.value && daypart === 'night') lighting = 0;
-      else if (known(geo.daypartCoverage)) {
-        lighting = daypartValue(
-          {
-            ...geo.daypartCoverage.value,
-            night: geo.nightLighting.value ? geo.daypartCoverage.value.night : 0,
-          },
-          daypart,
-        );
-        lightingSources.push(geo.daypartCoverage);
-      }
-    }
-    result.push(
+    const matchingWindow =
+      digital?.scheduleWindow?.startDate === brief.window.startDate &&
+      digital.scheduleWindow.endDate === brief.window.endDate;
+    const coverage =
+      matchingWindow && known(schedule) ? daypartValue(schedule.value, daypart) : null;
+    terms.push(
       signal(
-        lighting,
-        lightingSources,
-        'daypart_lighting_policy',
-        'lighting_schedule_unknown',
-        config.visibilityWeights.lighting,
+        coverage,
+        coverage !== null ? [schedule!] : [],
+        coverage === 0 ? 'daypart_unserved' : 'purchased_daypart_coverage',
+        'exposure_context_unknown',
       ),
     );
+    const spot = digital?.spotLengthSeconds,
+      loop = digital?.loopLengthSeconds,
+      spots = digital?.advertiserSpotsPerLoop;
+    const allocationValid =
+      matchingWindow &&
+      numeric(spot, 0.001) &&
+      numeric(loop, 0.001) &&
+      numeric(spots, 0) &&
+      Number.isInteger(spots.value) &&
+      spot.value * spots.value <= loop.value;
+    const zeroAllocation =
+      matchingWindow && numeric(spots, 0) && Number.isInteger(spots.value) && spots.value === 0;
+    if (zeroAllocation)
+      terms.push(signal(0, [spots!], 'advertiser_allocation_unserved', 'exposure_context_unknown'));
+    if (dwell?.value === 0)
+      terms.push(signal(0, [dwell], 'dwell_unusable', 'exposure_context_unknown'));
+    // Uncalibrated rotation-window and readable-duration policy, not exposure probability.
+    terms.push(
+      signal(
+        allocationValid && dwell ? clamp((dwell.value * spots!.value) / loop!.value) : null,
+        allocationValid && dwell ? [dwell, spot!, loop!, spots!] : [],
+        dwell?.value === 0 ? 'dwell_unusable' : 'digital_rotation_dwell_policy',
+        'exposure_context_unknown',
+      ),
+    );
+    terms.push(
+      signal(
+        allocationValid && dwell
+          ? clamp(Math.min(spot!.value, dwell.value) / config.usefulDwellSeconds)
+          : null,
+        allocationValid && dwell ? [dwell, spot!] : [],
+        dwell?.value === 0 ? 'dwell_unusable' : 'readable_spot_duration_policy',
+        'exposure_context_unknown',
+      ),
+    );
+  } else {
+    terms.push(
+      signal(
+        dwell ? clamp(dwell.value / config.usefulDwellSeconds) : null,
+        dwell ? [dwell] : [],
+        dwell?.value === 0 ? 'dwell_unusable' : 'dwell_policy',
+        'exposure_context_unknown',
+      ),
+    );
+    if (daypart === 'day') {
+      const coverage = known(geo?.daypartCoverage)
+        ? daypartValue(geo.daypartCoverage.value, 'day')
+        : null;
+      terms.push(
+        signal(
+          known(geo?.daypartCoverage) ? coverage : 1,
+          known(geo?.daypartCoverage)
+            ? [geo.daypartCoverage]
+            : [
+                {
+                  value: 1,
+                  provenance: 'modeled',
+                  source:
+                    'Uncalibrated planning policy: continuous static placement during daylight; not proof of campaign delivery.',
+                },
+              ],
+          coverage === 0
+            ? 'daypart_unserved'
+            : known(geo?.daypartCoverage)
+              ? 'sourced_static_daypart_coverage'
+              : 'static_continuous_daylight_policy',
+          'lighting_schedule_unknown',
+        ),
+      );
+    } else {
+      const lit = geo?.nightLighting;
+      const schedule = geo?.daypartCoverage;
+      let lighting: number | null = null;
+      const sources: ScoringEvidence<unknown>[] = [];
+      // Sourced zero operation in the requested daypart is decisive regardless
+      // of missing lighting or dwell evidence; neither can create airtime.
+      if (known(schedule) && daypartValue(schedule.value, daypart) === 0) {
+        lighting = 0;
+        sources.push(schedule);
+      } else if (known(lit) && typeof lit.value === 'boolean') {
+        sources.push(lit);
+        if (!lit.value && daypart === 'night') lighting = 0;
+        else if (known(schedule)) {
+          lighting = daypartValue(
+            { ...schedule.value, night: lit.value ? schedule.value.night : 0 },
+            daypart,
+          );
+          sources.push(schedule);
+        }
+      }
+      terms.push(
+        signal(
+          lighting,
+          sources,
+          lighting === 0 ? 'daypart_unserved' : 'daypart_lighting_policy',
+          'lighting_schedule_unknown',
+        ),
+      );
+    }
   }
-  return result;
+  const delivery = exposureComponent(terms, config);
+  const usable = combineExposure(physical, delivery);
+  return {
+    physical,
+    delivery,
+    usable,
+    status: usable.value === 0 ? 'unusable' : usable.value === null ? 'unknown' : 'supported',
+    method: 'uncalibrated_multiplicative_policy',
+  };
+}
+function visibilityFactor(
+  exposure: PlanningExposureAssessment,
+  config: BriefFitConfig,
+): PlanningFitFactor {
+  const usable = exposure.usable;
+  return {
+    key: 'visibility',
+    weight: config.weights.visibility,
+    score: usable.value === null ? null : round(usable.value * 100),
+    range: { lower: round(usable.range.lower * 100), upper: round(usable.range.upper * 100) },
+    coverage: usable.value === null ? 0 : 100,
+    confidence: usable.confidence,
+    provenance: usable.provenance,
+    sources: usable.sources,
+    reasons: usable.reasons,
+    unknowns: usable.unknowns,
+  };
 }
 function geographicProxy(
   candidate: PlanningScoringCandidate,
@@ -805,10 +951,11 @@ export function scorePlanningFace(
   selected: readonly PlanningScoringCandidate[] = [],
 ): PlanningFaceAssessment {
   const effective = policy(config, brief);
+  const exposure = assessPlanningExposure(candidate, brief, effective);
   const factors = [
     factor('geography', geographySignals(candidate, brief), effective),
     factor('audience', audienceSignals(candidate, brief), effective),
-    factor('visibility', visibilitySignals(candidate, brief, effective), effective),
+    visibilityFactor(exposure, effective),
     factor('contribution', contributionSignals(candidate, selected, effective), effective),
   ];
   const comparable = costProblem(candidate, brief) === null;
@@ -870,6 +1017,21 @@ export function scorePlanningFace(
   const coverage = factors.reduce((sum, item) => sum + (item.coverage * item.weight) / 100, 0);
   const confidence = factors.reduce((sum, item) => sum + (item.confidence * item.weight) / 100, 0);
   const excluded = exclusions(candidate, brief);
+  if (exposure.status === 'unusable')
+    excluded.push(
+      ...exposure.usable.reasons.filter((code) =>
+        [
+          'directional_approach_mismatch',
+          'legibility_distance_exceeded',
+          'daypart_unserved',
+          'obstructed_sightline',
+          'dwell_unusable',
+          'advertiser_allocation_unserved',
+        ].includes(code),
+      ),
+    );
+  if (exposure.status === 'unusable' && !excluded.length)
+    excluded.push('usable_exposure_impossible');
   const unknowns = [
     ...new Set([
       ...factors.flatMap((item) => item.unknowns),
@@ -878,22 +1040,47 @@ export function scorePlanningFace(
       ...(costProblem(candidate, brief) ? [costProblem(candidate, brief)!] : []),
     ]),
   ];
+  const eligible = excluded.length === 0;
+  const contribution = factors.find((item) => item.key === 'contribution')!;
+  const overlapMultiplier =
+    contribution.score === null
+      ? effective.redundantContributionFraction
+      : contribution.range.lower / 100;
+  const fittedLower = lower * exposure.usable.range.lower;
+  const fittedUpper = upper * exposure.usable.range.upper;
+  const confidenceIndex = Math.min(confidence, exposure.usable.confidence);
   return {
     version: effective.version,
     siteId: candidate.siteId,
     faceId: candidate.faceId,
-    score: coverage > 0 ? round(lower) : null,
-    range: { lower: round(lower), upper: round(upper) },
+    score: exposure.usable.value === null ? null : round(fittedLower),
+    range: { lower: round(fittedLower), upper: round(fittedUpper) },
     evidenceCoverage: round(coverage),
-    evidenceConfidence: round(confidence),
-    confidenceLabel: confidence >= 75 ? 'high' : confidence >= 40 ? 'medium' : 'low',
-    eligible: excluded.length === 0,
+    evidenceConfidence: round(confidenceIndex),
+    confidenceLabel: confidenceIndex >= 75 ? 'high' : confidenceIndex >= 40 ? 'medium' : 'low',
+    eligible,
     provisional: true,
     exclusions: excluded,
     factors,
     reasons: [...new Set(factors.flatMap((item) => item.reasons))],
     unknowns,
     weights: { ...effective.weights },
+    exposure,
+    utilityTier: !eligible
+      ? 'ineligible'
+      : exposure.status === 'supported'
+        ? 'supported_exposure'
+        : 'provisional_interest',
+    planningUtility: {
+      supported: eligible && exposure.status === 'supported' ? fittedLower * overlapMultiplier : 0,
+      provisional: eligible && exposure.status === 'unknown' ? lower * overlapMultiplier : 0,
+      overlapMultiplier,
+      exposureMultiplier: exposure.usable.value,
+      overlapRange: {
+        lower: overlapMultiplier,
+        upper: contribution.score === null ? 1 : overlapMultiplier,
+      },
+    },
   };
 }
 
@@ -901,10 +1088,12 @@ interface SearchState {
   candidates: PlanningScoringCandidate[];
   amount: number;
   objective: number;
+  provisionalObjective: number;
 }
 function stateOrder(a: SearchState, b: SearchState): number {
   return (
     b.objective - a.objective ||
+    b.provisionalObjective - a.provisionalObjective ||
     a.amount - b.amount ||
     a.candidates
       .map((item) => item.faceId)
@@ -919,11 +1108,24 @@ function stateOrder(a: SearchState, b: SearchState): number {
   );
 }
 function incrementalUtility(assessment: PlanningFaceAssessment): number {
-  const contribution = assessment.factors.find((item) => item.key === 'contribution')!;
-  // Deliberate provisional diminishing-utility policy for sourced spatial overlap.
-  // It is not a proportion of deduplicated people, exposure or reach.
+  return assessment.planningUtility.supported;
+}
+export function comparePlanningAssessments(
+  a: PlanningFaceAssessment,
+  b: PlanningFaceAssessment,
+): number {
+  const tier = (item: PlanningFaceAssessment) =>
+    item.utilityTier === 'supported_exposure'
+      ? 0
+      : item.utilityTier === 'provisional_interest'
+        ? 1
+        : 2;
   return (
-    assessment.range.lower * (contribution.score === null ? 1 : contribution.range.lower / 100)
+    tier(a) - tier(b) ||
+    b.planningUtility.supported - a.planningUtility.supported ||
+    b.planningUtility.provisional - a.planningUtility.provisional ||
+    b.evidenceConfidence - a.evidenceConfidence ||
+    a.faceId.localeCompare(b.faceId)
   );
 }
 /** Stable bounded heuristic, not a global optimizer or an audience/reach model.
@@ -955,6 +1157,7 @@ export function selectPlanningPortfolio(
     confirmedBudgetFit: false,
     provisional: true,
     objective: 0,
+    provisionalObjective: 0,
     algorithm: 'bounded_beam_search',
     candidateCount: unique.length,
     searchPoolCount: 0,
@@ -966,6 +1169,9 @@ export function selectPlanningPortfolio(
       'Geographic/corridor redundancy is a sourced spatial planning proxy, not deduplicated reach or audience overlap.',
       `Supported portfolio utility is discounted for sourced geographic overlap (repeat fraction ${effective.redundantContributionFraction}); this provisional policy is not a reach multiplier.`,
       'Unknown availability requires verification; all prices remain indicative and do not include unquoted charges.',
+      'Physical visibility and purchased delivery conditions multiply; known impossibility cannot be offset by other fit factors. All exposure indices are uncalibrated policies, not measured OTS, attention or probabilities.',
+      'Unknown usable exposure is a separate provisional-interest tier; it receives no supported exposure utility. Supported-exposure utility ranks before provisional interest.',
+      `Unknown overlap uses the conservative repeat fraction ${effective.redundantContributionFraction}; removing geographic evidence never creates a novelty bonus.`,
       `Bounded beam search: at most ${effective.searchPoolLimit} faces, ${effective.beamWidth} retained states; ${effective.oneFacePerSite ? 'at most one face per structure' : 'multiple faces per structure permitted'}.`,
     ],
   };
@@ -1021,12 +1227,7 @@ export function selectPlanningPortfolio(
       !costProblem(item, brief) &&
       item.cost!.amount <= budget.amount,
   );
-  eligible.sort(
-    (a, b) =>
-      scores.get(b.faceId)!.range.lower - scores.get(a.faceId)!.range.lower ||
-      scores.get(b.faceId)!.evidenceConfidence - scores.get(a.faceId)!.evidenceConfidence ||
-      a.faceId.localeCompare(b.faceId),
-  );
+  eligible.sort((a, b) => comparePlanningAssessments(scores.get(a.faceId)!, scores.get(b.faceId)!));
   const pool = [
     ...lockedCandidates,
     ...eligible.filter((item) => !lockedIds.includes(item.faceId)),
@@ -1053,6 +1254,13 @@ export function selectPlanningPortfolio(
       candidates: lockedCandidates,
       amount: lockedAmount,
       objective: contextualObjective(lockedCandidates),
+      provisionalObjective: lockedCandidates.reduce(
+        (sum, item, index) =>
+          sum +
+          scorePlanningFace(item, brief, config, lockedCandidates.slice(0, index)).planningUtility
+            .provisional,
+        0,
+      ),
     },
   ];
   for (const candidate of pool.filter((item) => !lockedIds.includes(item.faceId))) {
@@ -1072,6 +1280,7 @@ export function selectPlanningPortfolio(
         candidates: [...state.candidates, candidate],
         amount,
         objective: state.objective + incrementalUtility(assessment),
+        provisionalObjective: state.provisionalObjective + assessment.planningUtility.provisional,
       });
     }
     expanded.sort(stateOrder);
@@ -1097,6 +1306,9 @@ export function selectPlanningPortfolio(
   };
   result.budgetRemaining = round(budget.amount - best.amount);
   result.objective = round(best.objective);
+  result.provisionalObjective = round(best.provisionalObjective);
+  if (result.selectedAssessments.some((item) => item.utilityTier === 'provisional_interest'))
+    result.diagnostics.push('provisional_interest_exposure_unknown');
   if (result.truncated) result.diagnostics.push('search_pool_truncated');
   if (best.candidates.some((item) => item.availability === 'unknown'))
     result.diagnostics.push('availability_verification_required');

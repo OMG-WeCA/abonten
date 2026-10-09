@@ -215,7 +215,7 @@ export function planningScoringCandidates(
       'speedKph',
       'viewablePathM',
     ] as const) {
-      const value = field(key, number(0.000001, 1e6));
+      const value = field(key, number(key === 'viewingDistanceM' ? 0.000001 : 0, 1e6));
       if (value) geometry[key] = value;
     }
     const obstruction = field('unobstructedFraction', number(0, 1));
@@ -266,33 +266,45 @@ export function planningScoringCandidates(
         (record) =>
           record.dimension === 'environment' &&
           record.payload.faceId === face.faceId &&
-          scheduleValid(record.payload.scheduleDaypartCoverage) &&
           typeof record.payload.scheduleWindow === 'object' &&
           record.payload.scheduleWindow !== null &&
           !Array.isArray(record.payload.scheduleWindow) &&
           typeof (record.payload.scheduleWindow as Record<string, unknown>).startDate ===
             'string' &&
           typeof (record.payload.scheduleWindow as Record<string, unknown>).endDate === 'string' &&
-          planningDays(record.payload.scheduleWindow as unknown as PlanningWindow) !== null,
+          planningDays(record.payload.scheduleWindow as unknown as PlanningWindow) !== null &&
+          window !== null &&
+          (record.payload.scheduleWindow as unknown as PlanningWindow).startDate ===
+            window.startDate &&
+          (record.payload.scheduleWindow as unknown as PlanningWindow).endDate === window.endDate,
       );
       if (scheduled) {
         const source = `${scheduled.source} · ${scheduled.method} · ${scheduled.id}`;
-        candidate.digital.scheduleDaypartCoverage = evidence(
-          scheduled.payload.scheduleDaypartCoverage as { day: number; night: number },
-          recordProvenance(scheduled),
-          source,
-        );
+        // Select one coherent purchase record before validating its fields. A
+        // missing field must not resurrect an older contradictory allocation.
+        if (scheduleValid(scheduled.payload.scheduleDaypartCoverage))
+          candidate.digital.scheduleDaypartCoverage = evidence(
+            scheduled.payload.scheduleDaypartCoverage,
+            recordProvenance(scheduled),
+            source,
+          );
         const scheduleWindow = scheduled.payload.scheduleWindow as unknown as PlanningWindow;
         candidate.digital.scheduleWindow = {
           startDate: scheduleWindow.startDate,
           endDate: scheduleWindow.endDate,
         };
         const placements = scheduled.payload.advertiserSpotsPerLoop;
+        const spot = candidate.digital.spotLengthSeconds?.value;
+        const loop = candidate.digital.loopLengthSeconds?.value;
         if (
           typeof placements === 'number' &&
           Number.isInteger(placements) &&
-          placements > 0 &&
-          placements <= 1000
+          placements >= 0 &&
+          placements <= 1000 &&
+          (placements === 0 ||
+            spot === undefined ||
+            loop === undefined ||
+            spot * placements <= loop)
         )
           candidate.digital.advertiserSpotsPerLoop = evidence(
             placements,

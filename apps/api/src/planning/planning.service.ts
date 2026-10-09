@@ -18,6 +18,7 @@ import { planningScoringCandidates } from './planning-scoring-adapter';
 import {
   effectiveBriefFitConfig,
   scorePlanningFace,
+  comparePlanningAssessments,
   selectPlanningPortfolio,
   type PlanningScoringBrief,
   type PlanningFaceAssessment,
@@ -724,7 +725,7 @@ export class PlanningService {
         hasMore: searchHasMore,
         exhaustive: false as const,
         ranking:
-          'Versioned deterministic supported brief-fit contribution, then evidence confidence and stable identifiers. Bounded search; not measured effectiveness or an exhaustive optimum.',
+          'Versioned deterministic usable-exposure utility first; separately qualified provisional interest when exposure is unknown. Stable confidence/identifier ties and bounded search; not measured effectiveness or an exhaustive optimum.',
         enrichmentReadLimit: 6,
         enrichmentReads,
         enrichmentFailures,
@@ -934,13 +935,11 @@ function candidateBudgetMatch(
 }
 
 function assessmentRank(a?: PlanningFaceAssessment, b?: PlanningFaceAssessment): number {
-  return (
-    Number(b?.eligible ?? false) - Number(a?.eligible ?? false) ||
-    (b?.score ?? -1) - (a?.score ?? -1) ||
-    (b?.evidenceConfidence ?? 0) - (a?.evidenceConfidence ?? 0) ||
-    (a?.faceId ?? '').localeCompare(b?.faceId ?? '')
-  );
+  if (!a) return b ? 1 : 0;
+  if (!b) return -1;
+  return comparePlanningAssessments(a, b);
 }
+
 function deterministicChoice(facts: {
   sites: GroundedSite[];
   assessment: { portfolio: { selectedFaceIds: string[]; status: string } };

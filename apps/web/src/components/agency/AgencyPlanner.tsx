@@ -518,8 +518,8 @@ export function AgencyPlanner(props: PlannerProps) {
         )}
         <p className="agency-assumption-note">
           {t(
-            'Deterministic, provisional brief-fit scoring · no audience or reach claim. Displayed scores are recalculated from current sources when controls change or saved plans reopen.',
-            'Notation déterministe et provisoire · aucune mesure d’audience ou de couverture. Les notes affichées sont recalculées selon les sources actuelles après modification des paramètres ou réouverture d’un plan enregistré.',
+            'Uncalibrated planning indices · no measured exposure, audience or reach claim. Displayed scores are recalculated from current sources when controls change or saved plans reopen.',
+            'Indices de planification non calibrés · aucune mesure d’exposition, d’audience ou de couverture. Les notes affichées sont recalculées selon les sources actuelles après modification des paramètres ou réouverture d’un plan enregistré.',
           )}
         </p>
         {props.assessmentState === 'loading' && (
@@ -545,14 +545,14 @@ export function AgencyPlanner(props: PlannerProps) {
             </summary>
             <p>
               {t(
-                'Provisional product weights, pending local calibration',
-                'Poids produit provisoires, avant calibration locale',
+                'Uncalibrated product weights, pending local validation',
+                'Poids produit non calibrés, avant validation locale',
               )}{' '}
               : {t('geography', 'géographie')}{' '}
               {displayNumber(props.assessment.config.weights.geography, locale)}%,{' '}
               {t('audience', 'audience')}{' '}
               {displayNumber(props.assessment.config.weights.audience, locale)}%,{' '}
-              {t('visibility/exposure', 'visibilité/exposition')}{' '}
+              {t('campaign exposure', 'exposition de campagne')}{' '}
               {displayNumber(props.assessment.config.weights.visibility, locale)}%,{' '}
               {t('geographic contribution', 'apport géographique')}{' '}
               {displayNumber(props.assessment.config.weights.contribution, locale)}%,{' '}
@@ -565,8 +565,8 @@ export function AgencyPlanner(props: PlannerProps) {
             </p>
             <p>
               {t(
-                'Bounded deterministic portfolio search. Geographic overlap is a planning proxy, not deduplicated reach. Availability and commercial quotes still need verification.',
-                'Recherche déterministe bornée du portefeuille. Le chevauchement géographique est un indicateur de planification, pas une couverture dédupliquée. Disponibilité et devis restent à vérifier.',
+                'Bounded portfolio search uses supported exposure before provisional interest. Unknown geographic overlap earns no novelty bonus. These uncalibrated indices do not establish deduplicated reach or improved effectiveness.',
+                'La recherche bornée privilégie l’exposition étayée avant l’intérêt provisoire. Un chevauchement géographique inconnu ne reçoit aucun bonus de nouveauté. Ces indices non calibrés ne démontrent ni couverture dédupliquée ni meilleure efficacité.',
               )}
             </p>
             {props.storedScoringVersion &&

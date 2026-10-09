@@ -851,6 +851,20 @@ describe('versioned planning HTTP authorization and validation', () => {
         ).status,
         403,
       );
+      for (const deniedOrg of ['agency-b', 'brand-a']) {
+        assert.equal(
+          (
+            await fetch(`${base}/assess`, {
+              method: 'POST',
+              headers: { ...auth, 'X-Org-Id': deniedOrg, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                context: { fitPreferences: { version: 1, goal: 'balanced' } },
+              }),
+            })
+          ).status,
+          403,
+        );
+      }
       syntheticProvider.configured = true;
       const configured = await fetch(`${base}/assistant/status`, { headers: auth });
       assert.equal(((await configured.json()) as { model: string }).model, 'gpt-6-luna');

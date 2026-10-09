@@ -872,9 +872,59 @@ test('shortlist DEMO cost label stays absent until its ready estimate contribute
     }
 });
 
+const unknownPolicyComponent = () => ({
+  value: null,
+  range: { lower: 0, upper: 1 },
+  confidence: 0,
+  provenance: [],
+  sources: [],
+  reasons: [],
+  unknowns: ['exposure_context_unknown'],
+});
+const policyComponent = (
+  value: number,
+): import('../../../api/src/planning/planning-scoring').PlanningExposureComponent => ({
+  value,
+  range: { lower: value, upper: value },
+  confidence: 55,
+  provenance: ['owner_reported'],
+  sources: ['Synthetic policy source'],
+  reasons: ['purchased_daypart_coverage'],
+  unknowns: [],
+});
+const unknownExposure = () => ({
+  physical: unknownPolicyComponent(),
+  delivery: unknownPolicyComponent(),
+  usable: unknownPolicyComponent(),
+  status: 'unknown' as const,
+  method: 'uncalibrated_multiplicative_policy' as const,
+});
+const provisionalUtility = () => ({
+  supported: 0,
+  provisional: 0.2,
+  overlapMultiplier: 0,
+  exposureMultiplier: null,
+  overlapRange: { lower: 0, upper: 1 },
+});
+
 test('brief-fit display separates supported range from confidence and leaves missing factors unknown in English and French', async () => {
   const assessment: import('../../../api/src/planning/planning-scoring').PlanningFaceAssessment = {
-    version: 'brief-fit-v1-provisional:balanced',
+    version: 'brief-fit-v2-provisional:balanced',
+    exposure: {
+      ...unknownExposure(),
+      physical: policyComponent(1),
+      delivery: policyComponent(0.24),
+      usable: policyComponent(0.24),
+      status: 'supported',
+    },
+    utilityTier: 'supported_exposure',
+    planningUtility: {
+      supported: 24,
+      provisional: 0,
+      overlapMultiplier: 0.2,
+      exposureMultiplier: 0.24,
+      overlapRange: { lower: 0.2, upper: 0.2 },
+    },
     siteId: site.id,
     faceId: site.faces[0].id,
     score: 24,
@@ -887,11 +937,11 @@ test('brief-fit display separates supported range from confidence and leaves mis
     exclusions: [],
     weights: { geography: 30, audience: 20, visibility: 30, contribution: 10, value: 10 },
     reasons: ['country_match'],
-    unknowns: ['directional_geometry_unverified'],
+    unknowns: ['audience_segment_unknown'],
     factors: [
       {
-        key: 'visibility',
-        weight: 30,
+        key: 'audience',
+        weight: 20,
         score: null,
         range: { lower: 0, upper: 100 },
         coverage: 0,
@@ -899,23 +949,23 @@ test('brief-fit display separates supported range from confidence and leaves mis
         provenance: [],
         sources: [],
         reasons: [],
-        unknowns: ['directional_geometry_unverified'],
+        unknowns: ['audience_segment_unknown'],
       },
     ],
   };
   const en = renderToStaticMarkup(<BriefFitScore assessment={assessment} locale="en" />);
   assert.ok(en.includes('24–94 /100'));
-  assert.ok(en.includes('Confidence low'));
+  assert.ok(en.includes('Evidence confidence low'));
   assert.ok(en.includes('Supported contribution'));
-  assert.ok(en.includes('Directional geometry unverified'));
+  assert.ok(en.includes('Target audience evidence missing'));
   assert.ok(en.includes('Unknown'));
   assert.ok(!en.includes('0–100 /100'));
-  assert.ok(en.includes('not measured effectiveness'));
+  assert.ok(en.includes('not measured exposure, OTS or effectiveness'));
   const fr = renderToStaticMarkup(<BriefFitScore assessment={assessment} locale="fr" />);
-  assert.ok(fr.includes('Confiance faible'));
-  assert.ok(fr.includes('Géométrie directionnelle non vérifiée'));
+  assert.ok(fr.includes('Confiance des données faible'));
+  assert.ok(fr.includes('Données d’audience cible manquantes'));
   assert.ok(!fr.includes('country_match'));
-  assert.ok(!fr.includes('directional_geometry_unverified'));
+  assert.ok(!fr.includes('audience_segment_unknown'));
   assert.ok(!fr.includes('Unknown'));
   const missing = renderToStaticMarkup(
     <BriefFitScore
@@ -930,6 +980,9 @@ test('brief-fit display separates supported range from confidence and leaves mis
 test('brief-fit source prose stays escaped and priorities expose localized confirmed controls', async () => {
   const score: import('../../../api/src/planning/planning-scoring').PlanningFaceAssessment = {
     version: 'test-policy',
+    exposure: unknownExposure(),
+    utilityTier: 'provisional_interest',
+    planningUtility: provisionalUtility(),
     siteId: site.id,
     faceId: site.faces[0].id,
     score: 10,
@@ -969,4 +1022,132 @@ test('brief-fit source prose stays escaped and priorities expose localized confi
   assert.ok(preferences.includes('Confirmez les priorités avant de noter'));
   assert.ok(preferences.includes('Sens d’approche'));
   assert.ok(preferences.includes('Appliquer les priorités'));
+});
+
+test('tiny digital purchased delivery stays distinct from physical visibility and fit in both languages', () => {
+  const assessment: import('../../../api/src/planning/planning-scoring').PlanningFaceAssessment = {
+    version: 'brief-fit-v2-provisional:balanced',
+    siteId: site.id,
+    faceId: site.faces[0].id,
+    score: 0.4,
+    range: { lower: 0.4, upper: 0.75 },
+    evidenceCoverage: 70,
+    evidenceConfidence: 55,
+    confidenceLabel: 'medium',
+    eligible: true,
+    provisional: true,
+    exclusions: [],
+    weights: { geography: 30, audience: 20, visibility: 30, contribution: 10, value: 10 },
+    factors: [],
+    reasons: [],
+    unknowns: [],
+    exposure: {
+      physical: policyComponent(0.75),
+      delivery: policyComponent(0.01),
+      usable: policyComponent(0.0075),
+      status: 'supported',
+      method: 'uncalibrated_multiplicative_policy',
+    },
+    utilityTier: 'supported_exposure',
+    planningUtility: {
+      supported: 0.4,
+      provisional: 0,
+      overlapMultiplier: 0.2,
+      exposureMultiplier: 0.0075,
+      overlapRange: { lower: 0.2, upper: 0.2 },
+    },
+  };
+  const en = renderToStaticMarkup(<BriefFitScore assessment={assessment} locale="en" />);
+  assert.ok(en.includes('0.4–0.75 /100'));
+  assert.ok(en.includes('Physical visibility index</dt><dd>75 /100'));
+  assert.ok(en.includes('Campaign usable-exposure index</dt><dd>0.75 /100'));
+  assert.ok(en.includes('Purchased delivery index'));
+  assert.ok(en.includes('1 /100'));
+  assert.ok(en.includes('Uncalibrated exposure policy'));
+  assert.ok(en.includes('no measured OTS or attention'));
+  const fr = renderToStaticMarkup(<BriefFitScore assessment={assessment} locale="fr" />);
+  assert.ok(fr.includes('Indice d’exposition utile de campagne</dt><dd>0,75 /100'));
+  assert.ok(fr.includes('Indice de diffusion achetée'));
+  assert.ok(fr.includes('non calibrée'));
+  const tiny = renderToStaticMarkup(
+    <BriefFitScore
+      assessment={{
+        ...assessment,
+        exposure: { ...assessment.exposure, usable: policyComponent(0.000001) },
+      }}
+      locale="en"
+    />,
+  );
+  assert.ok(tiny.includes('&lt;0.01 /100'));
+});
+
+test('sparse exposure is unknown provisional interest and impossible exposure is excluded without effectiveness claims', () => {
+  const assessment: import('../../../api/src/planning/planning-scoring').PlanningFaceAssessment = {
+    version: 'brief-fit-v2-provisional:balanced',
+    siteId: site.id,
+    faceId: site.faces[0].id,
+    score: null,
+    range: { lower: 0, upper: 50 },
+    evidenceCoverage: 0,
+    evidenceConfidence: 0,
+    confidenceLabel: 'low',
+    eligible: true,
+    provisional: true,
+    exclusions: [],
+    weights: { geography: 30, audience: 20, visibility: 30, contribution: 10, value: 10 },
+    factors: [],
+    reasons: [],
+    unknowns: ['provisional_interest_exposure_unknown'],
+    exposure: unknownExposure(),
+    utilityTier: 'provisional_interest',
+    planningUtility: provisionalUtility(),
+  };
+  const en = renderToStaticMarkup(<BriefFitScore assessment={assessment} locale="en" />);
+  assert.ok(en.includes('Brief fit <b>Unknown'));
+  assert.ok(en.includes('Physical visibility index</dt><dd>Unknown'));
+  assert.ok(en.includes('Campaign usable-exposure index</dt><dd>Unknown'));
+  assert.ok(en.includes('Provisional interest only'));
+  assert.ok(en.includes('Policy bounds with missing evidence'));
+  assert.ok(en.includes('0–100 /100'));
+  assert.ok(en.includes('no demonstrated performance improvement'));
+  assert.ok(!en.includes('0.2 /100'));
+  const fr = renderToStaticMarkup(<BriefFitScore assessment={assessment} locale="fr" />);
+  assert.ok(fr.includes('aucune amélioration de performance démontrée'));
+  const countryMismatch = renderToStaticMarkup(
+    <BriefFitScore
+      assessment={{
+        ...assessment,
+        eligible: false,
+        utilityTier: 'ineligible',
+        exclusions: ['country_mismatch'],
+      }}
+      locale="en"
+    />,
+  );
+  assert.ok(countryMismatch.includes('Excluded by confirmed planning constraints'));
+  assert.ok(!countryMismatch.includes('Known incompatible exposure'));
+  assert.ok(!countryMismatch.includes('exposure incompatibility'));
+  assert.ok(countryMismatch.includes('Campaign usable-exposure index</dt><dd>Unknown'));
+  const blocked = renderToStaticMarkup(
+    <BriefFitScore
+      assessment={{
+        ...assessment,
+        score: 0,
+        range: { lower: 0, upper: 0 },
+        eligible: false,
+        utilityTier: 'ineligible',
+        exclusions: ['usable_exposure_impossible'],
+        exposure: {
+          ...assessment.exposure,
+          status: 'unusable',
+          physical: policyComponent(0),
+          usable: policyComponent(0),
+        },
+      }}
+      locale="en"
+    />,
+  );
+  assert.ok(blocked.includes('Known incompatible exposure'));
+  assert.ok(blocked.includes('excluded from automatic plans'));
+  assert.ok(blocked.includes('blocks automatic selection'));
 });
