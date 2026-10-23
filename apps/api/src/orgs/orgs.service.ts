@@ -1,3 +1,4 @@
+import { InvitationsService } from '../auth/invitations.service';
 import {
   BadRequestException,
   ConflictException,
@@ -5,6 +6,8 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Optional,
+  ServiceUnavailableException,
   NotFoundException,
 } from '@nestjs/common';
 import { findMarket } from '../common/supported-markets';
@@ -25,18 +28,14 @@ import { Capability } from '../capabilities/capability.enum';
 import { UserCapabilityOverrideEntity } from '../auth/entities/user-capability-override.entity';
 import { normalizeEmailIdentity } from '../auth/email-identity';
 import { UserIdentityService } from '../auth/user-identity.service';
-import type { OrganizationRole } from '../capabilities/organization-roles';
+import {
+  ASSIGNABLE_ROLES_BY_ORG_TYPE,
+  type OrganizationRole,
+} from '../capabilities/organization-roles';
 import type { EntityManager, EntityTarget, ObjectLiteral, Repository } from 'typeorm';
 import { preparePartnerTermsAcceptance } from './terms/partner-terms.catalog';
 import { persistPartnerTermsAcceptance } from './partner-terms.service';
 import { OrganizationCreationRequestEntity } from './entities/organization-creation-request.entity';
-
-const ASSIGNABLE_ROLES_BY_ORG_TYPE: Record<string, readonly OrganizationRole[]> = {
-  media_partner: ['org_owner', 'org_admin', 'inventory_manager', 'field_operator'],
-  agency: ['org_owner', 'org_admin', 'planner', 'planner_admin'],
-  brand: ['org_owner', 'org_admin', 'client_viewer', 'client_admin'],
-  platform: ['org_owner', 'org_admin', 'platform_admin'],
-};
 
 const MANAGEABLE_ROLES_BY_ACTOR: Record<OrganizationRole, readonly OrganizationRole[]> = {
   org_owner: [
@@ -75,11 +74,12 @@ interface MembershipActorPolicy {
 }
 
 export interface InvitationResult {
-  userId: string;
+  userId?: string;
+  invitationId?: string;
   organizationId: string;
   role: string;
   membership: {
-    status: 'active';
+    status: 'active' | 'pending';
     change: 'created' | 'unchanged';
   };
   delivery:
@@ -99,6 +99,7 @@ export class OrgsService {
     private readonly emailCode: EmailCodeService,
     private readonly identities: UserIdentityService,
     private readonly resolver: CapabilityResolverService,
+    @Optional() private readonly invitations?: InvitationsService,
   ) {}
 
   private repository<T extends ObjectLiteral>(
@@ -368,63 +369,55 @@ export class OrgsService {
    * existing role or reactivates a revoked membership. */
   async invite(orgId: string, dto: InviteUserDto, actorId: string): Promise<InvitationResult> {
     const email = normalizeEmailIdentity(dto.email);
-    const user = await this.identities.findOrCreateByEmail(email, {
-      name: dto.name?.trim() || email.split('@')[0],
+    const user = await (await this.db.repo(UserEntity)).findOne({ where: { email } });
+    const access = await this.db.transaction(async (manager) => {
+      const actorPolicy = await this.membershipActorPolicy(actorId, orgId, manager);
+      const existing = user
+        ? await manager
+            .getRepository(MembershipEntity)
+            .findOne({ where: { userId: user.id, organizationId: orgId } })
+        : null;
+      if (existing) {
+        this.assertInvitationMatchesMembership(existing, dto.role, orgId);
+        return { membership: existing };
+      }
+      this.assertRoleAssignment(actorPolicy, dto.role);
+      if (!this.invitations)
+        throw new ServiceUnavailableException('Invitation admission is unavailable');
+      const invitation = await this.invitations.persist(
+        manager,
+        actorId,
+        orgId,
+        actorPolicy.organization,
+        dto,
+        true,
+      );
+      return { invitation };
     });
-    let access: {
-      membership: MembershipEntity;
-      membershipChange: 'created' | 'unchanged';
-    };
-
-    try {
-      access = await this.db.transaction(async (manager) => {
-        const actorPolicy = await this.membershipActorPolicy(actorId, orgId, manager);
-        const memberships = await this.repository(MembershipEntity, manager);
-        const existing = await memberships.findOne({
-          where: { userId: user.id, organizationId: orgId },
-        });
-        if (existing) {
-          this.assertInvitationMatchesMembership(existing, dto.role, orgId);
-          return { membership: existing, membershipChange: 'unchanged' as const };
-        }
-
-        this.assertRoleAssignment(actorPolicy, dto.role);
-        const membership = await memberships.save(
-          memberships.create({
-            userId: user.id,
-            organizationId: orgId,
-            role: dto.role,
-            status: 'active',
-          }),
-        );
-        await this.recordAudit(
-          actorId,
-          orgId,
-          'organization.membership.created',
-          'membership',
-          membership.id,
-          null,
-          { userId: user.id, role: membership.role, status: membership.status },
-          manager,
-        );
-        return { membership, membershipChange: 'created' as const };
-      });
-    } catch (error) {
-      if (!isUniqueViolation(error)) throw error;
-      const memberships = await this.db.repo(MembershipEntity);
-      const existing = await memberships.findOne({
-        where: { userId: user.id, organizationId: orgId },
-      });
-      if (!existing) throw error;
-      this.assertInvitationMatchesMembership(existing, dto.role, orgId);
-      access = { membership: existing, membershipChange: 'unchanged' };
+    if (access.invitation) {
+      const delivered = await this.invitations!.deliver(access.invitation);
+      return {
+        userId: user?.id,
+        invitationId: delivered.id,
+        organizationId: orgId,
+        role: delivered.role,
+        membership: { status: 'pending', change: 'created' },
+        delivery:
+          delivered.delivery === 'sent'
+            ? { status: 'sent' }
+            : {
+                status: 'failed',
+                reason: 'temporarily_unavailable',
+                retryable: true,
+                retryPath: `/api/orgs/${orgId}/invite`,
+              },
+      };
     }
-
     const baseResult = {
-      userId: user.id,
+      userId: user!.id,
       organizationId: orgId,
-      role: access.membership.role,
-      membership: { status: 'active' as const, change: access.membershipChange },
+      role: access.membership!.role,
+      membership: { status: 'active' as const, change: 'unchanged' as const },
     };
 
     try {
@@ -566,13 +559,4 @@ export class OrgsService {
       audit.create({ actorUserId, actorOrgId, action, entityType, entityId, before, after }),
     );
   }
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === '23505'
-  );
 }

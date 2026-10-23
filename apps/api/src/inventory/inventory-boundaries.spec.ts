@@ -216,6 +216,9 @@ function buildFixture(opts: FixtureOptions = {}) {
     {
       id: 'site-1',
       organizationId: 'org-partner',
+      name: 'Fixture panel',
+      city: 'Accra',
+      country: 'Ghana',
       status: 'draft',
       latitude: 5.5297,
       longitude: -0.4137,
@@ -229,8 +232,39 @@ function buildFixture(opts: FixtureOptions = {}) {
     },
   ];
   const assets: Row[] = (opts.assets ?? []).map((a, i) => ({ id: `asset-${i + 1}`, ...a }));
-  const faces: Row[] = [];
-  const rateCards: Row[] = [];
+  const faces: Row[] =
+    opts.site?.status === 'listed'
+      ? [
+          {
+            id: 'face-listed',
+            siteId: 'site-1',
+            faceLabel: 'East',
+            width: 12,
+            height: 3,
+            area: 36,
+            bookable: true,
+          },
+        ]
+      : [];
+  const rateCards: Row[] =
+    opts.site?.status === 'listed'
+      ? [
+          {
+            id: 'rate-listed',
+            siteId: 'site-1',
+            currency: 'GHS',
+            rates: { perDay: 100 },
+            effectiveFrom: new Date('2020-01-01'),
+          },
+        ]
+      : [];
+  if (opts.site?.status === 'listed' && opts.assets === undefined)
+    assets.push({
+      id: 'asset-listed',
+      siteId: 'site-1',
+      kind: 'front',
+      capturedAt: new Date('2026-10-01'),
+    });
   const metadata: Row[] = [];
   const audit: Row[] = [];
   const memberships = opts.memberships ?? [
@@ -440,7 +474,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
       });
       const site = await owner.service.getSite(USER, 'org-partner', 'site-1');
       assert.equal(site.status, 'listed');
-      assert.deepEqual(site.faces, []);
+      assert.deepEqual(site.faces, owner.faces);
 
       const admin = buildFixture({
         site: { status: 'pending_review' },
@@ -524,7 +558,15 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
           },
         ],
       });
-      faces.push({ id: 'face-1', siteId: 'site-1', bookable: true });
+      faces.push({
+        id: 'face-1',
+        siteId: 'site-1',
+        faceLabel: 'East',
+        width: 12,
+        height: 3,
+        area: 36,
+        bookable: true,
+      });
       rateCards.push({
         siteId: 'site-1',
         faceId: null,
@@ -569,12 +611,29 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
         ],
       });
       faces.push(
-        { id: 'face-1', siteId: 'site-1', bookable: true },
-        { id: 'face-2', siteId: 'site-1', bookable: true },
+        {
+          id: 'face-1',
+          siteId: 'site-1',
+          faceLabel: 'East',
+          width: 12,
+          height: 3,
+          area: 36,
+          bookable: true,
+        },
+        {
+          id: 'face-2',
+          siteId: 'site-1',
+          faceLabel: 'East',
+          width: 12,
+          height: 3,
+          area: 36,
+          bookable: true,
+        },
       );
       rateCards.push({
         siteId: 'site-1',
         faceId: 'face-1',
+        currency: 'GHS',
         effectiveFrom: new Date('2020-01-01'),
         rates: { perDay: 100 },
       });
@@ -585,6 +644,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
       rateCards.push({
         siteId: 'site-1',
         faceId: 'face-2',
+        currency: 'GHS',
         effectiveFrom: new Date('2020-01-01'),
         rates: { perWeek: 600 },
       });

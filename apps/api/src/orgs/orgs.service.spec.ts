@@ -1,3 +1,4 @@
+import type { InvitationsService } from '../auth/invitations.service';
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import {
@@ -110,6 +111,12 @@ function createSubject(existing?: { role: string; status: string }) {
     },
   };
   const repositoryFor = (target: unknown) => {
+    if (target === UserEntity)
+      return {
+        async findOne() {
+          return user;
+        },
+      };
     if (target === MembershipEntity) return memberships;
     if (target === OrganizationEntity) {
       return {
@@ -148,11 +155,39 @@ function createSubject(existing?: { role: string; status: string }) {
       return work({ getRepository: repositoryFor });
     },
   };
+  let savedInvite: { id: string; email: string; role: string } | undefined;
+  const invitations = {
+    async persist(
+      _manager: unknown,
+      actorId: string,
+      _actorOrg: string,
+      _org: unknown,
+      dto: { email: string; role: string },
+    ) {
+      if (!savedInvite) {
+        savedInvite = { id: 'invite-1', email: dto.email.trim().toLowerCase(), role: dto.role };
+        events.push('invitation.saved');
+        auditActions.push('invitation.created');
+        auditActors.push(actorId);
+        events.push('audit.saved');
+      }
+      return savedInvite;
+    },
+    async deliver(row: { id: string; email: string; role: string }) {
+      try {
+        await emailCode.request(row.email);
+        return { ...row, delivery: 'sent' };
+      } catch {
+        return { ...row, delivery: 'failed' };
+      }
+    },
+  };
   const service = new OrgsService(
     db as unknown as DatabaseService,
     emailCode as EmailCodeService,
     identities as unknown as UserIdentityService,
     new CapabilityResolverService(),
+    invitations as unknown as InvitationsService,
   );
   return {
     service,
@@ -680,7 +715,7 @@ describe('OrgsService membership role policy', () => {
 });
 
 describe('OrgsService invitation delivery semantics', () => {
-  it('reports persisted access separately from SMTP failure and retries without role changes', async () => {
+  it('persists pending admission separately from SMTP failure without granting membership', async () => {
     const {
       service,
       memberships,
@@ -697,31 +732,31 @@ describe('OrgsService invitation delivery semantics', () => {
       { email: ' Person@Example.com ', role: 'planner' },
       'actor-1',
     );
-    assert.deepEqual(failed.membership, { status: 'active', change: 'created' });
+    assert.deepEqual(failed.membership, { status: 'pending', change: 'created' });
     assert.deepEqual(failed.delivery, {
       status: 'failed',
       reason: 'temporarily_unavailable',
       retryable: true,
       retryPath: '/api/orgs/org-1/invite',
     });
-    assert.equal(memberships.rows.get('user-1:org-1')?.role, 'planner');
-    assert.deepEqual(auditActions, ['organization.membership.created']);
+    assert.equal(memberships.rows.get('user-1:org-1'), undefined);
+    assert.deepEqual(auditActions, ['invitation.created']);
     assert.deepEqual(auditActors, ['actor-1']);
-    assert.deepEqual(events, ['membership.saved', 'audit.saved', 'email.requested']);
+    assert.deepEqual(events, ['invitation.saved', 'audit.saved', 'email.requested']);
 
     const retried = await service.invite(
       'org-1',
       { email: 'person@example.com', role: 'planner' },
       'actor-1',
     );
-    assert.deepEqual(retried.membership, { status: 'active', change: 'unchanged' });
+    assert.deepEqual(retried.membership, { status: 'pending', change: 'created' });
     assert.deepEqual(retried.delivery, { status: 'sent' });
-    assert.equal(memberships.saveCount, 1);
-    assert.deepEqual(auditActions, ['organization.membership.created']);
+    assert.equal(memberships.saveCount, 0);
+    assert.deepEqual(auditActions, ['invitation.created']);
     assert.deepEqual(requestedEmails, ['person@example.com', 'person@example.com']);
   });
 
-  it('reports rate-limit and Redis delivery failures without undoing membership persistence', async () => {
+  it('reports delivery failures without activating membership', async () => {
     const rateLimited = createSubject();
     rateLimited.deliveryOutcomes.push(
       new HttpException('Too many requests', HttpStatus.TOO_MANY_REQUESTS),
@@ -734,7 +769,7 @@ describe('OrgsService invitation delivery semantics', () => {
     assert.equal(limitedResult.membership.change, 'created');
     assert.equal(limitedResult.delivery.status, 'failed');
     if (limitedResult.delivery.status === 'failed') {
-      assert.equal(limitedResult.delivery.reason, 'rate_limited');
+      assert.equal(limitedResult.delivery.reason, 'temporarily_unavailable');
     }
 
     const redisUnavailable = createSubject();

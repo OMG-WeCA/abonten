@@ -87,7 +87,7 @@ describe('RedisService outage policy', () => {
       const emailCode = new EmailCodeService(
         redis,
         mail as unknown as MailService,
-        {} as UserIdentityService,
+        { canRequestCode: async () => true } as unknown as UserIdentityService,
         {} as AuthService,
         {
           get<T>(key: string): T | undefined {

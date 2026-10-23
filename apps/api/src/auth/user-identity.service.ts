@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { IsNull, type Repository } from 'typeorm';
 import { DatabaseService } from '../common/database.service';
 import { normalizeEmailIdentity } from './email-identity';
@@ -25,21 +25,7 @@ export class UserIdentityService {
     const existing = await users.findOne({ where: { email } });
     if (existing) return existing;
 
-    try {
-      return await users.save(
-        users.create({
-          email,
-          name: profile.name,
-          status: profile.status ?? 'active',
-          ...(profile.locale ? { locale: profile.locale } : {}),
-        }),
-      );
-    } catch (error) {
-      if (!isUniqueViolation(error)) throw error;
-      const concurrent = await users.findOne({ where: { email } });
-      if (concurrent) return concurrent;
-      throw error;
-    }
+    return this.createInvited(email, profile);
   }
 
   async findOrCreateFromMicrosoft(profile: MicrosoftIdentityProfile): Promise<UserEntity> {
@@ -50,20 +36,65 @@ export class UserIdentityService {
     const resolved = await this.resolveMicrosoftIdentity(users, email, subject);
     if (resolved) return resolved;
 
+    return this.createInvited(email, profile, subject);
+  }
+
+  async canRequestCode(emailInput: string): Promise<boolean> {
+    const email = normalizeEmailIdentity(emailInput),
+      users = await this.db.repo(UserEntity);
+    const existing = await users.findOne({ where: { email } });
+    if (existing) return existing.status === 'active';
+    const rows = await users.query(
+      `SELECT 1 FROM invitations i LEFT JOIN organizations o ON o.id::text=i.organization_id WHERE i.email=$1 AND i.status='pending' AND i.expires_at>clock_timestamp() AND ((i.kind='account' AND i.account_type IN ('media_partner','agency','brand')) OR (i.kind='membership' AND o.status='active')) LIMIT 1`,
+      [email],
+    );
+    return rows.length > 0;
+  }
+
+  private async createInvited(
+    email: string,
+    profile: NewUserProfile,
+    subject?: string,
+  ): Promise<UserEntity> {
     try {
-      return await users.save(
-        users.create({
-          email,
-          name: profile.name || email,
-          msOauthSubject: subject,
-          status: profile.status ?? 'active',
-        }),
-      );
+      return await this.db.transaction(async (manager) => {
+        const users = manager.getRepository(UserEntity);
+        // The invitation lock serializes admission with resend/revoke and competing identities.
+        const invitations = await manager.query(
+          `SELECT i.id FROM invitations i LEFT JOIN organizations o ON o.id::text=i.organization_id WHERE i.email=$1 AND i.status='pending' AND i.expires_at>clock_timestamp() AND ((i.kind='account' AND i.account_type IN ('media_partner','agency','brand')) OR (i.kind='membership' AND o.status='active')) ORDER BY i.id LIMIT 1 FOR UPDATE OF i`,
+          [email],
+        );
+        const existing = subject
+          ? await this.resolveMicrosoftIdentity(users, email, subject)
+          : await users.findOne({ where: { email } });
+        if (existing) return existing;
+        if (!invitations.length)
+          throw new ForbiddenException('An invitation is required to join Abonten');
+        // Check expiry again after any lock wait, using the database clock.
+        const valid = await manager.query(
+          `SELECT 1 FROM invitations WHERE id=$1 AND status='pending' AND expires_at>clock_timestamp()`,
+          [invitations[0].id],
+        );
+        if (!valid.length)
+          throw new ForbiddenException('An invitation is required to join Abonten');
+        return users.save(
+          users.create({
+            email,
+            name: profile.name,
+            status: profile.status ?? 'active',
+            ...(profile.locale ? { locale: profile.locale } : {}),
+            ...(subject ? { msOauthSubject: subject } : {}),
+          }),
+        );
+      });
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
-      const concurrent = await this.resolveMicrosoftIdentity(users, email, subject);
-      if (concurrent) return concurrent;
-      throw this.microsoftIdentityConflict();
+      const users = await this.db.repo(UserEntity);
+      const existing = subject
+        ? await this.resolveMicrosoftIdentity(users, email, subject)
+        : await users.findOne({ where: { email } });
+      if (existing) return existing;
+      throw error;
     }
   }
 

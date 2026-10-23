@@ -77,7 +77,9 @@ function service(db: DataSource, stored: Map<string, Buffer>) {
       stored.delete(ref);
     },
   } as unknown as StorageService;
-  return new InventoryMediaService(new DatabaseService(db), storage, {} as InventoryService);
+  return new InventoryMediaService(new DatabaseService(db), storage, {
+    reconcilePublication: async () => {},
+  } as unknown as InventoryService);
 }
 const file = async () => ({
   buffer: await sharp({ create: { width: 24, height: 16, channels: 3, background: 'red' } })

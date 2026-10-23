@@ -1,12 +1,16 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import type { DatabaseService } from '../common/database.service';
 import { UserEntity } from './entities/user.entity';
 import { UserIdentityService } from './user-identity.service';
 
 class FakeUsers {
   readonly users: UserEntity[] = [];
+  invited = true;
+  async query() {
+    return this.invited ? [{ id: 'invite-1' }] : [];
+  }
   failNextSaveWithConcurrent?: UserEntity;
   beforeConditionalUpdate?: (user: UserEntity) => void;
 
@@ -59,7 +63,11 @@ class FakeUsers {
 
 function createSubject() {
   const users = new FakeUsers();
-  const db = { repo: async () => users } as unknown as DatabaseService;
+  const db = {
+    repo: async () => users,
+    transaction: async (work: (m: unknown) => Promise<unknown>) =>
+      work({ getRepository: () => users, query: () => users.query() }),
+  } as unknown as DatabaseService;
   return { service: new UserIdentityService(db), users };
 }
 
@@ -189,4 +197,35 @@ describe('UserIdentityService', () => {
     );
     assert.equal(users.users[1].msOauthSubject, undefined);
   });
+});
+
+it('denies uninvited email and Microsoft creation while preserving existing sign-in', async () => {
+  const { service, users } = createSubject();
+  users.invited = false;
+  assert.equal(await service.canRequestCode('amina@palmline.example'), false);
+  await assert.rejects(
+    () => service.findOrCreateByEmail('amina@palmline.example', { name: 'Amina' }),
+    ForbiddenException,
+  );
+  await assert.rejects(
+    () =>
+      service.findOrCreateFromMicrosoft({
+        email: 'amina@palmline.example',
+        name: 'Amina',
+        subject: 'new-subject',
+      }),
+    ForbiddenException,
+  );
+  assert.equal(users.users.length, 0);
+  users.users.push({
+    id: 'existing',
+    email: 'amina@palmline.example',
+    name: 'Amina',
+    status: 'active',
+  } as UserEntity);
+  assert.equal(await service.canRequestCode('AMINA@PALMLINE.EXAMPLE'), true);
+  assert.equal(
+    (await service.findOrCreateByEmail('amina@palmline.example', { name: 'Other' })).id,
+    'existing',
+  );
 });

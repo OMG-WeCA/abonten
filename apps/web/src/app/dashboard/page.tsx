@@ -67,6 +67,15 @@ export default function DashboardPage() {
             {isPlatformAdmin && (
               <button
                 type="button"
+                onClick={() => router.push('/admin/invitations')}
+                className="inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-sm font-bold"
+              >
+                {locale === 'fr' ? 'Invitations' : 'Invitations'}
+              </button>
+            )}
+            {isPlatformAdmin && (
+              <button
+                type="button"
                 onClick={() => router.push('/admin/review')}
                 className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-white transition hover:bg-primary-hover"
               >

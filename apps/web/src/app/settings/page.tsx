@@ -240,6 +240,12 @@ export default function SettingsPage() {
     <WorkspaceFrame current="settings">
       <div className="max-w-5xl">
         <h1 className="text-3xl font-extrabold tracking-[-0.045em] sm:text-4xl">{copy.heading}</h1>
+        <Link
+          href="/invitations"
+          className="mt-4 mr-3 inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-sm font-semibold"
+        >
+          {displayLocale === 'fr' ? 'Vos invitations' : 'Your invitations'}
+        </Link>
         {activeOrganization?.type === 'media_partner' && (
           <Link
             href="/partner-terms/accepted"

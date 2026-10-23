@@ -1,3 +1,4 @@
+import { seedInvitations } from './invitations.seed';
 import 'reflect-metadata';
 import { AppDataSource } from '../data-source';
 import { seedBillboardSites } from './billboard-sites.seed';
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
     await seedUsers(AppDataSource);
     await seedMemberships(AppDataSource);
     await seedCapabilityOverrides(AppDataSource);
+    await seedInvitations(AppDataSource);
     await seedBillboardSites(AppDataSource);
     await seedSiteFaces(AppDataSource);
     await seedFaceBlackouts(AppDataSource);

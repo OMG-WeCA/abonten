@@ -1,3 +1,12 @@
+import {
+  dimensionProblems,
+  digitalProblems,
+  publicationProblems,
+  currentRate,
+} from './inventory-integrity';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { CreateSiteDto as SiteInput, CreateRateCardDto as RateInput } from './dto/inventory.dto';
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import {
@@ -317,6 +326,31 @@ function buildHarness(
   return { service, sites, faces, assets, metadata, rateCards, blackouts, audit, storage };
 }
 
+function completeFixture(h: Harness) {
+  h.faces.push({
+    id: 'face-1',
+    siteId: 'site-1',
+    faceLabel: 'East',
+    width: 12,
+    height: 3,
+    area: 36,
+    bookable: true,
+  });
+  h.assets.push({
+    id: 'asset-1',
+    siteId: 'site-1',
+    kind: 'front',
+    capturedAt: new Date('2026-10-01'),
+  });
+  h.rateCards.push({
+    id: 'rate-1',
+    siteId: 'site-1',
+    currency: 'NGN',
+    rates: { perDay: 100 },
+    effectiveFrom: new Date('2020-01-01'),
+  });
+}
+
 const USER: AuthenticatedUser = {
   userId: 'kwame-1',
   email: 'kwame@example.test',
@@ -403,6 +437,7 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
         rejectionReason: 'Correct the pin',
       },
     });
+    completeFixture(h);
     await h.service.updateSite(USER, ORG, 'site-1', { name: 'Renamed fixture' });
     assert.deepEqual(h.sites[0].locationVerification, verification);
     assert.equal(h.sites[0].status, 'listed');
@@ -439,7 +474,15 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
       capturedAt: new Date('2026-08-01'),
       storageRef: 'assets/site-1/front.png',
     });
-    h.faces.push({ id: 'face-1', siteId: 'site-1', bookable: true });
+    h.faces.push({
+      id: 'face-1',
+      siteId: 'site-1',
+      faceLabel: 'East',
+      width: 12,
+      height: 3,
+      area: 36,
+      bookable: true,
+    });
     h.rateCards.push({
       id: 'rate-1',
       siteId: 'site-1',
@@ -878,6 +921,7 @@ describe('demo metadata suppression (truth reset §1.4.1)', () => {
       ],
     });
     seedRows(h);
+    completeFixture(h);
     // The owning partner reads through the unfiltered owner view (the UI
     // labels demo rows): demo-1 and prod-1 both come back.
     const ownerSite = await h.service.getSite(
@@ -913,9 +957,248 @@ describe('demo metadata suppression (truth reset §1.4.1)', () => {
       payload: {},
       verification: 'partner_declared',
       dataClass: 'demo',
+      source: 'Owner survey',
+      method: 'Owner-reported count',
     } as never);
     const row = record as unknown as Row;
     assert.equal(row.dataClass, 'production');
     assert.equal(row.verification, 'partner_declared');
+  });
+});
+
+describe('inventory integrity regression (2026-10-21)', () => {
+  it('rejects negative, zero and inconsistent areas, including two negative dimensions', () => {
+    for (const input of [
+      { width: -12, height: 0, area: -72 },
+      { width: -12, height: -6, area: 72 },
+      { width: 12, height: 6, area: 1 },
+    ])
+      assert.ok(dimensionProblems(input).length);
+    assert.deepEqual(dimensionProblems({ width: 12, height: 6, area: 72 }), []);
+    assert.deepEqual(dimensionProblems({ width: 12, height: 6 }), []);
+  });
+  it('checks digital capacity on partial edits without requiring complete drafts', () => {
+    assert.ok(digitalProblems({ spotLengthSeconds: 15, loopLengthSeconds: 10 }).length);
+    assert.ok(
+      digitalProblems({ spotLengthSeconds: 10, loopLengthSeconds: 60, spotsPerLoop: 7 }).length,
+    );
+    assert.ok(digitalProblems({ spotsPerLoop: 1.5 }).length);
+    assert.deepEqual(digitalProblems({ spotLengthSeconds: 10 }), []);
+  });
+  it('rejects empty identity and unsupported currency at the HTTP DTO boundary', async () => {
+    const input = {
+      name: '   ',
+      format: 'static',
+      latitude: 6.6,
+      longitude: 3.3,
+      city: 'Lagos',
+      country: 'Nigeria',
+      width: 12,
+      height: 6,
+    };
+    assert.ok(
+      (await validate(plainToInstance(SiteInput, input))).some(
+        (error) => error.property === 'name',
+      ),
+    );
+    const rate = { currency: 'ABC', rates: { perDay: 10000 }, effectiveFrom: '2026-10-01' };
+    assert.ok(
+      (await validate(plainToInstance(RateInput, rate))).some(
+        (error) => error.property === 'currency',
+      ),
+    );
+  });
+  it('time expiry, missing last face and invalid digital data remove publication eligibility', () => {
+    const site = {
+      name: 'Fixture',
+      latitude: 6.6,
+      longitude: 3.3,
+      city: 'Lagos',
+      country: 'Nigeria',
+      format: 'static',
+      width: 12,
+      height: 6,
+      area: 72,
+    };
+    const face = {
+      id: 'face-1',
+      faceLabel: 'East',
+      bookable: true,
+      width: 12,
+      height: 6,
+      area: 72,
+    };
+    const rate = {
+      currency: 'NGN',
+      rates: { perDay: 10000 },
+      effectiveFrom: '2026-10-01',
+      effectiveTo: '2026-10-21',
+    };
+    assert.deepEqual(publicationProblems(site, [face], [rate], true, '2026-10-21'), []);
+    assert.ok(publicationProblems(site, [face], [rate], true, '2026-10-22').length);
+    assert.ok(publicationProblems(site, [], [rate], true, '2026-10-21').length);
+    assert.ok(
+      publicationProblems(
+        { ...site, format: 'digital_led' },
+        [
+          {
+            ...face,
+            pixelWidth: 1920,
+            pixelHeight: 1080,
+            spotLengthSeconds: 75,
+            loopLengthSeconds: 60,
+            spotsPerLoop: 1,
+          },
+        ],
+        [rate],
+        true,
+        '2026-10-21',
+      ).length,
+    );
+    assert.equal(currentRate({ ...rate, currency: 'ABC' }, '2026-10-21'), false);
+  });
+  it('ordinary partner evidence cannot set independent verification or omit its source', async () => {
+    const h = buildHarness();
+    const user = { userId: 'partner', activeOrgId: 'org-partner' } as AuthenticatedUser;
+    const dto = {
+      dimension: 'audience',
+      payload: { segments: { QA: 0.9 } },
+      source: 'Owner',
+      method: 'Owner declaration',
+      verification: 'field_verified',
+    };
+    await assert.rejects(
+      () => h.service.addMetadata(user, 'org-partner', 'site-1', dto),
+      ForbiddenException,
+    );
+    await assert.rejects(
+      () =>
+        h.service.addMetadata(user, 'org-partner', 'site-1', {
+          dimension: 'traffic',
+          payload: { vehiclesPerDay: 1000 },
+        }),
+      BadRequestException,
+    );
+    const saved = await h.service.addMetadata(user, 'org-partner', 'site-1', {
+      ...dto,
+      verification: 'partner_declared',
+    });
+    assert.equal(saved.verification, 'partner_declared');
+    assert.equal(h.metadata.length, 1);
+  });
+});
+
+describe('publication mutation and reviewer authority regressions', () => {
+  it('removing the last face returns a listed site to draft with a transactional audit', async () => {
+    const h = buildHarness({ site: { status: 'listed' } });
+    completeFixture(h);
+    await h.service.removeFace(USER, ORG, 'face-1');
+    assert.equal(h.sites[0].status, 'draft');
+    assert.ok(h.audit.some((row) => row.action === 'inventory.site.unpublished'));
+  });
+  it('ending the last current rate unpublishes instead of leaving listed status', async () => {
+    const h = buildHarness({ site: { status: 'listed' } });
+    completeFixture(h);
+    h.rateCards[0].organizationId = ORG;
+    await h.service.updateRateCard(USER, ORG, 'rate-1', {
+      effectiveTo: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
+    });
+    assert.equal(h.sites[0].status, 'draft');
+  });
+  it('reviewer verification is authorized, audited and reset when partner evidence changes', async () => {
+    const h = buildHarness({
+      memberships: [{ userId: 'reviewer', organizationId: 'platform', role: 'platform_admin' }],
+      organizations: [
+        { id: ORG, type: 'media_partner' },
+        { id: 'platform', type: 'platform' },
+      ],
+    });
+    const reviewer = { userId: 'reviewer' } as AuthenticatedUser;
+    const m = await h.service.addMetadata(reviewer, 'platform', 'site-1', {
+      dimension: 'audience',
+      payload: { segments: { QA: 0.9 } },
+      source: 'Synthetic independent source',
+      method: 'Synthetic field review',
+      verification: 'field_verified',
+    });
+    assert.equal(m.verification, 'field_verified');
+    await h.service.updateMetadata(USER, ORG, m.id, { payload: { segments: { QA: 0.1 } } });
+    assert.equal(h.metadata[0].verification, 'partner_declared');
+    assert.equal(h.audit[1].actorOrgId, ORG);
+    await assert.rejects(
+      () => h.service.updateMetadata(USER, ORG, m.id, { verification: 'third_party' }),
+      ForbiddenException,
+    );
+  });
+});
+
+describe('write-boundary integrity regressions', () => {
+  it('validates effective face edits and derives area on partial dimension updates', async () => {
+    const h = buildHarness();
+    for (const patch of [
+      { width: -12, height: 0, area: -72 },
+      { width: -12, height: -6, area: 72 },
+      { area: 1 },
+      { spotLengthSeconds: 75, loopLengthSeconds: 60, spotsPerLoop: 1 },
+    ]) {
+      await assert.rejects(
+        () =>
+          h.service.addFace(USER, ORG, 'site-1', {
+            faceLabel: 'East',
+            width: 12,
+            height: 6,
+            area: 72,
+            units: 'm',
+            ...patch,
+          }),
+        BadRequestException,
+      );
+    }
+    const face = await h.service.addFace(USER, ORG, 'site-1', {
+      faceLabel: 'East',
+      width: 12,
+      height: 6,
+      area: 72,
+      units: 'm',
+      pixelWidth: 1920,
+      pixelHeight: 1080,
+      spotLengthSeconds: 10,
+      loopLengthSeconds: 60,
+      spotsPerLoop: 6,
+    });
+    await assert.rejects(
+      () => h.service.updateFace(USER, ORG, face.id, { spotLengthSeconds: 75 }),
+      BadRequestException,
+    );
+    await assert.rejects(
+      () => h.service.updateFace(USER, ORG, face.id, { width: -12, height: -6 }),
+      BadRequestException,
+    );
+    const changed = await h.service.updateFace(USER, ORG, face.id, { width: 10 });
+    assert.equal(changed.area, 60);
+    assert.equal(changed.height, 6);
+  });
+});
+
+describe('review follow-up: metadata normalization', () => {
+  it('retains owner-reported visibility status on ordinary updates and preserves explicit clears', async () => {
+    const h = buildHarness();
+    const row = await h.service.addMetadata(USER, ORG, 'site-1', {
+      dimension: 'visibility',
+      payload: { score: 0.5 },
+      source: 'Owner survey',
+      method: 'Owner declaration',
+      verification: 'partner_declared',
+    });
+    const updated = await h.service.updateMetadata(USER, ORG, row.id, { confidence: 0.6 });
+    assert.equal(updated.verification, 'partner_declared');
+    const cleared = await h.service.updateMetadata(USER, ORG, row.id, {
+      source: null,
+      method: null,
+    });
+    assert.equal(cleared.source, null);
+    assert.equal(cleared.method, null);
+    assert.equal(h.metadata[0].source, null);
+    assert.equal((h.audit[2].after as Row).source, null);
   });
 });

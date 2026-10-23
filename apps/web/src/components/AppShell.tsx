@@ -17,6 +17,7 @@ function isApplicationRoute(pathname: string): boolean {
   return [
     '/sign-in',
     '/onboarding',
+    '/invitations',
     '/dashboard',
     '/planner',
     '/settings',

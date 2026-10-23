@@ -1,3 +1,8 @@
+import {
+  publicationProblems,
+  listingEligibilitySql,
+  UTC_TODAY_SQL,
+} from '../inventory/inventory-integrity';
 import { BadRequestException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import type { EntityTarget, ObjectLiteral, Repository } from 'typeorm';
 import { DatabaseService } from '../common/database.service';
@@ -57,8 +62,8 @@ export class MarketplaceService {
     const params: unknown[] = [];
     const hasWindow = Boolean(q.startDate && q.endDate);
     if (hasWindow) params.push(q.startDate, q.endDate);
-    const periodStart = hasWindow ? '$1::date' : 'CURRENT_DATE';
-    const periodEnd = hasWindow ? "($2::date - INTERVAL '1 day')" : 'CURRENT_DATE';
+    const periodStart = hasWindow ? '$1::date' : UTC_TODAY_SQL;
+    const periodEnd = hasWindow ? "($2::date - INTERVAL '1 day')" : UTC_TODAY_SQL;
     const bookableFace =
       "f.bookable AND (s.format <> 'digital_led' OR " +
       '(f.pixel_width > 0 AND f.pixel_height > 0 AND f.spot_length_seconds > 0 ' +
@@ -75,16 +80,16 @@ export class MarketplaceService {
     const rateScope = (start: string, end: string) =>
       `r.site_id = s.id::text AND (r.face_id = f.id::text OR (r.face_id IS NULL AND NOT EXISTS (` +
       `SELECT 1 FROM rate_cards specific WHERE specific.site_id = s.id::text AND specific.face_id = f.id::text ` +
-      `AND specific.effective_from::date <= ${end} ` +
-      `AND (specific.effective_to IS NULL OR specific.effective_to::date >= ${start}) ` +
+      `AND (specific.effective_from AT TIME ZONE 'UTC')::date <= ${end} ` +
+      `AND (specific.effective_to IS NULL OR (specific.effective_to AT TIME ZONE 'UTC')::date >= ${start}) ` +
       `AND ${validPrice('specific')})))`;
     const currentRateForFace =
-      `${rateScope('CURRENT_DATE', 'CURRENT_DATE')} AND r.effective_from::date <= CURRENT_DATE ` +
-      `AND (r.effective_to IS NULL OR r.effective_to::date >= CURRENT_DATE) AND ${validPrice('r')}`;
+      `${rateScope(UTC_TODAY_SQL, UTC_TODAY_SQL)} AND (r.effective_from AT TIME ZONE 'UTC')::date <= ${UTC_TODAY_SQL} ` +
+      `AND (r.effective_to IS NULL OR (r.effective_to AT TIME ZONE 'UTC')::date >= ${UTC_TODAY_SQL}) AND ${validPrice('r')}`;
     const rateForFace =
       `${rateScope(periodStart, periodEnd)} ` +
-      `AND r.effective_from::date <= ${periodStart} ` +
-      `AND (r.effective_to IS NULL OR r.effective_to::date >= ${periodEnd}) ` +
+      `AND (r.effective_from AT TIME ZONE 'UTC')::date <= ${periodStart} ` +
+      `AND (r.effective_to IS NULL OR (r.effective_to AT TIME ZONE 'UTC')::date >= ${periodEnd}) ` +
       (hasWindow
         ? 'AND (r.min_booking_days IS NULL OR r.min_booking_days <= ($2::date - $1::date)) '
         : '') +
@@ -98,7 +103,8 @@ export class MarketplaceService {
       `WHERE f.site_id = s.id::text AND ${bookableFace} ${faceAvailable} AND ${rateForFace})`;
     const where: string[] = [
       "s.status = 'listed'",
-      `(s.permit_expires_at IS NULL OR (s.permit_expires_at::date >= CURRENT_DATE AND s.permit_expires_at::date >= ${periodEnd}))`,
+      listingEligibilitySql('s'),
+      `(s.permit_expires_at IS NULL OR ((s.permit_expires_at AT TIME ZONE 'UTC')::date >= ${UTC_TODAY_SQL} AND (s.permit_expires_at AT TIME ZONE 'UTC')::date >= ${periodEnd}))`,
       "(s.demo_agency_id IS NOT NULL OR EXISTS (SELECT 1 FROM site_assets a WHERE a.site_id = s.id::text AND a.kind = 'front' AND a.captured_at IS NOT NULL))",
       'NOT EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = s.id::text AND f.bookable ' +
         `AND ((${bookableFace}) IS NOT TRUE OR NOT EXISTS (SELECT 1 FROM rate_cards r WHERE ${currentRateForFace})))`,
@@ -245,35 +251,13 @@ export class MarketplaceService {
       load(RateCardEntity, (r) => r.find({ where: { siteId } })),
     ]);
     checkDetailCancelled(signal);
-    const today = new Date().toISOString().slice(0, 10);
-    const bookable = faces.filter((face) => face.bookable);
-    const ready =
-      (!site.permitExpiresAt ||
-        new Date(site.permitExpiresAt).toISOString().slice(0, 10) >= today) &&
-      (site.isDemo === true ||
-        assets.some((asset) => asset.kind === 'front' && asset.capturedAt)) &&
-      bookable.length > 0 &&
-      bookable.every(
-        (face) =>
-          (site.format !== 'digital_led' ||
-            Boolean(
-              face.pixelWidth &&
-              face.pixelHeight &&
-              face.spotLengthSeconds &&
-              face.loopLengthSeconds &&
-              face.spotsPerLoop,
-            )) &&
-          rateCards.some(
-            (rate) =>
-              (!rate.faceId || rate.faceId === face.id) &&
-              new Date(rate.effectiveFrom).toISOString().slice(0, 10) <= today &&
-              (!rate.effectiveTo ||
-                new Date(rate.effectiveTo).toISOString().slice(0, 10) >= today) &&
-              Object.values(rate.rates).some((price) => typeof price === 'number' && price > 0),
-          ),
-      );
-    if (!ready && !site.isResearchReference)
-      throw new NotFoundException('Site is not ready for the marketplace');
+    const problems = publicationProblems(
+      site,
+      faces,
+      rateCards,
+      assets.some((asset) => asset.kind === 'front' && !!asset.capturedAt),
+    );
+    if (problems.length) throw new NotFoundException('Site is not ready for the marketplace');
     return {
       ...site,
       ...demoDisclosure(site.isDemo === true),

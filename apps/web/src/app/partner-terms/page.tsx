@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale } from '../../components/LocaleProvider';
+import { LanguageMenu } from '../../components/LanguageMenu';
 import { ArrowLeft } from 'lucide-react';
 import { PartnerTermsDocument } from '../../components/terms/PartnerTermsDocument';
 import {
@@ -47,17 +48,7 @@ export default function PartnerTermsPage() {
             <ArrowLeft className="h-4 w-4" />
             {copy.back}
           </button>
-          <label className="text-sm font-semibold">
-            <span className="sr-only">Language / Langue</span>
-            <select
-              value={locale}
-              onChange={(event) => setLocale(event.target.value as 'en' | 'fr')}
-              className="min-h-11 rounded-lg border border-border bg-surface-2 px-3"
-            >
-              <option value="en">English</option>
-              <option value="fr">Français</option>
-            </select>
-          </label>
+          <LanguageMenu locale={locale} onChange={setLocale} />
         </div>
         {document ? (
           <PartnerTermsDocument document={document} />

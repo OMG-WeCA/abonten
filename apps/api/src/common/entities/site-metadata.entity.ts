@@ -1,4 +1,10 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 @Entity({ name: 'site_metadata' })
 export class SiteMetadataEntity {
@@ -7,8 +13,8 @@ export class SiteMetadataEntity {
   @Column({ name: 'site_id' }) siteId!: string;
   @Column() dimension!: string;
   @Column({ type: 'json' }) payload!: Record<string, unknown>;
-  @Column({ nullable: true }) source?: string;
-  @Column({ nullable: true }) method?: string;
+  @Column({ type: 'varchar', nullable: true }) source?: string | null;
+  @Column({ type: 'varchar', nullable: true }) method?: string | null;
   @Column({ type: 'double precision', nullable: true }) confidence?: number;
   @Column({ name: 'collected_at', type: 'timestamptz', nullable: true }) collectedAt?: Date;
   @Column({ name: 'expires_at', type: 'timestamptz', nullable: true }) expiresAt?: Date;

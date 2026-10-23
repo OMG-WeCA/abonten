@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { InviteOnlyAdmission1760000007000 } from './migrations/1760000007000-InviteOnlyAdmission';
 import { DataSource } from 'typeorm';
 import { ENTITIES } from './common/entities';
 import { InitSchema1720000000000 } from './migrations/1720000000000-InitSchema';
@@ -45,6 +46,7 @@ export const AppDataSource = new DataSource({
     PersonalPlanningDrafts1760000004000,
     AgencyDemoInventoryScope1760000005000,
     AgencyResearchInventoryScope1760000006000,
+    InviteOnlyAdmission1760000007000,
   ],
   migrationsRun: false,
   logging: ['error', 'migration'],

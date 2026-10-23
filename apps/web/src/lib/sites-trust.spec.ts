@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {
+  faceInputProblem,
+  faceCompletionProblem,
   isOlderThanTwelveMonths,
   plausibilityErrors,
   optionalStructureNumberErrors,
@@ -167,4 +169,54 @@ test('optional structure numbers reject entered malformed text without treating 
     orientationDeg: 'errorOrientation',
     elevation: 'errorElevation',
   });
+});
+
+test('face capture rejects each negative dimension even when their product is positive', () => {
+  for (const [width, height] of [
+    [-12, -6],
+    [-12, 0],
+    [0, 6],
+    [12, -6],
+    [Infinity, 6],
+  ])
+    assert.equal(faceInputProblem({ width, height }), 'faceDimensionsInvalid');
+  assert.equal(faceInputProblem({ width: 12, height: 6 }), null);
+});
+test('digital capture accepts partial drafts and rejects impossible loops and fractional counts', () => {
+  const face = {
+    width: 12,
+    height: 6,
+    pixelWidth: 1920,
+    pixelHeight: 1080,
+    spotLengthSeconds: 10,
+    loopLengthSeconds: 60,
+    spotsPerLoop: 6,
+  };
+  assert.equal(faceInputProblem(face), null);
+  assert.equal(faceInputProblem({ ...face, spotLengthSeconds: 75 }), 'digitalLoopInvalid');
+  assert.equal(faceInputProblem({ ...face, spotsPerLoop: 7 }), 'digitalLoopInvalid');
+  assert.equal(faceInputProblem({ ...face, spotsPerLoop: 1.5 }), 'digitalInteger');
+  assert.equal(faceInputProblem({ ...face, pixelWidth: 0 }), 'digitalPositive');
+  assert.equal(faceInputProblem({ width: 12, height: 6, spotLengthSeconds: 10 }), null);
+});
+
+test('legacy inconsistent face area has an actionable completion error', () => {
+  assert.equal(faceInputProblem({ width: 12, height: 6, area: 1 }), 'faceAreaInvalid');
+});
+
+test('mixed-face completion warns only about the invalid or unlabelled face', () => {
+  const faces = [
+    { faceLabel: 'East', width: 12, height: 6, spotLengthSeconds: 75, loopLengthSeconds: 60 },
+    { faceLabel: 'West', width: 12, height: 6 },
+    { faceLabel: '   ', width: 12, height: 6 },
+  ];
+  assert.deepEqual(faces.map(faceCompletionProblem), [
+    'digitalLoopInvalid',
+    null,
+    'faceLabelRequired',
+  ]);
+  assert.deepEqual(
+    faces.filter((face) => faceCompletionProblem(face)).map((face) => face.faceLabel),
+    ['East', '   '],
+  );
 });

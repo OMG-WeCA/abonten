@@ -1,4 +1,13 @@
 import {
+  dimensionProblems,
+  digitalProblems,
+  siteIntegrityProblems,
+  publicationProblems,
+  listingEligibilitySql,
+  effectiveStatusSql,
+  INVENTORY_CURRENCIES,
+} from './inventory-integrity';
+import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -136,8 +145,8 @@ function assertRateDetails(
   if (!prices?.length || prices.some((price) => !Number.isFinite(price) || price! <= 0)) {
     throw new BadRequestException('Add at least one positive daily, weekly, or monthly rate.');
   }
-  if (!/^[A-Z]{3}$/.test(currency))
-    throw new BadRequestException('Use a three-letter currency code.');
+  if (!INVENTORY_CURRENCIES.includes(currency as never))
+    throw new BadRequestException('Choose a supported currency: NGN, GHS, XAF, XOF, USD or EUR.');
   if (
     !Number.isFinite(effectiveFrom.getTime()) ||
     (effectiveTo && (!Number.isFinite(effectiveTo.getTime()) || effectiveTo < effectiveFrom))
@@ -178,7 +187,14 @@ export class InventoryService {
 
   // ----------------------------------------------------------------- sites
   async createSite(orgId: string, dto: CreateSiteDto, actor: Actor = {}) {
-    dto = { ...dto, country: findMarket(dto.country)?.name ?? dto.country };
+    dto = {
+      ...dto,
+      name: dto.name?.trim(),
+      city: dto.city?.trim(),
+      country: findMarket(dto.country)?.name ?? dto.country,
+    };
+    const integrity = siteIntegrityProblems(dto);
+    if (integrity.length) throw new BadRequestException(`Please fix: ${integrity.join('; ')}.`);
     await this.assertMediaPartnerOrg(orgId);
     const repo = await this.db.repo(BillboardSiteEntity);
     // Idempotent create (ambiguous-network retry): a client-supplied operation
@@ -191,8 +207,8 @@ export class InventoryService {
       );
       if (replayed[0]) return replayed[0];
     }
-    const code = dto.code ?? `${slug(dto.name)}-${randomSuffix()}`.toUpperCase();
-    const area = dto.area ?? dto.width * dto.height;
+    const code = dto.code?.trim() || `${slug(dto.name)}-${randomSuffix()}`.toUpperCase();
+    const area = dto.width * dto.height;
     const illuminationType = dto.illuminationType ?? 'none';
 
     // Entry plausibility checks (SPEC §5.1 trust contract 6): catch the worst
@@ -324,12 +340,12 @@ export class InventoryService {
 
     if (caps.has(Capability.PLATFORM_ADMIN)) {
       // Platform admins browse all sites across orgs (review workflow).
-      if (q.status) push('status = ?', q.status);
+      if (q.status) push(`${effectiveStatusSql('s')} = ?`, q.status);
     } else if (caps.has(Capability.INVENTORY_VIEW) && orgId) {
       push('organization_id = ?', orgId);
-      if (q.status) push('status = ?', q.status);
+      if (q.status) push(`${effectiveStatusSql('s')} = ?`, q.status);
     } else if (caps.has(Capability.MARKETPLACE_VIEW)) {
-      where.push("status = 'listed'");
+      where.push("s.status = 'listed'", listingEligibilitySql('s'));
     } else {
       throw new ForbiddenException('No inventory or marketplace access');
     }
@@ -345,7 +361,7 @@ export class InventoryService {
     // Lateral join picks the newest front photo so lists can render a thumbnail
     // without N+1 asset requests. frontAssetId is null when no photo exists.
     const rows = await repo.query(
-      `SELECT ${LIST_SITE_COLUMNS}, sa.id AS "frontAssetId", sa.storage_ref AS "frontAssetRef" ` +
+      `SELECT ${LIST_SITE_COLUMNS.replace('s.description, s.status,', `s.description, ${effectiveStatusSql('s')} AS status,`)}, sa.id AS "frontAssetId", sa.storage_ref AS "frontAssetRef" ` +
         `FROM billboard_sites s ` +
         `LEFT JOIN LATERAL (` +
         `  SELECT a.id, a.storage_ref FROM site_assets a WHERE a.site_id::text = s.id::text AND a.kind = 'front' ORDER BY a.created_at DESC LIMIT 1` +
@@ -378,7 +394,7 @@ export class InventoryService {
   async getSite(user: AuthenticatedUser, orgId: string | undefined, siteId: string) {
     const repo = await this.db.repo(BillboardSiteEntity);
     const rows = await repo.query(
-      `SELECT ${SITE_DETAIL_COLUMNS} FROM billboard_sites WHERE id = $1`,
+      `SELECT ${SITE_DETAIL_COLUMNS.replace('description, status,', `description, ${effectiveStatusSql('')} AS status,`)} FROM billboard_sites WHERE id = $1`,
       [siteId],
     );
     const site = rows[0];
@@ -389,6 +405,15 @@ export class InventoryService {
       this.listAssets(siteId, site),
       this.listRateCards(siteId),
     ]);
+    const currentProblems = publicationProblems(
+      site,
+      faces,
+      rateCards,
+      assets.some((asset) => asset.kind === 'front' && !!asset.capturedAt),
+    );
+    if (currentProblems.length && reader === 'marketplace')
+      throw new NotFoundException('Site is not ready for the marketplace');
+    if (currentProblems.length && site.status === 'listed') site.status = 'draft';
     // Metadata follows the reader, not the route: the unfiltered owner view
     // (demo-class rows visible, labelled in the UI) is for the owning partner
     // and platform admins only. A marketplace viewer gets the same
@@ -437,6 +462,17 @@ export class InventoryService {
       const current = currentRows[0];
       if (!current) throw new NotFoundException('Site not found');
 
+      dto = {
+        ...dto,
+        ...(dto.name !== undefined ? { name: dto.name?.trim() } : {}),
+        ...(dto.city !== undefined ? { city: dto.city?.trim() } : {}),
+      };
+      const effective = { ...current, ...dto };
+      if (dto.area === undefined && (dto.width !== undefined || dto.height !== undefined))
+        effective.area = Number(effective.width) * Number(effective.height);
+      const integrity = siteIntegrityProblems(effective);
+      if (integrity.length) throw new BadRequestException(`Please fix: ${integrity.join('; ')}.`);
+      await this.reconcilePublication(manager, siteId, user, orgId);
       const sets: string[] = [];
       const params: unknown[] = [];
       // Nullable strings may be cleared with an explicit null; numeric core
@@ -560,9 +596,10 @@ export class InventoryService {
         }
         params.push(siteId);
         await manager.query(
-          `UPDATE billboard_sites SET ${sets.join(', ')} WHERE id = $${params.length}`,
+          `UPDATE billboard_sites SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${params.length}`,
           params,
         );
+        await this.reconcilePublication(manager, siteId, user, orgId);
         const afterRows = await manager.query(
           `SELECT ${SITE_DETAIL_COLUMNS} FROM billboard_sites WHERE id = $1`,
           [siteId],
@@ -899,14 +936,18 @@ export class InventoryService {
     await this.assertOwnership(orgId, siteId);
     return this.db.transaction(async (manager) => {
       await this.lockOwnedSite(manager, orgId, siteId);
+      await this.reconcilePublication(manager, siteId, user, orgId);
       const repo = manager.getRepository(SiteFaceEntity);
+      const integrity = [...dimensionProblems(dto), ...digitalProblems(dto)];
+      if (!dto.faceLabel?.trim()) integrity.push('face label is required');
+      if (integrity.length) throw new BadRequestException(`Please fix: ${integrity.join('; ')}.`);
       const face = await repo.save(
         repo.create({
           siteId,
-          faceLabel: dto.faceLabel,
+          faceLabel: dto.faceLabel.trim(),
           width: dto.width,
           height: dto.height,
-          area: dto.area,
+          area: dto.width * dto.height,
           units: dto.units,
           printableArea: dto.printableArea,
           bleedMm: dto.bleedMm,
@@ -928,6 +969,7 @@ export class InventoryService {
         before: null,
         after: faceAuditSnapshot(face),
       });
+      await this.reconcilePublication(manager, siteId, user, orgId);
       return face;
     });
   }
@@ -943,9 +985,16 @@ export class InventoryService {
       let face = await repo.findOne({ where: { id: faceId } });
       if (!face) throw new NotFoundException('Face not found');
       await this.lockOwnedSite(manager, orgId, face.siteId);
+      await this.reconcilePublication(manager, face.siteId, user, orgId);
       face = await repo.findOne({ where: { id: faceId } });
       if (!face) throw new NotFoundException('Face not found');
       const before = faceAuditSnapshot(face);
+      const effective = { ...face, ...dto };
+      if (dto.area === undefined && (dto.width !== undefined || dto.height !== undefined))
+        effective.area = effective.width * effective.height;
+      const integrity = [...dimensionProblems(effective), ...digitalProblems(effective)];
+      if (!effective.faceLabel?.trim()) integrity.push('face label is required');
+      if (integrity.length) throw new BadRequestException(`Please fix: ${integrity.join('; ')}.`);
       Object.assign(face, {
         ...(dto.faceLabel !== undefined && { faceLabel: dto.faceLabel }),
         ...(dto.width !== undefined && { width: dto.width }),
@@ -964,7 +1013,9 @@ export class InventoryService {
         ...(dto.spotsPerLoop !== undefined && { spotsPerLoop: dto.spotsPerLoop }),
         ...(dto.proofOfPlay !== undefined && { proofOfPlay: dto.proofOfPlay }),
       });
+      face.area = face.width * face.height;
       const saved = await repo.save(face);
+      await this.reconcilePublication(manager, face.siteId, user, orgId);
       await writeInventoryAudit(manager, actorOf(user, orgId), {
         action: 'inventory.face.updated',
         entityType: INVENTORY_AUDIT_ENTITY.face,
@@ -982,6 +1033,7 @@ export class InventoryService {
       let face = await repo.findOne({ where: { id: faceId } });
       if (!face) throw new NotFoundException('Face not found');
       await this.lockOwnedSite(manager, orgId, face.siteId);
+      await this.reconcilePublication(manager, face.siteId, user, orgId);
       face = await repo.findOne({ where: { id: faceId } });
       if (!face) throw new NotFoundException('Face not found');
       const locked = await manager.query('SELECT id FROM site_faces WHERE id = $1 FOR UPDATE', [
@@ -997,6 +1049,7 @@ export class InventoryService {
         );
       }
       await repo.delete({ id: faceId });
+      await this.reconcilePublication(manager, face.siteId, user, orgId);
       await writeInventoryAudit(manager, actorOf(user, orgId), {
         action: 'inventory.face.removed',
         entityType: INVENTORY_AUDIT_ENTITY.face,
@@ -1159,8 +1212,13 @@ export class InventoryService {
     siteId: string,
     dto: CreateMetadataDto,
   ) {
-    await this.assertOwnership(orgId, siteId);
+    const reviewer = (await this.effectiveCapabilities(user.userId, orgId)).has(
+      Capability.PLATFORM_ADMIN,
+    );
+    if (!reviewer) await this.assertOwnership(orgId, siteId);
+    dto = this.prepareMetadata(dto, reviewer);
     return this.db.transaction(async (manager) => {
+      await this.lockMetadataSite(manager, siteId, orgId, reviewer);
       const repo = manager.getRepository(SiteMetadataEntity);
       // Partner-entered enrichment is always production-class data: the demo
       // class exists for seeded showcase data (execution plan §1.4.1).
@@ -1222,12 +1280,21 @@ export class InventoryService {
     orgId: string,
     metadataId: string,
     dto: UpdateMetadataDto,
+    expectedSiteId?: string,
   ) {
+    const reviewer = (await this.effectiveCapabilities(user.userId, orgId)).has(
+      Capability.PLATFORM_ADMIN,
+    );
     return this.db.transaction(async (manager) => {
       const repo = manager.getRepository(SiteMetadataEntity);
-      const m = await repo.findOne({ where: { id: metadataId } });
+      const m = await repo.findOne({
+        where: { id: metadataId },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!m) throw new NotFoundException('Metadata not found');
-      await this.assertOwnership(orgId, (m as { siteId: string }).siteId);
+      if (expectedSiteId && m.siteId !== expectedSiteId)
+        throw new NotFoundException('Metadata not found on this site');
+      await this.lockMetadataSite(manager, m.siteId, orgId, reviewer);
       const before = metadataAuditSnapshot(m);
       Object.assign(m, {
         ...(dto.dimension !== undefined && { dimension: dto.dimension }),
@@ -1243,6 +1310,30 @@ export class InventoryService {
         }),
         ...(dto.verification !== undefined && { verification: dto.verification }),
       });
+      Object.assign(
+        m,
+        this.prepareMetadata(
+          {
+            ...m,
+            ...(!reviewer
+              ? {
+                  verification:
+                    dto.verification ??
+                    (['field_verified', 'third_party'].includes(m.verification)
+                      ? 'partner_declared'
+                      : (m.verification ?? 'unverified')),
+                }
+              : {}),
+            collectedAt: m.collectedAt?.toISOString(),
+            expiresAt: m.expiresAt?.toISOString(),
+            ...dto,
+          },
+          reviewer,
+        ),
+      );
+      // Dates remain entity Date values after validating the complete record.
+      if (typeof m.collectedAt === 'string') m.collectedAt = new Date(m.collectedAt);
+      if (typeof m.expiresAt === 'string') m.expiresAt = new Date(m.expiresAt);
       const saved = await repo.save(m);
       await writeInventoryAudit(manager, actorOf(user, orgId), {
         action: 'inventory.metadata.updated',
@@ -1273,6 +1364,7 @@ export class InventoryService {
     );
     return this.db.transaction(async (manager) => {
       await this.lockOwnedSite(manager, orgId, siteId);
+      await this.reconcilePublication(manager, siteId, user, orgId);
       if (dto.faceId) {
         const faces = await manager.query(
           `SELECT 1 FROM site_faces WHERE id = $1 AND site_id = $2`,
@@ -1302,6 +1394,7 @@ export class InventoryService {
         before: null,
         after: rateCardAuditSnapshot(card),
       });
+      await this.reconcilePublication(manager, siteId, user, orgId);
       return card;
     });
   }
@@ -1324,7 +1417,10 @@ export class InventoryService {
       if ((rc as { organizationId: string }).organizationId !== orgId) {
         throw new ForbiddenException('Not your rate card');
       }
-      if (rc.siteId) await this.lockOwnedSite(manager, orgId, rc.siteId);
+      if (rc.siteId) {
+        await this.lockOwnedSite(manager, orgId, rc.siteId);
+        await this.reconcilePublication(manager, rc.siteId, user, orgId);
+      }
       rc = await repo.findOne({ where: { id: rateCardId } });
       if (!rc) throw new NotFoundException('Rate card not found');
       if (dto.faceId) {
@@ -1355,6 +1451,7 @@ export class InventoryService {
         rc.minBookingDays,
       );
       const saved = await repo.save(rc);
+      if (rc.siteId) await this.reconcilePublication(manager, rc.siteId, user, orgId);
       await writeInventoryAudit(manager, actorOf(user, orgId), {
         action: 'inventory.rate_card.updated',
         entityType: INVENTORY_AUDIT_ENTITY.rateCard,
@@ -1372,7 +1469,10 @@ export class InventoryService {
       let card = await repo.findOne({ where: { id: rateCardId } });
       if (!card) throw new NotFoundException('Rate card not found');
       if (card.organizationId !== orgId) throw new ForbiddenException('Not your rate card');
-      if (card.siteId) await this.lockOwnedSite(manager, orgId, card.siteId);
+      if (card.siteId) {
+        await this.lockOwnedSite(manager, orgId, card.siteId);
+        await this.reconcilePublication(manager, card.siteId, user, orgId);
+      }
       card = await repo.findOne({ where: { id: rateCardId } });
       if (!card) throw new NotFoundException('Rate card not found');
       if (
@@ -1384,6 +1484,7 @@ export class InventoryService {
         );
       }
       await repo.delete({ id: rateCardId });
+      if (card.siteId) await this.reconcilePublication(manager, card.siteId, user, orgId);
       await writeInventoryAudit(manager, actorOf(user, orgId), {
         action: 'inventory.rate_card.withdrawn',
         entityType: INVENTORY_AUDIT_ENTITY.rateCard,
@@ -1613,7 +1714,8 @@ export class InventoryService {
     const isMarketplaceViewer = caps.has(Capability.MARKETPLACE_VIEW) && status === 'listed';
     if (isOwner) return 'owner';
     if (isPlatformAdmin) return 'platform';
-    if (isMarketplaceViewer) return 'marketplace';
+    if (isMarketplaceViewer && (await this.listingProblems(siteId)).length === 0)
+      return 'marketplace';
     throw new ForbiddenException('Site not available');
   }
 
@@ -1636,67 +1738,94 @@ export class InventoryService {
       ? manager.getRepository(BillboardSiteEntity)
       : await this.db.repo(BillboardSiteEntity);
     const rows = await repo.query(
-      `SELECT latitude, longitude, format, width, height, permit_expires_at::date::text AS "permitExpiresAt"
+      `SELECT name, city, country, latitude, longitude, format, width, height, area, (demo_agency_id IS NOT NULL) AS "isDemo", (research_agency_id IS NOT NULL) AS "isResearchReference", (permit_expires_at AT TIME ZONE 'UTC')::date::text AS "permitExpiresAt"
        FROM billboard_sites WHERE id = $1`,
       [siteId],
     );
     if (!rows[0]) throw new NotFoundException('Site not found');
     const s = rows[0];
-    const problems: string[] = [];
-    const lat = Number(s.latitude);
-    const lon = Number(s.longitude);
-    if (!Number.isFinite(lat) || Math.abs(lat) > 90)
-      problems.push('latitude must be between -90 and 90');
-    if (!Number.isFinite(lon) || Math.abs(lon) > 180)
-      problems.push('longitude must be between -180 and 180');
-    if (!s.format) problems.push('format is required');
-    if (!(Number(s.width) > 0)) problems.push('width must be greater than 0');
-    if (!(Number(s.height) > 0)) problems.push('height must be greater than 0');
     const front = await repo.query(
       `SELECT 1 FROM site_assets WHERE site_id = $1 AND kind = 'front' AND captured_at IS NOT NULL LIMIT 1`,
       [siteId],
     );
-    if (!front[0])
-      problems.push('a front-on reference photo with a known capture date is required');
-    if (s.permitExpiresAt && s.permitExpiresAt < new Date().toISOString().slice(0, 10)) {
-      problems.push('the recorded permit has expired');
-    }
-    const allFaces = manager
+    const faces = manager
       ? await manager.getRepository(SiteFaceEntity).find({ where: { siteId } })
       : await this.listFaces(siteId);
-    const faces = allFaces.filter((face) => face.bookable);
-    if (faces.length === 0) problems.push('add at least one bookable face');
+    const rates = manager
+      ? await manager.getRepository(RateCardEntity).find({ where: { siteId } })
+      : await this.listRateCards(siteId);
+    return publicationProblems(s, faces, rates, !!front[0]);
+  }
+
+  /** No read writes status. A normal write reconciles expired eligibility atomically. */
+  async reconcilePublication(
+    manager: EntityManager,
+    siteId: string,
+    user: AuthenticatedUser,
+    orgId: string | undefined,
+  ) {
+    const rows = await manager.query(
+      'SELECT status FROM billboard_sites WHERE id = $1 FOR UPDATE',
+      [siteId],
+    );
+    const status = rows[0]?.status;
+    if (!['listed', 'approved', 'pending_review'].includes(status)) return;
+    const problems = await this.listingProblems(siteId, manager);
+    if (!problems.length) return;
+    await manager.query(
+      "UPDATE billboard_sites SET status = 'draft', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+      [siteId],
+    );
+    await writeInventoryAudit(manager, actorOf(user, orgId), {
+      action: 'inventory.site.unpublished',
+      entityType: INVENTORY_AUDIT_ENTITY.site,
+      entityId: siteId,
+      before: { status },
+      after: { status: 'draft', reasons: problems },
+    });
+  }
+
+  private prepareMetadata<T extends CreateMetadataDto | UpdateMetadataDto>(
+    dto: T,
+    reviewer: boolean,
+  ): T {
+    const independent = ['field_verified', 'third_party'].includes(dto.verification ?? '');
+    if (!reviewer && independent)
+      throw new ForbiddenException('Independent verification requires a platform reviewer.');
+    const reported = ['audience', 'traffic'].includes(dto.dimension ?? '');
+    const source = dto.source == null ? dto.source : dto.source.trim(),
+      method = dto.method == null ? dto.method : dto.method.trim();
+    if ((reported || independent) && (!source || !method))
+      throw new BadRequestException(
+        'Audience, traffic and verified records require a source and method.',
+      );
     if (
-      s.format === 'digital_led' &&
-      faces.some(
-        (face) =>
-          !face.pixelWidth ||
-          !face.pixelHeight ||
-          !face.spotLengthSeconds ||
-          !face.loopLengthSeconds ||
-          !face.spotsPerLoop,
-      )
+      dto.confidence != null &&
+      (!Number.isFinite(dto.confidence) || dto.confidence < 0 || dto.confidence > 1)
     )
-      problems.push('complete the pixel and loop/spot details for each bookable digital face');
-    if (faces.length > 0) {
-      const today = new Date().toISOString().slice(0, 10);
-      const rates = manager
-        ? await manager.getRepository(RateCardEntity).find({ where: { siteId } })
-        : await this.listRateCards(siteId);
-      const priced = (faceId: string) =>
-        rates.some(
-          (rate) =>
-            (!rate.faceId || rate.faceId === faceId) &&
-            new Date(rate.effectiveFrom).toISOString().slice(0, 10) <= today &&
-            (!rate.effectiveTo || new Date(rate.effectiveTo).toISOString().slice(0, 10) >= today) &&
-            Object.values(rate.rates).some(
-              (price) => typeof price === 'number' && Number.isFinite(price) && price > 0,
-            ),
-        );
-      if (faces.some((face) => !priced(face.id)))
-        problems.push('add a current rate for each bookable face');
-    }
-    return problems;
+      throw new BadRequestException('Confidence must be between 0 and 1.');
+    return {
+      ...dto,
+      source,
+      method,
+      verification: !reviewer && reported ? 'partner_declared' : (dto.verification ?? 'unverified'),
+    };
+  }
+
+  private async lockMetadataSite(
+    manager: EntityManager,
+    siteId: string,
+    orgId: string,
+    reviewer: boolean,
+  ) {
+    const rows = await manager.query(
+      'SELECT organization_id AS "organizationId", research_agency_id AS "researchAgencyId" FROM billboard_sites WHERE id = $1 FOR UPDATE',
+      [siteId],
+    );
+    if (!rows[0]) throw new NotFoundException('Site not found');
+    if (rows[0].researchAgencyId) throw new ForbiddenException('Research references are read-only');
+    if (!reviewer && rows[0].organizationId !== orgId)
+      throw new ForbiddenException('Not your site');
   }
 
   private async lockOwnedSite(
@@ -1746,6 +1875,11 @@ export class InventoryService {
         throw new BadRequestException(
           'Correct the address/pin mismatch and resubmit before relisting this site.',
         );
+      }
+      if (to === 'listed') {
+        const problems = await this.listingProblems(siteId, manager);
+        if (problems.length)
+          throw new BadRequestException(`Site cannot be listed yet: ${problems.join('; ')}.`);
       }
       const beforeStatus = rows[0].status;
       if (!fromList.includes(beforeStatus)) {

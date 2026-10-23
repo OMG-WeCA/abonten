@@ -1,3 +1,5 @@
+import { MarketplaceService } from '../marketplace/marketplace.service';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { strict as assert } from 'node:assert';
 import { randomUUID } from 'node:crypto';
 import { describe, it } from 'node:test';
@@ -30,6 +32,7 @@ async function withSchema(
   test: (dataSource: DataSource) => Promise<void>,
   applyInventoryMigration = true,
   poolSize?: number,
+  timeZone = 'UTC',
 ): Promise<void> {
   if (!databaseUrl) throw new Error('POSTGRES_INTEGRATION_URL is required');
   const schema = `inv_trust_${randomUUID().replaceAll('-', '')}`;
@@ -40,7 +43,7 @@ async function withSchema(
     url: databaseUrl,
     entities: ENTITIES,
     extra: {
-      options: `-c search_path=${schema},public`,
+      options: `-c search_path=${schema},public -c timezone=${timeZone}`,
       ...(poolSize ? { max: poolSize, connectionTimeoutMillis: 1500 } : {}),
     },
   });
@@ -171,6 +174,7 @@ async function withSchema(
         site_id varchar,
         face_id varchar,
         currency varchar NOT NULL,
+        min_booking_days integer,
         rates json NOT NULL,
         seasonal_rules json,
         effective_from timestamptz NOT NULL,
@@ -460,3 +464,340 @@ describe('inventory audit — postgres transactional integrity', { skip: !databa
     }, false);
   });
 });
+
+describe('inventory eligibility — real Postgres regressions', { skip: !databaseUrl }, () => {
+  it('expiry is read-only and consistent; renewal and last-face removal require fresh review', async () => {
+    await withSchema(async (dataSource) => {
+      await dataSource.query(
+        "INSERT INTO organizations (id,name,type) VALUES ('org-partner','Partner','media_partner'),('agency','Agency','agency')",
+      );
+      await dataSource.query(
+        "INSERT INTO memberships(id,user_id,organization_id,role,status) VALUES ('m1','kwame-1','org-partner','inventory_manager','active'),('m2','buyer','agency','planner','active')",
+      );
+      const service = buildService(dataSource),
+        market = new MarketplaceService(new DatabaseService(dataSource));
+      const site = await service.createSite(ORG, createDto());
+      const face = await service.addFace(USER, ORG, site.id, {
+        faceLabel: 'East',
+        width: 12,
+        height: 3,
+        area: 36,
+        units: 'm',
+        bookable: true,
+      });
+      const rate = await service.createRateCard(USER, ORG, site.id, {
+        currency: 'NGN',
+        rates: { perDay: 100 },
+        effectiveFrom: '2020-01-01',
+      });
+      await dataSource.query(
+        "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at) VALUES ($1,'front','synthetic.png',CURRENT_TIMESTAMP)",
+        [site.id],
+      );
+      await service.submitSite(USER, ORG, site.id);
+      await service.approveSite(USER, ORG, site.id);
+      const buyer = { userId: 'buyer', sessionVersion: 0 } as AuthenticatedUser;
+      assert.equal((await service.getSite(buyer, 'agency', site.id)).status, 'listed');
+      // A time change is represented by an expired fixture, bypassing mutation revalidation deliberately.
+      await dataSource.query(
+        "UPDATE rate_cards SET effective_to = CURRENT_DATE - INTERVAL '1 day' WHERE id=$1",
+        [rate.id],
+      );
+      const auditsBefore = (await dataSource.query('SELECT count(*)::int AS n FROM audit_logs'))[0]
+        .n;
+      assert.equal((await service.getSite(USER, ORG, site.id)).status, 'draft');
+      assert.equal((await service.listSites(USER, ORG, { status: 'listed' })).items.length, 0);
+      await assert.rejects(() => service.getSite(buyer, 'agency', site.id), ForbiddenException);
+      await assert.rejects(
+        () => market.getMarketplaceSite(site.id, undefined, 'agency'),
+        NotFoundException,
+      );
+      assert.equal(
+        (await dataSource.query('SELECT status FROM billboard_sites WHERE id=$1', [site.id]))[0]
+          .status,
+        'listed',
+      );
+      assert.equal(
+        (await dataSource.query('SELECT count(*)::int AS n FROM audit_logs'))[0].n,
+        auditsBefore,
+      );
+      await service.updateRateCard(USER, ORG, rate.id, { effectiveTo: '2099-01-01' });
+      assert.equal(
+        (await dataSource.query('SELECT status FROM billboard_sites WHERE id=$1', [site.id]))[0]
+          .status,
+        'draft',
+      );
+      await assert.rejects(
+        () => market.getMarketplaceSite(site.id, undefined, 'agency'),
+        NotFoundException,
+      );
+      await service.submitSite(USER, ORG, site.id);
+      await service.approveSite(USER, ORG, site.id);
+      await service.removeFace(USER, ORG, face.id);
+      assert.equal((await service.getSite(USER, ORG, site.id)).status, 'draft');
+      await assert.rejects(() => service.getSite(buyer, 'agency', site.id), ForbiddenException);
+      assert.ok(
+        (
+          await dataSource.query(
+            "SELECT 1 FROM audit_logs WHERE action='inventory.site.unpublished'",
+          )
+        ).length >= 2,
+      );
+    });
+  });
+});
+
+describe('legacy invalid inventory publication — real Postgres', { skip: !databaseUrl }, () => {
+  it('blocks invalid rows at approval and all current buyer read gates without repairing them', async () => {
+    await withSchema(async (dataSource) => {
+      await dataSource.query(
+        "INSERT INTO organizations(id,name,type) VALUES ('org-partner','Partner','media_partner'),('agency','Agency','agency')",
+      );
+      await dataSource.query(
+        "INSERT INTO memberships(id,user_id,organization_id,role,status) VALUES ('m1','kwame-1','org-partner','inventory_manager','active'),('m2','buyer','agency','planner','active')",
+      );
+      const service = buildService(dataSource),
+        market = new MarketplaceService(new DatabaseService(dataSource));
+      const site = await service.createSite(ORG, createDto({ format: 'digital_led' }));
+      const face = await service.addFace(USER, ORG, site.id, {
+        faceLabel: 'East',
+        width: 12,
+        height: 3,
+        area: 36,
+        units: 'm',
+        bookable: true,
+        pixelWidth: 1920,
+        pixelHeight: 1080,
+        spotLengthSeconds: 10,
+        loopLengthSeconds: 60,
+        spotsPerLoop: 6,
+      });
+      await service.createRateCard(USER, ORG, site.id, {
+        currency: 'NGN',
+        rates: { perDay: 100 },
+        effectiveFrom: '2020-01-01',
+      });
+      await dataSource.query(
+        "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at) VALUES ($1,'front','synthetic.png',CURRENT_TIMESTAMP)",
+        [site.id],
+      );
+      await service.submitSite(USER, ORG, site.id);
+      await dataSource.query(
+        'UPDATE site_faces SET width=-12,height=0,area=-72,spot_length_seconds=15,loop_length_seconds=10 WHERE id=$1',
+        [face.id],
+      );
+      await assert.rejects(() => service.approveSite(USER, ORG, site.id), BadRequestException);
+      assert.equal(
+        (await dataSource.query('SELECT status FROM billboard_sites WHERE id=$1', [site.id]))[0]
+          .status,
+        'pending_review',
+      );
+      await dataSource.query(
+        'UPDATE site_faces SET width=12,height=3,area=36,spot_length_seconds=10,loop_length_seconds=60 WHERE id=$1',
+        [face.id],
+      );
+      await service.approveSite(USER, ORG, site.id);
+      await dataSource.query('UPDATE site_faces SET spot_length_seconds=75 WHERE id=$1', [face.id]);
+      const buyer = { userId: 'buyer', sessionVersion: 0 } as AuthenticatedUser;
+      assert.equal((await service.getSite(USER, ORG, site.id)).status, 'draft');
+      assert.equal((await service.listSites(USER, ORG, { status: 'listed' })).items.length, 0);
+      await assert.rejects(() => service.getSite(buyer, 'agency', site.id), ForbiddenException);
+      await assert.rejects(
+        () => market.getMarketplaceSite(site.id, undefined, 'agency'),
+        NotFoundException,
+      );
+      assert.equal(
+        (await dataSource.query('SELECT status FROM billboard_sites WHERE id=$1', [site.id]))[0]
+          .status,
+        'listed',
+      );
+      assert.equal(
+        (
+          await dataSource.query('SELECT spot_length_seconds FROM site_faces WHERE id=$1', [
+            face.id,
+          ])
+        )[0].spot_length_seconds,
+        75,
+      );
+    });
+  });
+});
+
+describe('review follow-up — real Postgres semantics', { skip: !databaseUrl }, () => {
+  it('owner-reported metadata clears persist and match the audit snapshot', async () => {
+    await withSchema(async (dataSource) => {
+      await dataSource.query(
+        "INSERT INTO organizations(id,name,type) VALUES ('org-partner','Partner','media_partner')",
+      );
+      await dataSource.query(
+        "INSERT INTO memberships(id,user_id,organization_id,role,status) VALUES ('m1','kwame-1','org-partner','inventory_manager','active')",
+      );
+      const service = buildService(dataSource),
+        site = await service.createSite(ORG, createDto());
+      const row = await service.addMetadata(USER, ORG, site.id, {
+        dimension: 'visibility',
+        payload: { score: 0.5 },
+        source: 'Owner survey',
+        method: 'Owner declaration',
+        verification: 'partner_declared',
+      });
+      const updated = await service.updateMetadata(USER, ORG, row.id, { confidence: 0.6 });
+      assert.equal(updated.verification, 'partner_declared');
+      const cleared = await service.updateMetadata(USER, ORG, row.id, {
+        source: null,
+        method: null,
+      });
+      const saved = (
+        await dataSource.query('SELECT source,method,verification FROM site_metadata WHERE id=$1', [
+          row.id,
+        ])
+      )[0];
+      assert.equal(saved.source, null);
+      assert.equal(saved.method, null);
+      assert.equal(saved.verification, 'partner_declared');
+      assert.equal(cleared.source, null);
+      const audit = (
+        await dataSource.query(
+          "SELECT after FROM audit_logs WHERE action='inventory.metadata.updated' AND (after->>'source') IS NULL",
+        )
+      )[0];
+      assert.equal(audit.after.source, null);
+    });
+  });
+  it('listing reads use UTC dates in a non-UTC database session', async () => {
+    await withSchema(
+      async (dataSource) => {
+        await dataSource.query(
+          "INSERT INTO organizations(id,name,type) VALUES ('org-partner','Partner','media_partner')",
+        );
+        await dataSource.query(
+          "INSERT INTO memberships(id,user_id,organization_id,role,status) VALUES ('m1','kwame-1','org-partner','inventory_manager','active')",
+        );
+        const service = buildService(dataSource),
+          market = new MarketplaceService(new DatabaseService(dataSource)),
+          site = await service.createSite(ORG, createDto());
+        await service.addFace(USER, ORG, site.id, {
+          faceLabel: 'East',
+          width: 12,
+          height: 3,
+          area: 36,
+          units: 'm',
+          bookable: true,
+        });
+        const rate = await service.createRateCard(USER, ORG, site.id, {
+          currency: 'NGN',
+          rates: { perDay: 100 },
+          effectiveFrom: '2020-01-01',
+        });
+        await dataSource.query(
+          "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at) VALUES ($1,'front','synthetic.png',CURRENT_TIMESTAMP)",
+          [site.id],
+        );
+        await service.submitSite(USER, ORG, site.id);
+        await service.approveSite(USER, ORG, site.id);
+        await dataSource.query(
+          "UPDATE rate_cards SET effective_from = (((CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date + INTERVAL '1 day' - INTERVAL '30 minutes') AT TIME ZONE 'UTC') WHERE id=$1",
+          [rate.id],
+        );
+        assert.equal((await service.getSite(USER, ORG, site.id)).status, 'listed');
+        assert.equal((await service.listSites(USER, ORG, { status: 'listed' })).total, 1);
+        assert.equal((await market.getMarketplaceSite(site.id)).status, 'listed');
+        await dataSource.query(
+          "UPDATE rate_cards SET effective_from='2020-01-01', effective_to=(((CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date - INTERVAL '30 minutes') AT TIME ZONE 'UTC') WHERE id=$1",
+          [rate.id],
+        );
+        assert.equal((await service.getSite(USER, ORG, site.id)).status, 'draft');
+        assert.equal((await service.listSites(USER, ORG, { status: 'listed' })).total, 0);
+        await assert.rejects(() => market.getMarketplaceSite(site.id), NotFoundException);
+      },
+      true,
+      1,
+      'Africa/Lagos',
+    );
+  });
+});
+
+describe(
+  'optional digital values on static inventory — real Postgres',
+  { skip: !databaseUrl },
+  () => {
+    it('keeps all read gates consistent for invalid optional values and valid partial values', async () => {
+      await withSchema(async (dataSource) => {
+        await dataSource.query(
+          "INSERT INTO organizations(id,name,type) VALUES ('org-partner','Partner','media_partner'),('agency','Agency','agency')",
+        );
+        await dataSource.query(
+          "INSERT INTO memberships(id,user_id,organization_id,role,status) VALUES ('m1','kwame-1','org-partner','inventory_manager','active'),('m2','buyer','agency','planner','active')",
+        );
+        const service = buildService(dataSource),
+          market = new MarketplaceService(new DatabaseService(dataSource));
+        const site = await service.createSite(ORG, createDto({ format: 'static' }));
+        const face = await service.addFace(USER, ORG, site.id, {
+          faceLabel: 'East',
+          width: 12,
+          height: 3,
+          units: 'm',
+          bookable: true,
+          spotLengthSeconds: 10,
+        });
+        await service.createRateCard(USER, ORG, site.id, {
+          currency: 'NGN',
+          rates: { perDay: 100 },
+          effectiveFrom: '2020-01-01',
+        });
+        await dataSource.query(
+          "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at) VALUES ($1,'front','synthetic.png',CURRENT_TIMESTAMP)",
+          [site.id],
+        );
+        await service.submitSite(USER, ORG, site.id);
+        await service.approveSite(USER, ORG, site.id);
+        const buyer = { userId: 'buyer', sessionVersion: 0 } as AuthenticatedUser;
+        const assertEligible = async () => {
+          assert.equal((await service.getSite(USER, ORG, site.id)).status, 'listed');
+          assert.equal((await service.listSites(USER, ORG, { status: 'listed' })).total, 1);
+          assert.equal(
+            (await market.search({}, undefined, 'agency')).items.some((row: { id: string }) => row.id === site.id),
+            true,
+          );
+          assert.equal((await service.getSite(buyer, 'agency', site.id)).status, 'listed');
+          assert.equal(
+            (await market.getMarketplaceSite(site.id, undefined, 'agency')).status,
+            'listed',
+          );
+        };
+        await assertEligible(); // Partial optional digital data does not turn a static site into digital.
+        const invalid = [
+          'spot_length_seconds=75,loop_length_seconds=60',
+          'spot_length_seconds=10,loop_length_seconds=60,spots_per_loop=7',
+          'spot_length_seconds=10,loop_length_seconds=NULL,spots_per_loop=NULL,pixel_width=0',
+          "pixel_width=NULL,spot_length_seconds='Infinity'::float8",
+        ];
+        for (const values of invalid) {
+          await dataSource.query(`UPDATE site_faces SET ${values} WHERE id=$1`, [face.id]);
+          assert.equal((await service.getSite(USER, ORG, site.id)).status, 'draft', values);
+          assert.equal((await service.listSites(USER, ORG, { status: 'listed' })).total, 0, values);
+          assert.equal(
+            (await market.search({}, undefined, 'agency')).items.some((row: { id: string }) => row.id === site.id),
+            false,
+            values,
+          );
+          await assert.rejects(() => service.getSite(buyer, 'agency', site.id), ForbiddenException);
+          await assert.rejects(
+            () => market.getMarketplaceSite(site.id, undefined, 'agency'),
+            NotFoundException,
+          );
+          assert.equal(
+            (await dataSource.query('SELECT status FROM billboard_sites WHERE id=$1', [site.id]))[0]
+              .status,
+            'listed',
+          );
+        }
+        await dataSource.query(
+          'UPDATE site_faces SET spot_length_seconds=10,loop_length_seconds=NULL,spots_per_loop=NULL,pixel_width=NULL WHERE id=$1',
+          [face.id],
+        );
+        await assertEligible(); // Read-only projections never rewrote the historical record.
+      });
+    });
+  },
+);

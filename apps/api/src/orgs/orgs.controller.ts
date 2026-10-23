@@ -51,9 +51,13 @@ export class OrgsController {
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
   @RequireCapabilities(Capability.ORG_CREATE)
   @Post()
-  @ApiOperation({ summary: 'Create a new organization (creator becomes org_owner)' })
+  @ApiOperation({ summary: 'Public organization creation is disabled; use platform invitations' })
   async create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateOrgDto) {
-    return this.orgs.createOrg(user.userId, dto);
+    void user;
+    void dto;
+    throw new ForbiddenException(
+      'Organization admission is invitation-only. A platform administrator must invite the owner.',
+    );
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)

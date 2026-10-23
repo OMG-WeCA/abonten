@@ -504,15 +504,15 @@ describe('Exact displayed terms consent over HTTP', () => {
           partnerTerms: { ...affirmation, expectedDigest: 'a'.repeat(64) },
         }),
       });
-      assert.equal(stale.status, 409);
-      assert.equal(
-        ((await stale.json()) as { code: string }).code,
-        'PARTNER_TERMS_CONTENT_CHANGED',
-      );
+      assert.equal(stale.status, 403); // No public organization signup, even with terms.
       assert.equal(httpTermsSignup.rows(OrganizationEntity).length, 0);
-      const accepted = await fetch(base, { method: 'POST', headers, body: JSON.stringify(input) });
-      assert.equal(accepted.status, 201);
-      const organization = (await accepted.json()) as { id: string };
+      const denied = await fetch(base, { method: 'POST', headers, body: JSON.stringify(input) });
+      assert.equal(denied.status, 403);
+      // Preserve the independent existing-owner terms endpoint checks below.
+      const organization = await httpTermsSignup.service.createOrg(userId, {
+        ...input,
+        type: 'media_partner',
+      });
       assert.equal(
         httpTermsSignup.rows(PartnerTermsAcceptanceEntity)[0]?.digest,
         affirmation.expectedDigest,

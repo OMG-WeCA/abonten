@@ -161,6 +161,7 @@ function harness(
     read: async () => stored[0]!.buffer,
   } as unknown as StorageService;
   const inventory = {
+    reconcilePublication: async () => {},
     assertCanReadSite: async () => {
       if (options.readDenied) throw new ForbiddenException();
     },
@@ -533,21 +534,33 @@ describe('actual LED board video decoder', () => {
 });
 
 function admissionRequest() {
+  const res = new EventEmitter();
+  let destroyed = 0,
+    idleMs = 0,
+    idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const touch = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    if (idleMs) idleTimer = setTimeout(() => req.emit('timeout'), idleMs);
+  };
   const req = Object.assign(new EventEmitter(), {
     path: '/inventory/sites/id/board-videos',
     headers: {},
     socket: new EventEmitter(),
-    destroy: () => {
+    setTimeout(ms: number, callback?: () => void) {
+      idleMs = ms;
+      if (callback) req.on('timeout', callback);
+      touch();
+      return req;
+    },
+    destroy() {
       res.emit('close');
       destroyed++;
     },
   });
-  const res = new EventEmitter();
-  let destroyed = 0;
   const context = {
     switchToHttp: () => ({ getRequest: () => req, getResponse: () => res }),
   } as unknown as ExecutionContext;
-  return { req, res, context, destroyed: () => destroyed };
+  return { req, res, context, destroyed: () => destroyed, progress: touch };
 }
 describe('bounded media admission and slow upload recovery', () => {
   it('permits two uploads and releases aborted slots without reading the body itself', () => {
@@ -560,6 +573,7 @@ describe('bounded media admission and slow upload recovery', () => {
       assert.equal(guard.canActivate(b.context), true);
       assert.throws(() => guard.canActivate(c.context), /busy/);
       assert.equal(a.req.listenerCount('data'), 0);
+      assert.equal(a.req.socket.listenerCount('data'), 0);
       a.req.emit('aborted');
       assert.equal(guard.canActivate(c.context), true);
     } finally {
@@ -575,7 +589,7 @@ describe('bounded media admission and slow upload recovery', () => {
     guard.canActivate(slow.context);
     for (let i = 0; i < 5; i++) {
       t.mock.timers.tick(20_000);
-      slow.req.socket.emit('data', Buffer.alloc(1));
+      slow.progress();
     }
     assert.equal(slow.destroyed(), 0);
     t.mock.timers.tick(20_001);

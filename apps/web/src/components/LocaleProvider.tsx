@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { apiJson } from '../lib/api';
 import { useAuth } from './auth/AuthProvider';
+import { LanguageMenu } from './LanguageMenu';
 export type Locale = 'en' | 'fr';
 export const LOCALE_STORAGE_KEY = 'abonten-locale';
 const LocaleContext = createContext<{
@@ -103,24 +104,11 @@ export function LanguageSwitcher() {
     }
   };
   return (
-    <div className="flex shrink-0 flex-col items-end gap-1">
-      <label className="inline-flex items-center gap-2 text-xs font-semibold text-muted">
-        <span className="sr-only">{locale === 'fr' ? 'Langue' : 'Language'}</span>
-        <select
-          aria-label={locale === 'fr' ? 'Langue' : 'Language'}
-          aria-busy={saving}
-          disabled={saving}
-          value={locale}
-          onChange={(event) => void change(event.target.value as Locale)}
-          className="min-h-11 rounded-lg border border-border bg-background px-2 text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
-        >
-          <option value="en">English</option>
-          <option value="fr">Français</option>
-        </select>
-      </label>
+    <div className="relative shrink-0">
+      <LanguageMenu locale={locale} onChange={(value) => void change(value)} saving={saving} />
       {error && (
-        <div className="language-switcher-error flex flex-col items-end gap-1">
-          <span role="alert" className="max-w-48 text-xs text-error">
+        <div className="language-switcher-error absolute right-0 top-full z-40 mt-2 flex w-64 max-w-[calc(100vw-2rem)] flex-col gap-2 rounded-xl border border-border bg-surface-2 p-3 shadow-xl">
+          <span role="alert" className="text-xs text-error">
             {locale === 'fr'
               ? 'Langue changée ici, mais non enregistrée dans le compte. Sélectionnez à nouveau pour réessayer.'
               : 'Language changed here, but not saved to your account. Select it again to retry.'}

@@ -180,6 +180,9 @@ function createSubject() {
     },
   };
   const identities = {
+    async canRequestCode() {
+      return true;
+    },
     async findOrCreateByEmail(email: string, profile: { name: string }) {
       const existing = await users.findOne(email);
       if (existing) return existing;
@@ -189,11 +192,11 @@ function createSubject() {
   const service = new EmailCodeService(
     { instance: redis } as unknown as RedisService,
     mail as unknown as MailService,
-    identities as UserIdentityService,
+    identities as unknown as UserIdentityService,
     auth as AuthService,
     cfg as ConfigService,
   );
-  return { service, redis, mail, users, issued };
+  return { service, redis, mail, users, issued, identities };
 }
 
 function latestCode(mail: FakeMail): string {
@@ -421,4 +424,12 @@ describe('EmailCodeService', () => {
       HttpStatus.SERVICE_UNAVAILABLE,
     );
   });
+});
+
+it('returns generic acceptance without mail, challenge or user creation for uninvited email', async () => {
+  const subject = createSubject();
+  subject.identities.canRequestCode = async () => false;
+  assert.deepEqual(await subject.service.request('amina@palmline.example'), { accepted: true });
+  assert.equal(subject.mail.sent.length, 0);
+  assert.equal(subject.redis.values.size, 0);
 });

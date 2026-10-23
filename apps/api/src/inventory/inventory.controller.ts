@@ -314,7 +314,7 @@ export class InventoryController {
 
   // --------------------------------------------------------------- metadata
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
-  @RequireCapabilities(Capability.INVENTORY_EDIT)
+  @RequireAnyCapabilities(Capability.INVENTORY_EDIT, Capability.PLATFORM_ADMIN)
   @Post('sites/:siteId/metadata')
   @ApiOperation({ summary: 'Add enrichment data to a site' })
   async addMetadata(
@@ -340,16 +340,17 @@ export class InventoryController {
   }
 
   @UseGuards(JwtAuthGuard, CapabilitiesGuard)
-  @RequireCapabilities(Capability.INVENTORY_EDIT)
+  @RequireAnyCapabilities(Capability.INVENTORY_EDIT, Capability.PLATFORM_ADMIN)
   @Patch('sites/:siteId/metadata/:metadataId')
   @ApiOperation({ summary: 'Update an enrichment record' })
   async updateMetadata(
     @CurrentUser() user: AuthenticatedUser,
     @Req() req: AuthReq,
     @Param('metadataId') metadataId: string,
+    @Param('siteId') siteId: string,
     @Body() dto: UpdateMetadataDto,
   ) {
-    return this.service.updateMetadata(user, orgContext(req)!, metadataId, dto);
+    return this.service.updateMetadata(user, orgContext(req)!, metadataId, dto, siteId);
   }
 
   // --------------------------------------------------------------- rate cards

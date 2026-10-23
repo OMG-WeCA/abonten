@@ -186,6 +186,12 @@ export default function ReviewQueuePage() {
 
   return (
     <WorkspaceFrame current="review">
+      <Link
+        href="/admin/invitations"
+        className="mb-5 inline-flex min-h-11 items-center rounded-lg border border-border px-4 text-sm font-semibold"
+      >
+        {locale === 'fr' ? 'Gérer les invitations' : 'Manage invitations'}
+      </Link>
       <h1 className="text-3xl font-extrabold tracking-[-0.045em]">{copy.admin.title}</h1>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{copy.admin.intro}</p>
 

@@ -23,3 +23,11 @@ export const ORGANIZATION_ROLE_VALUES: string[] = [
   'client_admin',
   'platform_admin',
 ];
+
+/** Shared organization-type bounds; actor assignment rules remain in OrgsService. */
+export const ASSIGNABLE_ROLES_BY_ORG_TYPE: Readonly<Record<string, readonly OrganizationRole[]>> = {
+  media_partner: ['org_owner', 'org_admin', 'inventory_manager', 'field_operator'],
+  agency: ['org_owner', 'org_admin', 'planner', 'planner_admin'],
+  brand: ['org_owner', 'org_admin', 'client_viewer', 'client_admin'],
+  platform: ['org_owner', 'org_admin', 'platform_admin'],
+};

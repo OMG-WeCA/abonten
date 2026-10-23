@@ -118,3 +118,70 @@ export function isOlderThanTwelveMonths(
   twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
   return when.getTime() < twelveMonthsAgo.getTime();
 }
+
+/** Early feedback mirrors the API; the server remains the publication authority. */
+export function faceInputProblem(face: {
+  width: number | null;
+  height: number | null;
+  area?: number | null;
+  pixelWidth?: number | null;
+  pixelHeight?: number | null;
+  spotLengthSeconds?: number | null;
+  loopLengthSeconds?: number | null;
+  spotsPerLoop?: number | null;
+}):
+  | 'faceDimensionsInvalid'
+  | 'faceAreaInvalid'
+  | 'digitalPositive'
+  | 'digitalInteger'
+  | 'digitalLoopInvalid'
+  | null {
+  if (
+    face.width == null ||
+    face.height == null ||
+    !Number.isFinite(face.width) ||
+    !Number.isFinite(face.height) ||
+    face.width <= 0 ||
+    face.height <= 0 ||
+    !Number.isFinite(face.width * face.height)
+  )
+    return 'faceDimensionsInvalid';
+  if (
+    face.area != null &&
+    (!Number.isFinite(face.area) ||
+      Math.abs(face.area - face.width * face.height) > Math.max(1, face.width * face.height) * 1e-8)
+  )
+    return 'faceAreaInvalid';
+  for (const key of [
+    'pixelWidth',
+    'pixelHeight',
+    'spotLengthSeconds',
+    'loopLengthSeconds',
+    'spotsPerLoop',
+  ] as const) {
+    const value = face[key];
+    if (value != null && (!Number.isFinite(value) || value <= 0)) return 'digitalPositive';
+  }
+  if (
+    [face.pixelWidth, face.pixelHeight, face.spotsPerLoop].some(
+      (value) => value != null && !Number.isInteger(value),
+    )
+  )
+    return 'digitalInteger';
+  const spot = face.spotLengthSeconds,
+    loop = face.loopLengthSeconds;
+  if (
+    spot != null &&
+    loop != null &&
+    (spot > loop || (face.spotsPerLoop != null && spot * face.spotsPerLoop > loop + 1e-8))
+  )
+    return 'digitalLoopInvalid';
+  return null;
+}
+
+/** Only faces with an actual problem receive a completeness warning. */
+export function faceCompletionProblem(
+  face: Parameters<typeof faceInputProblem>[0] & { faceLabel?: string | null },
+): ReturnType<typeof faceInputProblem> | 'faceLabelRequired' {
+  return faceInputProblem(face) ?? (face.faceLabel?.trim() ? null : 'faceLabelRequired');
+}

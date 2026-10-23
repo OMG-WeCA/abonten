@@ -48,6 +48,9 @@ function createSubject(redis: Redis, overrides: TestConfig = {}) {
   const mail = new CapturingMail();
   const identitySecret = `redis-integration-${randomUUID()}`;
   const identities = {
+    async canRequestCode() {
+      return true;
+    },
     async findOrCreateByEmail(email: string) {
       return {
         id: `user-${email}`,

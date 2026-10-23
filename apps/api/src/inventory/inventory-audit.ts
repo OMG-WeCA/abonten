@@ -4,9 +4,10 @@ import { AuditLogEntity } from '../common/entities/audit-log.entity';
 /**
  * Transactional inventory audit writes (SPEC §6.5 / execution plan §1.2).
  *
- * Every inventory mutation writes exactly ONE audit_logs row inside the SAME
+ * Every inventory mutation writes its audit_logs row inside the SAME
  * database transaction as the mutation itself: if the audit insert fails the
  * mutation rolls back, and if the mutation fails no audit row is committed.
+ * Automatic unpublication adds its own lifecycle event in that transaction.
  * Audit rows carry actor, organization, action, entity type + id, and
  * before/after snapshots — mirroring the organization-flow audit pattern.
  *
@@ -24,6 +25,7 @@ export const INVENTORY_AUDIT_ENTITY = {
 export type InventoryAuditAction =
   | 'inventory.site.created'
   | 'inventory.site.updated'
+  | 'inventory.site.unpublished'
   | 'inventory.site.deleted'
   | 'inventory.site.submitted'
   | 'inventory.site.approved'

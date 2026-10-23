@@ -1,3 +1,4 @@
+import { INVENTORY_CURRENCIES, INVENTORY_FORMATS } from '../inventory-integrity';
 import { Transform, Type } from 'class-transformer';
 import { canonicalCountry } from '../../common/supported-markets';
 import {
@@ -42,12 +43,17 @@ export const VERIFICATION_STATES = [
 export type VerificationState = (typeof VERIFICATION_STATES)[number];
 
 export class CreateSiteDto {
-  @ApiProperty() @IsString() name!: string;
+  @ApiProperty()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
+  name!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() code?: string;
   /** Idempotent-create key: replays the original draft on an ambiguous retry. */
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(64) clientRequestId?: string;
   @ApiPropertyOptional({ default: 'billboard' }) @IsOptional() @IsString() type?: string;
-  @ApiProperty() @IsString() format!: string;
+  @ApiProperty({ enum: INVENTORY_FORMATS }) @IsIn(INVENTORY_FORMATS) format!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() subFormat?: string;
 
   @ApiProperty() @IsNumber() @Min(-90) @Max(90) @Type(() => Number) latitude!: number;
@@ -60,7 +66,11 @@ export class CreateSiteDto {
   geoPolygon?: GeoPointDto[];
 
   @ApiPropertyOptional() @IsOptional() @IsString() address?: string;
-  @ApiProperty() @IsString() city!: string;
+  @ApiProperty()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(1)
+  city!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() region?: string;
   @ApiProperty()
   @IsString()
@@ -112,10 +122,15 @@ export class ListSitesQueryDto {
 }
 
 export class CreateFaceDto {
-  @ApiProperty() @IsString() faceLabel!: string;
-  @ApiProperty() @IsNumber() @Type(() => Number) width!: number;
-  @ApiProperty() @IsNumber() @Type(() => Number) height!: number;
-  @ApiProperty() @IsNumber() @Type(() => Number) area!: number;
+  @ApiProperty()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20)
+  faceLabel!: string;
+  @ApiProperty() @IsNumber() @IsPositive() @Type(() => Number) width!: number;
+  @ApiProperty() @IsNumber() @IsPositive() @Type(() => Number) height!: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @IsPositive() @Type(() => Number) area?: number;
   @ApiProperty({ default: 'm' }) @IsString() units!: string;
   @ApiPropertyOptional() @IsOptional() @IsString() printableArea?: string;
   @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Type(() => Number) bleedMm?: number;
@@ -124,8 +139,8 @@ export class CreateFaceDto {
   @ApiPropertyOptional({ default: true }) @IsOptional() @IsBoolean() bookable?: boolean;
   // Digital-face attributes (SPEC §5.1 trust contract 2) — collected for
   // digital_led faces; nullable everywhere so static faces are unaffected.
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(1) @Type(() => Number) pixelWidth?: number;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(1) @Type(() => Number) pixelHeight?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Type(() => Number) pixelWidth?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Type(() => Number) pixelHeight?: number;
   @ApiPropertyOptional()
   @IsOptional()
   @IsNumber()
@@ -140,7 +155,7 @@ export class CreateFaceDto {
   loopLengthSeconds?: number;
   @ApiPropertyOptional()
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @Min(1)
   @Type(() => Number)
   spotsPerLoop?: number;
@@ -152,9 +167,15 @@ export class UpdateFaceDto extends PartialType(CreateFaceDto) {}
 export class CreateMetadataDto {
   @ApiProperty() @IsString() dimension!: string;
   @ApiProperty({ type: Object }) @IsInstance(Object) payload!: Record<string, unknown>;
-  @ApiPropertyOptional() @IsOptional() @IsString() source?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() method?: string;
-  @ApiPropertyOptional() @IsOptional() @IsNumber() @Type(() => Number) confidence?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() source?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() method?: string | null;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  @Type(() => Number)
+  confidence?: number;
   @ApiPropertyOptional() @IsOptional() @IsDateString() collectedAt?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() expiresAt?: string;
   @ApiPropertyOptional({ enum: VERIFICATION_STATES, default: 'unverified' })
@@ -174,7 +195,7 @@ export class RateCardRatesDto {
 export class CreateRateCardDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() faceId?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Type(() => Number) minBookingDays?: number;
-  @ApiProperty() @IsString() currency!: string;
+  @ApiProperty({ enum: INVENTORY_CURRENCIES }) @IsIn(INVENTORY_CURRENCIES) currency!: string;
   @ApiProperty({ type: RateCardRatesDto })
   @Type(() => RateCardRatesDto)
   @ValidateNested()

@@ -1605,6 +1605,9 @@
   display: none;
 }
 .agency-account-menu {
+  max-height: calc(100dvh - 76px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   position: absolute;
   top: 64px;
   right: 12px;
@@ -1631,9 +1634,15 @@
   max-width: none;
 }
 .agency-menu-language {
-  padding: 7px 11px;
+  padding: 7px 0;
   border-bottom: 1px solid var(--color-border);
   margin-bottom: 4px;
+}
+.agency-menu-language .language-switcher-error {
+  position: static;
+  width: 100%;
+  max-width: none;
+  box-shadow: none;
 }
 @media (max-width: 899px) {
   .agency-desktop-language {

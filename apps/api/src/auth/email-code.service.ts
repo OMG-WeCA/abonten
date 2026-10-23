@@ -93,6 +93,8 @@ export class EmailCodeService {
 
   async request(emailInput: string, locale: SignInLocale = 'en'): Promise<{ accepted: true }> {
     const email = normalizeEmailIdentity(emailInput);
+    // Generic response avoids disclosing which email addresses have access.
+    if (!(await this.identities.canRequestCode(email))) return { accepted: true };
     const code = generateCode();
     const challenge: EmailCodeChallenge = {
       id: randomUUID(),

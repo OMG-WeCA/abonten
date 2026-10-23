@@ -58,23 +58,17 @@ export class InventoryMediaAdmissionGuard implements CanActivate {
     }
     receiving++;
     let done = false;
-    let idle = setTimeout(() => req.destroy(), 30_000);
-    idle.unref();
+    // Let Node track socket inactivity. A socket data listener can disturb the
+    // HTTP parser's backpressure and stall multipart bodies above its buffer.
+    const onIdle = () => req.destroy();
+    req.setTimeout(30_000, onIdle);
     const total = setTimeout(() => req.destroy(), 120_000);
     total.unref();
-    // Observe socket progress without starting the request body's flowing mode
-    // before Multer attaches its listeners (which would lose initial chunks).
-    const progress = () => {
-      clearTimeout(idle);
-      idle = setTimeout(() => req.destroy(), 30_000);
-      idle.unref();
-    };
     const stopReading = () => {
-      clearTimeout(idle);
       clearTimeout(total);
-      req.socket.removeListener('data', progress);
+      req.setTimeout(0);
+      req.removeListener('timeout', onIdle);
     };
-    req.socket.on('data', progress);
     req.once('end', stopReading);
     const release = () => {
       if (done) return;

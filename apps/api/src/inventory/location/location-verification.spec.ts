@@ -174,6 +174,7 @@ function inventoryHarness(
   const site: Record<string, unknown> = {
     ...input,
     id: 'site-test',
+    name: 'Fixture panel',
     organizationId: 'org-test',
     status: 'draft',
     format: 'static',
@@ -214,11 +215,28 @@ function inventoryHarness(
         },
       };
     if (target === SiteFaceEntity)
-      return { find: async () => [{ id: 'face-test', siteId: 'site-test', bookable: true }] };
+      return {
+        find: async () => [
+          {
+            id: 'face-test',
+            siteId: 'site-test',
+            faceLabel: 'East',
+            width: 12,
+            height: 3,
+            area: 36,
+            bookable: true,
+          },
+        ],
+      };
     if (target === RateCardEntity)
       return {
         find: async () => [
-          { siteId: 'site-test', rates: { perDay: 100 }, effectiveFrom: new Date('2020-01-01') },
+          {
+            siteId: 'site-test',
+            currency: 'NGN',
+            rates: { perDay: 100 },
+            effectiveFrom: new Date('2020-01-01'),
+          },
         ],
       };
     return {

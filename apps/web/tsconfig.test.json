@@ -53,7 +53,9 @@
     "src/lib/map-position.ts",
     "src/lib/site-metadata-display.ts",
     "src/lib/site-metadata-display.spec.ts",
-    "src/lib/map-provider.spec.ts"
+    "src/lib/map-provider.spec.ts",
+    "src/lib/invitations-api.ts",
+    "src/lib/invitations-api.spec.ts"
   ],
   "exclude": []
 }

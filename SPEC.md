@@ -202,6 +202,26 @@ Operator of the Abonten platform itself (OMG WeCA product/ops staff). Organizati
   telemetry. Admins never impersonate tenants; they act through explicit admin endpoints with full
   audit.
 
+### Invite-only admission amendment (2026-10-22)
+
+Admission is controlled by the existing `platform_admin` role. For a new account,
+the administrator supplies only an email and a product account type: media partner,
+agency or brand. The recipient verifies that email and supplies their own name,
+company, country and remaining standard onboarding details. Organization creation,
+owner membership and invitation acceptance commit together. The accepted account
+type is fixed by the invitation; platform accounts and privileged roles cannot be
+selected by a recipient. No organization is pre-created by a new-account invite.
+Existing team invitations remain a separate flow bound to an existing organization
+and a role, under the existing tenant and role-assignment controls.
+Public email verification and Microsoft SSO cannot create an uninvited identity;
+existing accounts retain sign-in. Public organization creation is disabled. There
+are no bearer invitation tokens. New-account invitations expire after seven days;
+resending renews pending/expired admission, while revocation cancels it. Acceptance
+is single-use and never restores revoked memberships or changes existing roles.
+Admission, resend, revocation, organization creation and acceptance are audited.
+Partner terms retain the existing approved-version policy. No new administrator
+grant or first-user privilege is introduced. Inventory moderation is unchanged.
+
 ### 4.5 Role model summary
 
 Within each organization, users hold a **role** that scopes their actions:
@@ -997,6 +1017,23 @@ Platform ──< AuditLog, ReferenceData, ReportRun (cross-tenant, admin-scoped)
    rate card.
 5. **Maintain:** Partner updates specs/availability; admin may `suspend` for quality/permit issues
    or the partner may `decommission` retired sites. All changes are audited.
+
+**Inventory integrity correction (2026-10-21).** Structure and face dimensions must be finite and
+positive; area is derived from width × height in the recorded units. API clients may supply a
+matching area, but cannot override it with an inconsistent value. Digital pixels and spot counts
+are positive integers; recorded spot durations and counts must fit within the loop. Partial
+digital drafts remain possible; complete digital specifications are required for listing.
+Required identity strings cannot be blank and rates use the supported platform currencies.
+Audience and traffic records require source/method; partners submit owner-reported evidence.
+Only the existing platform reviewer role may assign independent verification. Partner changes
+to reviewed evidence reset its verification to owner-reported; previous audit records remain.
+All writes and publication gates enforce these rules. A listed site that loses completeness
+returns to draft in the same transaction, with an audit event. At time-based expiry, reads
+project an ineligible stored listing as draft and deny buyer access without writing records;
+the next normal inventory mutation reconciles stored status before any repair can republish it.
+Renewed eligibility requires the normal submit/review path. Research references and labelled
+demo exceptions retain their existing scope. Legacy invalid records require separate review;
+these corrections do not bulk rewrite historical data or add a scheduled write process.
 
 ### 7.2 Campaign planning → booking → execution → monitoring → reporting
 

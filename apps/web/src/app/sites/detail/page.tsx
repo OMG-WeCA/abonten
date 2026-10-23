@@ -82,7 +82,12 @@ import { displayDateOnly, displayNumber, displayUtcTimestamp } from '../../../li
 import { agencyEvidenceText, agencyEvidenceUnit } from '../../../lib/agency-evidence-locale';
 import { formatArea, formatMoney, parseAmount, parseDecimal } from '../../../lib/number-format';
 import { getSitesCopy, type SiteLocale } from '../../../lib/sites-locale';
-import { plausibilityErrors, optionalStructureNumberErrors } from '../../../lib/sites-plausibility';
+import {
+  plausibilityErrors,
+  optionalStructureNumberErrors,
+  faceInputProblem,
+  faceCompletionProblem,
+} from '../../../lib/sites-plausibility';
 
 function DetailInner() {
   const router = useRouter();
@@ -179,6 +184,7 @@ function DetailInner() {
   const today = new Date().toISOString().slice(0, 10);
   const bookableFaces = site?.faces.filter((face) => face.bookable) ?? [];
   const hasFace = bookableFaces.length > 0;
+  const facesValid = bookableFaces.every((face) => !faceCompletionProblem(face));
   const digitalReady =
     site?.format !== 'digital_led' ||
     bookableFaces.every((face) =>
@@ -202,7 +208,8 @@ function DetailInner() {
       ),
     );
   const permitCurrent = !site?.permitExpiresAt || site.permitExpiresAt.slice(0, 10) >= today;
-  const canSubmitAll = hasFrontPhoto && hasFace && hasLiveRate && digitalReady && permitCurrent;
+  const canSubmitAll =
+    hasFrontPhoto && hasFace && facesValid && hasLiveRate && digitalReady && permitCurrent;
   const rejected =
     Boolean(site?.rejectionReason) && (site?.status === 'draft' || site?.status === 'rejected');
 
@@ -399,6 +406,16 @@ function DetailInner() {
               {hasFrontPhoto && hasFace && !digitalReady && (
                 <p className="text-xs text-warning">{copy.detail.digitalRequired}</p>
               )}
+              {!facesValid &&
+                bookableFaces.map((face) => {
+                  const problem = faceCompletionProblem(face);
+                  if (!problem) return null;
+                  return (
+                    <p key={face.id} role="alert" className="text-xs font-medium text-warning">
+                      {face.faceLabel || copy.detail.faceLabel}: {copy.detail[problem]}
+                    </p>
+                  );
+                })}
               {!permitCurrent && (
                 <p className="text-xs text-warning">{copy.detail.permitExpired}</p>
               )}
@@ -1457,14 +1474,29 @@ function FacesSection({
       ...(pixelHeight !== null ? { pixelHeight } : {}),
       ...(spot !== null ? { spotLengthSeconds: spot } : {}),
       ...(loop !== null ? { loopLengthSeconds: loop } : {}),
-      ...(spots !== null ? { spotsPerLoop: Math.round(spots) } : {}),
+      ...(spots !== null ? { spotsPerLoop: spots } : {}),
       proofOfPlay: form.proofOfPlay,
     };
   };
 
   const validateFace = (): boolean => {
-    if (!form.faceLabel.trim() || faceWidth === null || faceHeight === null || area <= 0)
+    const problem = faceInputProblem({
+      width: faceWidth,
+      height: faceHeight,
+      pixelWidth: parseDecimal(form.pixelWidth),
+      pixelHeight: parseDecimal(form.pixelHeight),
+      spotLengthSeconds: parseDecimal(form.spotLengthSeconds),
+      loopLengthSeconds: parseDecimal(form.loopLengthSeconds),
+      spotsPerLoop: parseDecimal(form.spotsPerLoop),
+    });
+    if (problem) {
+      setFormError(copy.detail[problem]);
       return false;
+    }
+    if (!form.faceLabel.trim()) {
+      setFormError(copy.detail.faceLabelRequired);
+      return false;
+    }
     if (
       form.bleedMm.trim() &&
       (parseDecimal(form.bleedMm) === null || parseDecimal(form.bleedMm)! < 0)

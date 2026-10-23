@@ -1,3 +1,5 @@
+export { InvitationEntity } from '../../auth/entities/invitation.entity';
+import { InvitationEntity } from '../../auth/entities/invitation.entity';
 // Central barrel for all TypeORM entities so DataSource/DatabaseModule registration
 // stays in one place. Order doesn't matter for schema creation (FKs are logical only
 // at this stage — no DB-level foreign keys in the initial migration, per SPEC §6
@@ -70,6 +72,7 @@ import { OrganizationCreationRequestEntity } from '../../orgs/entities/organizat
 
 /** All entities, for DataSource / DatabaseModule registration. */
 export const ENTITIES = [
+  InvitationEntity,
   PlanningDraftEntity,
   PartnerTermsAcceptanceEntity,
   OrganizationEntity,

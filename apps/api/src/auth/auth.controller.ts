@@ -31,6 +31,7 @@ export class AuthController {
     });
     return {
       emailCodeEnabled: true,
+      inviteOnly: true,
       microsoftEnabled: microsoft.enabled,
       microsoftUnavailableReason: microsoft.unavailableReason,
     };

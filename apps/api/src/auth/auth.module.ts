@@ -1,3 +1,5 @@
+import { InvitationsService } from './invitations.service';
+import { AdminInvitationsController, InvitationsController } from './invitations.controller';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -31,8 +33,9 @@ import { StorageService } from '../common/storage.service';
     }),
     ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 100 }] }),
   ],
-  controllers: [AuthController, MeController],
+  controllers: [AuthController, MeController, AdminInvitationsController, InvitationsController],
   providers: [
+    InvitationsService,
     AuthService,
     EmailCodeService,
     MicrosoftAuthService,
@@ -41,6 +44,6 @@ import { StorageService } from '../common/storage.service';
     JwtStrategy,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
-  exports: [AuthService, EmailCodeService, UserIdentityService, JwtModule],
+  exports: [InvitationsService, AuthService, EmailCodeService, UserIdentityService, JwtModule],
 })
 export class AuthModule {}

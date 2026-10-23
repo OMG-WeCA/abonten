@@ -269,6 +269,7 @@ export class InventoryMediaService {
           : null;
         if (concurrent)
           return projectMediaAssetEvidence(replay(concurrent, requestFingerprint), rows[0]);
+        await this.inventory.reconcilePublication(manager, siteId, user, orgId);
         await this.storage.store(storageRef, file.buffer, media.contentType);
         stored = true;
         const asset = await repo.save(

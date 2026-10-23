@@ -156,5 +156,16 @@
   "Personal planning draft not found.": "Brouillon personnel de planification introuvable.",
   "This draft save request was already used for different content.": "Cette demande d’enregistrement a déjà été utilisée pour un contenu différent.",
   "You have reached the personal planning draft limit.": "Vous avez atteint la limite de brouillons personnels de planification.",
-  "This draft changed elsewhere. Reload it before saving.": "Ce brouillon a été modifié ailleurs. Rechargez-le avant de l’enregistrer."
+  "This draft changed elsewhere. Reload it before saving.": "Ce brouillon a été modifié ailleurs. Rechargez-le avant de l’enregistrer.",
+  "area must equal width × height in the recorded units": "La surface doit être égale à la largeur multipliée par la hauteur dans les unités indiquées",
+  "spot length cannot exceed loop length": "La durée du spot ne peut pas dépasser celle de la boucle",
+  "the recorded spots must fit inside the loop": "Les spots indiqués doivent tenir dans la boucle",
+  "face label is required": "Le libellé de la face est requis",
+  "name is required": "Le nom est requis",
+  "city is required": "La ville est requise",
+  "country is required": "Le pays est requis",
+  "Independent verification requires a platform reviewer.": "La vérification indépendante nécessite un réviseur de la plateforme.",
+  "Audience, traffic and verified records require a source and method.": "Les données d’audience, de trafic et les données vérifiées nécessitent une source et une méthode.",
+  "Confidence must be between 0 and 1.": "La confiance doit être comprise entre 0 et 1.",
+  "Choose a supported currency: NGN, GHS, XAF, XOF, USD or EUR.": "Choisissez une devise prise en charge : NGN, GHS, XAF, XOF, USD ou EUR."
 }

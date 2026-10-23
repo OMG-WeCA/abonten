@@ -108,6 +108,11 @@ function buildHarness(): {
       id: 'site-listed',
       code: 'LKI-001',
       name: 'Listed Fixture',
+      width: 12,
+      height: 6,
+      area: 72,
+      latitude: 6.6,
+      longitude: 3.3,
       type: 'billboard',
       format: 'static',
       city: 'Lagos',
@@ -138,7 +143,17 @@ function buildHarness(): {
       dataClass: null, // pre-migration rows count as production
     },
   ];
-  const faces: Row[] = [{ id: 'face-1', siteId: 'site-listed', bookable: true }];
+  const faces: Row[] = [
+    {
+      id: 'face-1',
+      siteId: 'site-listed',
+      faceLabel: 'East',
+      width: 12,
+      height: 6,
+      area: 72,
+      bookable: true,
+    },
+  ];
   const assets: Row[] = [
     { id: 'asset-1', siteId: 'site-listed', kind: 'front', capturedAt: '2026-10-01T09:00:00Z' },
   ];

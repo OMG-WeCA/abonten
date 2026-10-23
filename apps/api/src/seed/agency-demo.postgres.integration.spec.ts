@@ -291,7 +291,7 @@ describe('insert-only agency demo PostgreSQL seed and tenant visibility', { skip
       assert.ok(reply.facts.assumptions.some((item) => item.startsWith('DEMO')));
       const ordinary = randomUUID();
       await db.query(
-        "INSERT INTO billboard_sites (id,organization_id,code,name,format,latitude,longitude,country,illumination_type,status) VALUES ($1,$2,'QA-ORDINARY','Synthetic test ordinary listing','static',6.58,3.36,'Nigeria','none','listed')",
+        "INSERT INTO billboard_sites (id,organization_id,code,name,format,latitude,longitude,country,city,width,height,area,illumination_type,status) VALUES ($1,$2,'QA-ORDINARY','Synthetic test ordinary listing','static',6.58,3.36,'Nigeria','Lagos',12,6,72,'none','listed')",
         [ordinary, orgId],
       );
       const normalFace = randomUUID();

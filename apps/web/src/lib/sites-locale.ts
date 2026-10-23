@@ -188,6 +188,11 @@ export const sitesCopy = {
       fileRequirements: 'Artwork file requirements',
       faceEdit: 'Edit',
       faceUpdate: 'Save face',
+      faceDimensionsInvalid: 'Width and height must both be greater than zero.',
+      faceLabelRequired: 'Enter a face label.',
+      faceAreaInvalid: 'Save the face dimensions again to correct its calculated area.',
+      digitalInteger: 'Pixel dimensions and spots per loop must be whole numbers.',
+      digitalLoopInvalid: 'The spot duration and number of spots must fit inside the loop.',
       faceRemove: 'Remove',
       faceRemoveConfirm: 'Remove the {{label}} face?',
       digitalHeading: 'Digital screen details',
@@ -527,6 +532,14 @@ export const sitesCopy = {
       fileRequirements: 'Exigences du fichier graphique',
       faceEdit: 'Modifier',
       faceUpdate: 'Enregistrer la face',
+      faceDimensionsInvalid:
+        'La largeur et la hauteur doivent toutes deux être supérieures à zéro.',
+      faceLabelRequired: 'Indiquez un libellé pour la face.',
+      faceAreaInvalid:
+        'Enregistrez à nouveau les dimensions de la face pour corriger sa surface calculée.',
+      digitalInteger:
+        'Les dimensions en pixels et le nombre de spots par boucle doivent être des entiers.',
+      digitalLoopInvalid: 'La durée et le nombre de spots doivent tenir dans la boucle.',
       faceRemove: 'Retirer',
       faceRemoveConfirm: 'Retirer la face {{label}} ?',
       digitalHeading: 'Détails de l’écran numérique',
