@@ -131,7 +131,7 @@ export class EmailCodeService {
 
     try {
       const message = signInEmail(code, this.codeTtlMinutes, locale);
-      await this.mail.send(email, message.subject, message.html);
+      await this.mail.send(email, message.subject, message.html, message.text);
     } catch {
       await this.deleteChallengeIfCurrent(email, challenge.id);
       throw new ServiceUnavailableException({

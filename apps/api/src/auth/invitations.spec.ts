@@ -108,3 +108,17 @@ test('new account invitation accepts only email and a supported product account 
   };
   assert.ok((await validate(plainToInstance(AcceptInvitationDto, acceptance), options)).length);
 });
+
+test('account invitation accepts supported email locales and rejects unsupported values', async () => {
+  for (const locale of [undefined, 'en', 'fr', 'de', '<script>']) {
+    const errors = await validate(
+      plainToInstance(CreateInvitationDto, {
+        email: 'claire@cedarline.example',
+        accountType: 'media_partner',
+        ...(locale === undefined ? {} : { locale }),
+      }),
+      { whitelist: true, forbidNonWhitelisted: true },
+    );
+    assert.equal(errors.length === 0, locale === undefined || locale === 'en' || locale === 'fr');
+  }
+});

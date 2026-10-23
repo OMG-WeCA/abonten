@@ -74,7 +74,12 @@ export default function InvitationsPage() {
     requestKey.current ??= crypto.randomUUID();
     const body =
       pendingBody ??
-      JSON.stringify({ email: email.trim(), accountType, clientRequestId: requestKey.current });
+      JSON.stringify({
+        email: email.trim(),
+        accountType,
+        locale: fr ? 'fr' : 'en',
+        clientRequestId: requestKey.current,
+      });
     setPendingBody(body);
     try {
       const row = await apiJson<Invitation>('/api/admin/invitations', {

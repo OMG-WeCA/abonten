@@ -12,6 +12,31 @@ function config(values: Record<string, unknown>): ConfigService {
 }
 
 describe('MailService', () => {
+  it('passes matching HTML and plain-text alternatives to the configured sender', async () => {
+    const service = new MailService(config({ 'mail.from': 'Abonten <noreply@updates.example>' }));
+    let delivered: unknown;
+    const internals = service as unknown as {
+      transporter: { sendMail(value: unknown): Promise<void> };
+    };
+    internals.transporter = {
+      sendMail: async (value) => {
+        delivered = value;
+      },
+    };
+    await service.send(
+      'nora@harbourline.example',
+      'Your invitation to Abonten',
+      '<p>Invitation</p>',
+      'Invitation',
+    );
+    assert.deepEqual(delivered, {
+      from: 'Abonten <noreply@updates.example>',
+      to: 'nora@harbourline.example',
+      subject: 'Your invitation to Abonten',
+      html: '<p>Invitation</p>',
+      text: 'Invitation',
+    });
+  });
   it('configures explicit SMTP connection, greeting, and socket deadlines', () => {
     const settings = mailTransportSettings(
       config({
@@ -52,7 +77,7 @@ describe('MailService', () => {
 
     const startedAt = Date.now();
     await assert.rejects(
-      () => service.send('person@example.com', 'Subject', '<p>Body</p>'),
+      () => service.send('person@example.com', 'Subject', '<p>Body</p>', 'Body'),
       MailDeliveryTimeoutError,
     );
     assert.equal(closed, true);

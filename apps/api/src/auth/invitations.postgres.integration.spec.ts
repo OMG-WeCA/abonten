@@ -133,6 +133,25 @@ async function setup(ds: DataSource) {
   };
 }
 describe('Invite-only admission — real Postgres', { skip: !url }, () => {
+  it('retains the selected email locale through account invitation creation and resend', async () =>
+    fixture(async (f) => {
+      for (const locale of ['en', 'fr'] as const) {
+        const row = await f.service.create(f.operator, f.platform, {
+          email: `${locale}@cedarline.example`,
+          accountType: 'media_partner',
+          locale,
+        });
+        assert.equal(
+          (await f.ds.query('SELECT locale FROM invitations WHERE id=$1', [row.id]))[0].locale,
+          locale,
+        );
+        await f.service.change(f.operator, f.platform, row.id, 'resend');
+        assert.equal(
+          (await f.ds.query('SELECT locale FROM invitations WHERE id=$1', [row.id]))[0].locale,
+          locale,
+        );
+      }
+    }));
   it('invites only email and account type, then atomically creates recipient-owned company/profile and one owner membership', async () =>
     fixture(async (f) => {
       const row = await f.service.create(f.operator, f.platform, {

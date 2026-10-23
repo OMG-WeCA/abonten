@@ -34,9 +34,9 @@ export class MailService {
     this.transporter = nodemailer.createTransport(mailTransportSettings(cfg));
   }
 
-  async send(to: string, subject: string, html: string): Promise<void> {
+  async send(to: string, subject: string, html: string, text: string): Promise<void> {
     let timeout: NodeJS.Timeout | undefined;
-    const delivery = this.transporter.sendMail({ from: this.from, to, subject, html });
+    const delivery = this.transporter.sendMail({ from: this.from, to, subject, html, text });
     const deadline = new Promise<never>((_, reject) => {
       timeout = setTimeout(() => {
         reject(new MailDeliveryTimeoutError());

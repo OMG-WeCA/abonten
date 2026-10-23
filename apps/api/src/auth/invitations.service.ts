@@ -1,3 +1,4 @@
+import { invitationEmail } from './invitation-email';
 import { ASSIGNABLE_ROLES_BY_ORG_TYPE } from '../capabilities/organization-roles';
 import { createHash } from 'node:crypto';
 import { ILike } from 'typeorm';
@@ -36,12 +37,6 @@ export function invitationState(
   return invite.status === 'pending' && new Date(invite.expiresAt).getTime() <= now
     ? 'expired'
     : invite.status;
-}
-function escapeHtml(s: string): string {
-  return s.replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
-  );
 }
 export function invitationSignInUrl(baseUrl: string, basePath?: string): string {
   const url = new URL(baseUrl);
@@ -215,7 +210,7 @@ export class InvitationsService {
             name: '',
             organizationId: null,
             role: 'org_owner',
-            locale: 'en',
+            locale: dto.locale ?? 'en',
             initialOwner: dto.accountType === 'media_partner',
             createdByUserId: userId,
             createdByOrgId: actorOrgId,
@@ -272,25 +267,14 @@ export class InvitationsService {
     const org = row.organizationId
       ? await (await this.db.repo(OrganizationEntity)).findOneByOrFail({ id: row.organizationId })
       : null;
-    const accountLabel = (
-      { media_partner: 'a media partner', agency: 'an agency', brand: 'a brand' } as Record<
-        string,
-        string
-      >
-    )[row.accountType ?? ''];
     const signIn = invitationSignInUrl(
       this.cfg.get<string>('web.baseUrl') ?? 'http://localhost:3001',
       this.cfg.get<string>('web.basePath'),
     );
-    const fr = row.locale === 'fr',
-      title = fr ? 'Votre invitation à Abonten' : 'Your invitation to Abonten';
     let delivery = 'sent';
     try {
-      await this.mail.send(
-        row.email,
-        title,
-        `<html lang="${row.locale}"><body><h1>${title}</h1><p>${fr ? 'Vous avez été invité(e) à rejoindre' : 'You have been invited to join'} <strong>${escapeHtml(org?.name ?? 'Abonten as ' + accountLabel)}</strong>.</p>${row.kind === 'membership' ? `<p>${fr ? 'Rôle' : 'Role'}: ${escapeHtml(row.role.replaceAll('_', ' '))}</p>` : ''}<p>${fr ? 'Valable jusqu’au' : 'Valid until'} ${new Date(row.expiresAt).toISOString().slice(0, 10)} (UTC).</p><p>${fr ? 'Connectez-vous avec cette adresse email puis acceptez votre invitation.' : 'Sign in with this email address, then accept your invitation.'}</p><a href="${escapeHtml(signIn)}">${fr ? 'Se connecter' : 'Sign in to Abonten'}</a></body></html>`,
-      );
+      const message = invitationEmail(row, org?.name ?? null, signIn);
+      await this.mail.send(row.email, message.subject, message.html, message.text);
     } catch {
       delivery = 'failed';
     }

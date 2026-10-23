@@ -21,6 +21,7 @@ export const ACCOUNT_TYPES = ['media_partner', 'agency', 'brand'] as const;
 export class CreateInvitationDto {
   @IsEmail() email!: string;
   @IsIn(ACCOUNT_TYPES) accountType!: (typeof ACCOUNT_TYPES)[number];
+  @IsOptional() @IsIn(['en', 'fr']) locale?: 'en' | 'fr';
   @IsOptional() @IsUUID('4') clientRequestId?: string;
 }
 /** Separate existing-team invitation; not new-account admission. */

@@ -1,3 +1,5 @@
+import { renderNotificationEmail } from '../common/notification-email';
+
 export type SignInLocale = 'en' | 'fr';
 export const signInCopy = {
   en: {
@@ -12,7 +14,7 @@ export const signInCopy = {
   },
   fr: {
     subject: 'Votre code de connexion Abonten',
-    intro: 'Utilisez ce code pour vous connecter :',
+    intro: 'Voici votre code de connexion :',
     expiry: (minutes: number) =>
       `Il expire dans ${minutes} minutes. Si vous ne l’avez pas demandé, vous pouvez ignorer cet email.`,
     requestLimit: 'Trop de demandes de code de connexion. Réessayez plus tard.',
@@ -23,9 +25,16 @@ export const signInCopy = {
 } as const;
 export function signInEmail(code: string, minutes: number, locale: SignInLocale = 'en') {
   const copy = signInCopy[locale];
-  // Both dynamic values are generated server-side, never interpolated from user input.
-  return {
+  return renderNotificationEmail({
+    locale,
     subject: copy.subject,
-    html: `<html lang="${locale}"><body><p>${copy.intro}</p><p style="font-size: 28px; font-weight: 700; letter-spacing: 0.2em">${code}</p><p>${copy.expiry(minutes)}</p></body></html>`,
-  };
+    title: locale === 'fr' ? 'Connectez-vous à Abonten' : 'Sign in to Abonten',
+    preheader:
+      locale === 'fr'
+        ? `Votre code de connexion expire dans ${minutes} minutes.`
+        : `Your sign-in code expires in ${minutes} minutes.`,
+    paragraphs: [copy.intro],
+    code,
+    note: `${copy.expiry(minutes)} ${locale === 'fr' ? 'Ne partagez jamais ce code.' : 'Never share this code.'}`,
+  });
 }
