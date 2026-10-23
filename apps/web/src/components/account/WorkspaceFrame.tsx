@@ -119,23 +119,30 @@ export function WorkspaceFrame({
             </span>
           </button>
 
-          <label className="relative order-3 min-w-0 basis-full sm:order-none sm:flex-1 sm:basis-auto sm:max-w-xs">
-            <span className="sr-only">{copy.workspace.activeOrganization}</span>
-            <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-            <select
-              value={activeOrganization.organizationId}
-              disabled={switching || organizations.length < 2}
-              onChange={(event) => void switchTo(event.target.value)}
-              className="h-10 w-full appearance-none rounded-lg border border-border bg-surface-2 py-2 pl-9 pr-8 text-sm font-semibold text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:cursor-default disabled:opacity-100"
-            >
-              {organizations.map((organization) => (
-                <option key={organization.organizationId} value={organization.organizationId}>
-                  {organization.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          </label>
+          {canReview && activeOrganization.type === 'platform' && organizations.length === 1 ? (
+            <div className="order-3 flex min-w-0 basis-full items-center gap-2 text-sm font-semibold text-muted sm:order-none sm:basis-auto">
+              <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0" />
+              <span>{locale === 'fr' ? 'Administration plateforme' : 'Platform Admin'}</span>
+            </div>
+          ) : (
+            <label className="relative order-3 min-w-0 basis-full sm:order-none sm:flex-1 sm:basis-auto sm:max-w-xs">
+              <span className="sr-only">{copy.workspace.activeOrganization}</span>
+              <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <select
+                value={activeOrganization.organizationId}
+                disabled={switching || organizations.length < 2}
+                onChange={(event) => void switchTo(event.target.value)}
+                className="h-10 w-full appearance-none rounded-lg border border-border bg-surface-2 py-2 pl-9 pr-8 text-sm font-semibold text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:cursor-default disabled:opacity-100"
+              >
+                {organizations.map((organization) => (
+                  <option key={organization.organizationId} value={organization.organizationId}>
+                    {organization.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            </label>
+          )}
 
           <nav
             className="ml-auto flex shrink-0 items-center gap-1 [&>button]:min-h-11 [&>button]:min-w-11"
