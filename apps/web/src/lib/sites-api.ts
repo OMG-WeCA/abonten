@@ -192,6 +192,12 @@ export interface RateCard {
 }
 
 export interface SiteDraftInput {
+  screenResolutions?: {
+    clientRequestId?: string;
+    faceId?: string;
+    pixelWidth?: number;
+    pixelHeight?: number;
+  }[];
   name: string;
   code?: string;
   type?: string;

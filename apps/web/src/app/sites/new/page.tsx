@@ -1,5 +1,10 @@
 'use client';
 
+import {
+  ScreenResolutionFields,
+  screenPixelError,
+} from '../../../components/sites/ScreenResolutionFields';
+
 import { siteMediaLabel } from '../../../lib/site-media';
 import { displayUiText } from '../../../lib/display-ui-text';
 
@@ -26,6 +31,7 @@ import { useLocale } from '../../../components/LocaleProvider';
 import { Field, inputClass } from '../../../components/sites/sites-ui';
 import {
   createSite,
+  getSite,
   updateSite,
   listMarkets,
   uploadAsset,
@@ -63,6 +69,8 @@ interface FormState {
   region: string;
   country: string;
   marketId: string;
+  pixelWidth: string;
+  pixelHeight: string;
   width: string;
   height: string;
   units: string;
@@ -92,6 +100,8 @@ const INITIAL: FormState = {
   region: '',
   country: '',
   marketId: '',
+  pixelWidth: '',
+  pixelHeight: '',
   width: '',
   height: '',
   units: 'm',
@@ -216,6 +226,8 @@ export default function RegisterSitePage() {
       country: 'siteCountry',
       marketId: 'siteMarket',
       width: 'siteWidth',
+      pixelWidth: 'site-pixelWidth',
+      pixelHeight: 'site-pixelHeight',
       height: 'siteHeight',
       units: 'siteUnits',
       orientationDeg: 'siteOrientation',
@@ -255,6 +267,10 @@ export default function RegisterSitePage() {
       next.illuminationHours = copy.register.requiredFields;
     for (const [field, messageKey] of Object.entries(optionalStructureNumberErrors(form))) {
       next[field as keyof FormState] = copy.register[messageKey];
+    }
+    if (form.format === 'digital_led') {
+      next.pixelWidth = screenPixelError(form.pixelWidth, locale);
+      next.pixelHeight = screenPixelError(form.pixelHeight, locale);
     }
     // Plausibility (SPEC §5.1 trust contract 6) — same rules as the API.
     const plausibility = plausibilityErrors({
@@ -328,7 +344,30 @@ export default function RegisterSitePage() {
           : `cr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     }
     try {
+      let screenResolutions;
+      if (form.format === 'digital_led' && (form.pixelWidth.trim() || form.pixelHeight.trim())) {
+        let faceId;
+        if (savedSiteRef.current) {
+          const saved = await getSite(orgId, savedSiteRef.current.id);
+          if (saved.faces.length > 1)
+            throw new Error(
+              t(
+                'This draft has multiple screens. Open the saved site to edit each screen.',
+                'Ce brouillon a plusieurs écrans. Ouvrez le site enregistré pour modifier chaque écran.',
+              ),
+            );
+          faceId = saved.faces[0]?.id;
+        }
+        screenResolutions = [
+          {
+            ...(faceId ? { faceId } : {}),
+            ...(form.pixelWidth.trim() ? { pixelWidth: Number(form.pixelWidth) } : {}),
+            ...(form.pixelHeight.trim() ? { pixelHeight: Number(form.pixelHeight) } : {}),
+          },
+        ];
+      }
       const draftInput = {
+        ...(screenResolutions ? { screenResolutions } : {}),
         name: form.name.trim(),
         ...(form.siteCode.trim() ? { code: form.siteCode.trim() } : {}),
         type: form.type,
@@ -698,14 +737,6 @@ export default function RegisterSitePage() {
 
           <section className="max-w-3xl rounded-xl border border-border bg-surface px-5 py-5">
             {sectionHeading(<Ruler className="h-4 w-4" />, copy.register.sectionPhysical)}
-            {form.format === 'digital_led' && (
-              <p className="mt-3 text-sm leading-6 text-muted">
-                {t(
-                  'Enter the physical size here. After saving the draft, add each screen under Faces to enter its width and height in pixels (px).',
-                  'Indiquez ici les dimensions physiques. Après avoir enregistré le brouillon, ajoutez chaque écran dans Faces pour saisir sa largeur et sa hauteur en pixels (px).',
-                )}
-              </p>
-            )}
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label={copy.register.width} htmlFor="siteWidth" error={errors.width}>
                 <span className="flex gap-2">
@@ -745,6 +776,24 @@ export default function RegisterSitePage() {
                   className={inputClass}
                 />
               </Field>
+              {form.format === 'digital_led' && (
+                <div className="sm:col-span-2 rounded-lg border border-border bg-surface-2 p-4">
+                  <ScreenResolutionFields
+                    id="site"
+                    width={form.pixelWidth}
+                    height={form.pixelHeight}
+                    locale={locale}
+                    onChange={(field, value) => set(field)(value)}
+                    errors={errors}
+                  />
+                  <p className="mt-2 text-xs leading-5 text-muted">
+                    {t(
+                      'The screen’s native resolution. Physical dimensions stay in metres or feet.',
+                      'La résolution native de l’écran. Les dimensions physiques restent en mètres ou en pieds.',
+                    )}
+                  </p>
+                </div>
+              )}
               <Field
                 label={copy.register.orientation}
                 htmlFor="siteOrientation"

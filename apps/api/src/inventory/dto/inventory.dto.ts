@@ -42,7 +42,22 @@ export const VERIFICATION_STATES = [
 ] as const;
 export type VerificationState = (typeof VERIFICATION_STATES)[number];
 
+/** Resolution edits from the main site form; identity is explicit for existing faces. */
+export class ScreenResolutionDto {
+  @ApiPropertyOptional() @IsOptional() @IsUUID() clientRequestId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() faceId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(2147483647) pixelWidth?: number;
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) @Max(2147483647) pixelHeight?: number;
+}
+
 export class CreateSiteDto {
+  @ApiPropertyOptional({ type: [ScreenResolutionDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ScreenResolutionDto)
+  screenResolutions?: ScreenResolutionDto[];
+
   @ApiProperty()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()

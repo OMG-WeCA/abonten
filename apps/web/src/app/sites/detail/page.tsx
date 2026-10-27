@@ -1,5 +1,10 @@
 'use client';
 
+import {
+  ScreenResolutionFields,
+  screenPixelError,
+} from '../../../components/sites/ScreenResolutionFields';
+
 import { displayUiText } from '../../../lib/display-ui-text';
 
 import {
@@ -465,18 +470,41 @@ function DetailInner() {
               reload={reload}
               run={run}
             />
-            <FacesSection
-              onUnsavedChange={markUnsavedSection}
-              locale={locale}
-              site={site}
-              orgId={orgId}
-              editable={canEdit && canCreateFace}
-              removable={canDelete}
-              copy={copy}
-              busy={busy}
-              reload={reload}
-              run={run}
-            />
+            <details
+              open={site.faces.length !== 1}
+              className="rounded-xl border border-border bg-surface"
+            >
+              <summary className="cursor-pointer px-5 py-4 text-sm font-bold">
+                {site.format === 'digital_led'
+                  ? locale === 'fr'
+                    ? 'Réglages des écrans'
+                    : 'Screen settings'
+                  : locale === 'fr'
+                    ? 'Côtés publicitaires'
+                    : 'Advertising sides'}
+                {site.faces.length === 1 && (
+                  <span className="ml-2 font-normal text-muted">
+                    {locale === 'fr'
+                      ? 'Détails avancés et côtés supplémentaires'
+                      : site.format === 'digital_led'
+                        ? 'Playback, artwork and additional screens'
+                        : 'Artwork and additional sides'}
+                  </span>
+                )}
+              </summary>
+              <FacesSection
+                onUnsavedChange={markUnsavedSection}
+                locale={locale}
+                site={site}
+                orgId={orgId}
+                editable={canEdit && canCreateFace}
+                removable={canDelete}
+                copy={copy}
+                busy={busy}
+                reload={reload}
+                run={run}
+              />
+            </details>
             <RatesSection
               onUnsavedChange={markUnsavedSection}
               site={site}
@@ -540,6 +568,29 @@ function DetailsSection({
   run: (key: string, action: () => Promise<void>) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
+  const { capabilities } = useAuth();
+  const screenValues = () =>
+    (site.faces.length
+      ? site.faces
+      : [
+          {
+            id: '',
+            faceLabel: locale === 'fr' ? 'Écran principal' : 'Main screen',
+            pixelWidth: undefined,
+            pixelHeight: undefined,
+          },
+        ]
+    ).map((face) => ({
+      faceId: face.id,
+      clientRequestId: face.id ? undefined : crypto.randomUUID(),
+      label: face.faceLabel,
+      pixelWidth: String(face.pixelWidth ?? ''),
+      pixelHeight: String(face.pixelHeight ?? ''),
+      initialWidth: face.pixelWidth,
+      initialHeight: face.pixelHeight,
+    }));
+  const [screens, setScreens] = useState(screenValues);
+  const canEnterPixels = site.faces.length > 0 || capabilities.includes('INVENTORY_CREATE');
   useEffect(() => {
     onUnsavedChange('details', editing);
     return () => onUnsavedChange('details', false);
@@ -598,6 +649,14 @@ function DetailsSection({
       copy.detail.dimsLabel,
       `${site.width != null ? displayNumber(site.width, locale) : '—'} × ${site.height != null ? displayNumber(site.height, locale) : '—'} ${site.units ? agencyEvidenceUnit(site.units, locale === 'fr' ? 'fr' : 'en') : ''}`.trim(),
     ],
+    ...(site.format === 'digital_led'
+      ? site.faces.map((face): [string, string] => [
+          site.faces.length > 1
+            ? `${copy.detail.pixelDimensions} · ${face.faceLabel}`
+            : copy.detail.pixelDimensions,
+          screenResolution(face, locale),
+        ])
+      : []),
     [copy.detail.areaLabel, formatArea(site.area, site.units, locale)],
     [copy.detail.coordsLabel, `${site.latitude}, ${site.longitude}`],
     [
@@ -666,6 +725,13 @@ function DetailsSection({
     for (const [field, messageKey] of Object.entries(plausibility)) {
       if (messageKey) next[field] = localized(messageKey);
     }
+    if (form.format === 'digital_led' && canEnterPixels)
+      for (const screen of screens) {
+        for (const field of ['pixelWidth', 'pixelHeight'] as const) {
+          const error = screenPixelError(screen[field], locale);
+          if (error) next[`screen-${screen.faceId || 'new'}-${field}`] = error;
+        }
+      }
     setFieldErrors(next);
     const errored = Object.values(next).filter(Boolean);
     if (errored.length > 1) {
@@ -676,7 +742,9 @@ function DetailsSection({
     }
     if (errored.length > 0) {
       const firstId = Object.keys(next)[0];
-      document.getElementById(detailFieldId(firstId))?.focus?.();
+      document
+        .getElementById(firstId.startsWith('screen-') ? firstId : detailFieldId(firstId))
+        ?.focus?.();
       return;
     }
     // Validation guarantees every value parsed and inside range.
@@ -712,6 +780,29 @@ function DetailsSection({
         ? { permitExpiresAt: form.permitExpiresAt }
         : { permitExpiresAt: null }),
     };
+    if (form.format === 'digital_led' && canEnterPixels) {
+      const changes = screens.flatMap((screen) => {
+        const values = {
+          ...(screen.pixelWidth.trim() && Number(screen.pixelWidth) !== screen.initialWidth
+            ? { pixelWidth: Number(screen.pixelWidth) }
+            : {}),
+          ...(screen.pixelHeight.trim() && Number(screen.pixelHeight) !== screen.initialHeight
+            ? { pixelHeight: Number(screen.pixelHeight) }
+            : {}),
+        };
+        return Object.keys(values).length
+          ? [
+              {
+                ...(screen.faceId
+                  ? { faceId: screen.faceId }
+                  : { clientRequestId: screen.clientRequestId }),
+                ...values,
+              },
+            ]
+          : [];
+      });
+      if (changes.length) patch.screenResolutions = changes;
+    }
     // Provenance: required only when a structure value actually changes.
     const changedStructure = (['orientationDeg', 'viewingDistance', 'elevation'] as const).filter(
       (field) => {
@@ -751,7 +842,10 @@ function DetailsSection({
         editable && !editing ? (
           <button
             type="button"
-            onClick={() => setEditing(true)}
+            onClick={() => {
+              setScreens(screenValues());
+              setEditing(true);
+            }}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-bold transition hover:bg-surface-2"
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -914,6 +1008,39 @@ function DetailsSection({
                 </select>
               </span>
             </Field>
+            {form.format === 'digital_led' && canEnterPixels && (
+              <div className="sm:col-span-2 space-y-4 rounded-lg border border-border bg-surface-2 p-4">
+                {screens.map((screen, index) => (
+                  <div key={screen.faceId || 'new'}>
+                    {screens.length > 1 && (
+                      <h3 className="mb-2 text-sm font-bold">{screen.label}</h3>
+                    )}
+                    <ScreenResolutionFields
+                      id={`screen-${screen.faceId || 'new'}`}
+                      width={screen.pixelWidth}
+                      height={screen.pixelHeight}
+                      locale={locale}
+                      onChange={(field, value) =>
+                        setScreens((previous) =>
+                          previous.map((item, i) =>
+                            i === index ? { ...item, [field]: value } : item,
+                          ),
+                        )
+                      }
+                      errors={{
+                        pixelWidth: fieldErrors[`screen-${screen.faceId || 'new'}-pixelWidth`],
+                        pixelHeight: fieldErrors[`screen-${screen.faceId || 'new'}-pixelHeight`],
+                      }}
+                    />
+                  </div>
+                ))}
+                <p className="text-xs leading-5 text-muted">
+                  {locale === 'fr'
+                    ? 'Résolution native de chaque écran. Les dimensions physiques restent en mètres ou en pieds. Laissez un champ vide pour conserver la valeur enregistrée.'
+                    : 'Each screen’s native resolution. Physical dimensions stay in metres or feet. Leave a field blank to keep its saved value.'}
+                </p>
+              </div>
+            )}
             <Field
               label={copy.register.orientation}
               htmlFor="dOrient"
@@ -1468,6 +1595,38 @@ function FacesSection({
   };
   const [form, setForm] = useState(emptyForm);
   const isDigital = site.format === 'digital_led';
+  const noun = isDigital
+    ? locale === 'fr'
+      ? 'écran'
+      : 'screen'
+    : locale === 'fr'
+      ? 'côté publicitaire'
+      : 'advertising side';
+  const terms = {
+    faces: isDigital
+      ? locale === 'fr'
+        ? 'Écrans'
+        : 'Screens'
+      : locale === 'fr'
+        ? 'Côtés publicitaires'
+        : 'Advertising sides',
+    addFace:
+      locale === 'fr' ? `Ajouter un ${noun}` : `Add ${site.faces.length ? 'another' : 'a'} ${noun}`,
+    noFaces: locale === 'fr' ? `Aucun ${noun} enregistré.` : `No ${noun} recorded yet.`,
+    faceUpdate:
+      locale === 'fr'
+        ? isDigital
+          ? 'Enregistrer l’écran'
+          : 'Enregistrer le côté publicitaire'
+        : `Save ${noun}`,
+    faceRemoveConfirm:
+      locale === 'fr'
+        ? isDigital
+          ? 'Retirer l’écran {{label}} ?'
+          : 'Retirer le côté publicitaire {{label}} ?'
+        : `Remove the {{label}} ${noun}?`,
+  };
+
   const faceWidth = parseDecimal(form.width);
   const faceHeight = parseDecimal(form.height);
   const area = faceWidth !== null && faceHeight !== null ? faceWidth * faceHeight : NaN;
@@ -1602,7 +1761,7 @@ function FacesSection({
 
   return (
     <SectionCard
-      title={copy.detail.faces}
+      title={terms.faces}
       action={
         editable && !adding ? (
           <button
@@ -1614,12 +1773,12 @@ function FacesSection({
             className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-bold transition hover:bg-surface-2"
           >
             <PlusCircle className="h-3.5 w-3.5 text-primary" />
-            {copy.detail.addFace}
+            {terms.addFace}
           </button>
         ) : undefined
       }
     >
-      {site.faces.length === 0 && <p className="text-sm text-muted">{copy.detail.noFaces}</p>}
+      {site.faces.length === 0 && <p className="text-sm text-muted">{terms.noFaces}</p>}
       {site.faces.length > 0 && (
         <ul className="space-y-2">
           {site.faces.map((face: SiteFace) => (
@@ -1633,7 +1792,7 @@ function FacesSection({
                   busy={busy}
                   busyKey={`face-edit-${face.id}`}
                   copy={copy}
-                  submitLabel={copy.detail.faceUpdate}
+                  submitLabel={terms.faceUpdate}
                   onSubmit={(event) => onEdit(event, face)}
                   onCancel={() => setEditingId(null)}
                 />
@@ -1695,11 +1854,7 @@ function FacesSection({
                         aria-label={`${copy.detail.faceRemove}: ${face.faceLabel}`}
                         disabled={busy === `face-del-${face.id}`}
                         onClick={() => {
-                          if (
-                            !window.confirm(
-                              withLabel(copy.detail.faceRemoveConfirm, face.faceLabel),
-                            )
-                          )
+                          if (!window.confirm(withLabel(terms.faceRemoveConfirm, face.faceLabel)))
                             return;
                           void run(`face-del-${face.id}`, async () => {
                             await removeFace(orgId, face.id);
@@ -1727,7 +1882,7 @@ function FacesSection({
           busy={busy}
           busyKey="face"
           copy={copy}
-          submitLabel={copy.detail.addFace}
+          submitLabel={terms.addFace}
           onSubmit={onAdd}
           onCancel={() => setAdding(false)}
         />

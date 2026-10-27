@@ -292,6 +292,7 @@ export class InventoryService {
       return await this.db.transaction(async (manager) => {
         const rows = await manager.query(sql, params);
         const site = rows[0];
+        await this.saveScreenResolutions(manager, site, dto.screenResolutions, actor, true);
         // One audit row per inventory mutation (SPEC §6.5): written in the same
         // transaction; the structure-provenance metadata row is part of this
         // mutation and surfaced through the site audit entry.
@@ -469,6 +470,20 @@ export class InventoryService {
       const integrity = siteIntegrityProblems(effective);
       if (integrity.length) throw new BadRequestException(`Please fix: ${integrity.join('; ')}.`);
       await this.reconcilePublication(manager, siteId, user, orgId);
+      if (dto.screenResolutions?.length) {
+        const createsFace = dto.screenResolutions.some((screen) => !screen.faceId);
+        const canCreate =
+          !createsFace ||
+          (await this.effectiveCapabilities(user.userId, orgId)).has(Capability.INVENTORY_CREATE);
+        await this.saveScreenResolutions(
+          manager,
+          effective,
+          dto.screenResolutions,
+          actorOf(user, orgId),
+          canCreate,
+        );
+        await this.reconcilePublication(manager, siteId, user, orgId);
+      }
       const sets: string[] = [];
       const params: unknown[] = [];
       // Nullable strings may be cleared with an explicit null; numeric core
@@ -972,6 +987,99 @@ export class InventoryService {
       await this.reconcilePublication(manager, siteId, user, orgId);
       return face;
     });
+  }
+
+  /** Parent site lock/transaction is held by the caller, including initial create. */
+  private async saveScreenResolutions(
+    manager: EntityManager,
+    site: { id: string; format: string; width: number; height: number; units?: string },
+    screens: CreateSiteDto['screenResolutions'],
+    actor: Actor,
+    canCreate: boolean,
+  ) {
+    if (!screens?.length) return;
+    if (site.format !== 'digital_led')
+      throw new BadRequestException('Screen resolution applies only to Digital LED sites.');
+    const repo = manager.getRepository(SiteFaceEntity);
+    const faces = await repo.find({ where: { siteId: site.id } });
+    const seen = new Set<string>();
+    for (const screen of screens) {
+      const key = screen.faceId ?? 'new';
+      if (seen.has(key)) throw new BadRequestException('A screen can only be specified once.');
+      seen.add(key);
+      for (const value of [screen.pixelWidth, screen.pixelHeight]) {
+        if (value !== undefined && (!Number.isInteger(value) || value < 1 || value > 2147483647))
+          throw new BadRequestException('Screen pixels must be positive whole numbers.');
+      }
+      if (screen.pixelWidth === undefined && screen.pixelHeight === undefined)
+        throw new BadRequestException('Enter a screen width or height in pixels.');
+      let face = screen.faceId ? faces.find((item) => item.id === screen.faceId) : undefined;
+      if (screen.faceId && !face)
+        throw new BadRequestException('Screen does not belong to this site. Refresh and retry.');
+      if (!screen.faceId && screen.clientRequestId) {
+        const replay = await manager.query(
+          `SELECT entity_id, "after" FROM audit_logs WHERE action = 'inventory.face.added'
+           AND actor_org_id = $1 AND "after"->>'siteId' = $2
+           AND "after"->>'screenRequestId' = $3`,
+          [actor.orgId, site.id, screen.clientRequestId],
+        );
+        if (replay[0]) {
+          if (!faces.some((item) => item.id === replay[0].entity_id))
+            throw new ConflictException(
+              'The saved screen was removed. Reload this site before adding another screen.',
+            );
+          if (
+            replay[0].after.screenRequest !==
+            JSON.stringify({ pixelWidth: screen.pixelWidth, pixelHeight: screen.pixelHeight })
+          )
+            throw new ConflictException(
+              'The first screen was already saved. Reload this site before changing its resolution.',
+            );
+          continue;
+        }
+      }
+      if (!screen.faceId && faces.length)
+        throw new ConflictException(
+          'This site already has screens. Refresh and select the screen to edit.',
+        );
+      if (!face && !canCreate)
+        throw new ForbiddenException(
+          'Inventory create permission is required to add the first screen.',
+        );
+      const before = face ? faceAuditSnapshot(face) : null;
+      face ??= repo.create({
+        siteId: site.id,
+        faceLabel: 'Main screen',
+        width: site.width,
+        height: site.height,
+        area: site.width * site.height,
+        units: site.units ?? 'm',
+        bookable: true,
+      });
+      if (screen.pixelWidth !== undefined) face.pixelWidth = screen.pixelWidth;
+      if (screen.pixelHeight !== undefined) face.pixelHeight = screen.pixelHeight;
+      const problems = [...dimensionProblems(face), ...digitalProblems(face)];
+      if (problems.length) throw new BadRequestException(`Please fix: ${problems.join('; ')}.`);
+      const saved = await repo.save(face);
+      await writeInventoryAudit(manager, actor, {
+        action: before ? 'inventory.face.updated' : 'inventory.face.added',
+        entityType: INVENTORY_AUDIT_ENTITY.face,
+        entityId: saved.id,
+        before,
+        after: {
+          ...faceAuditSnapshot(saved),
+          ...(screen.clientRequestId
+            ? {
+                screenRequestId: screen.clientRequestId,
+                screenRequest: JSON.stringify({
+                  pixelWidth: screen.pixelWidth,
+                  pixelHeight: screen.pixelHeight,
+                }),
+              }
+            : {}),
+        },
+      });
+    }
   }
 
   async listFaces(siteId: string) {

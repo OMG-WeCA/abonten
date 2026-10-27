@@ -807,3 +807,165 @@ describe(
     });
   },
 );
+
+describe('main site screen resolution — real Postgres', { skip: !databaseUrl }, () => {
+  async function setup(ds: DataSource) {
+    await ds.query(
+      "INSERT INTO organizations(id,name,type) VALUES ('org-partner','Harbourline Outdoor','media_partner'),('other','Ridgeway Outdoor','media_partner')",
+    );
+    await ds.query(
+      "INSERT INTO memberships(id,user_id,organization_id,role,status) VALUES ('m1','kwame-1','org-partner','inventory_manager','active')",
+    );
+    return buildService(ds);
+  }
+  it('creates the draft and first screen atomically, replays once, and audits both', async () => {
+    await withSchema(async (ds) => {
+      const service = await setup(ds);
+      const dto = createDto({
+        format: 'digital_led',
+        clientRequestId: 'screen-create',
+        screenResolutions: [{ pixelWidth: 1920, pixelHeight: 1080 }],
+      });
+      const site = await service.createSite(ORG, dto, { userId: USER.userId, orgId: ORG });
+      assert.equal((await service.createSite(ORG, dto)).id, site.id);
+      const faces = await service.listFaces(site.id);
+      assert.equal(faces.length, 1);
+      assert.equal(faces[0].pixelWidth, 1920);
+      assert.equal(faces[0].width, 12);
+      assert.equal((await ds.query('SELECT * FROM audit_logs')).length, 2);
+      await ds.query(
+        "ALTER TABLE audit_logs ADD CONSTRAINT refuse_screen CHECK (action <> 'inventory.face.added') NOT VALID",
+      );
+      await assert.rejects(() =>
+        service.createSite(ORG, { ...dto, clientRequestId: 'screen-failure' }),
+      );
+      assert.equal((await ds.query('SELECT * FROM billboard_sites')).length, 1);
+      assert.equal((await ds.query('SELECT * FROM site_faces')).length, 1);
+    });
+  });
+  it('edits only explicitly named faces; rejects foreign, duplicate and ambiguous targets atomically', async () => {
+    await withSchema(async (ds) => {
+      const service = await setup(ds);
+      const site = await service.createSite(
+        ORG,
+        createDto({
+          format: 'digital_led',
+          screenResolutions: [{ pixelWidth: 1920, pixelHeight: 1080 }],
+        }),
+      );
+      const first = (await service.listFaces(site.id))[0];
+      const second = await service.addFace(USER, ORG, site.id, {
+        faceLabel: 'Outbound',
+        width: 6,
+        height: 3,
+        units: 'm',
+        pixelWidth: 1280,
+        pixelHeight: 720,
+      });
+      const other = await service.createSite(
+        'other',
+        createDto({ format: 'digital_led', screenResolutions: [{ pixelWidth: 800 }] }),
+      );
+      const foreign = (await service.listFaces(other.id))[0];
+      await service.updateSite(USER, ORG, site.id, {
+        screenResolutions: [{ faceId: first.id, pixelWidth: 2560 }],
+      });
+      let faces = await service.listFaces(site.id);
+      assert.equal(faces.find((f) => f.id === first.id)?.pixelWidth, 2560);
+      assert.equal(faces.find((f) => f.id === second.id)?.pixelWidth, 1280);
+      for (const screens of [
+        [{ faceId: foreign.id, pixelWidth: 3000 }],
+        [{ pixelWidth: 3000 }],
+        [
+          { faceId: first.id, pixelWidth: 3000 },
+          { faceId: first.id, pixelWidth: 4000 },
+        ],
+        [
+          { faceId: first.id, pixelWidth: 3000 },
+          { faceId: foreign.id, pixelWidth: 4000 },
+        ],
+      ]) {
+        await assert.rejects(() =>
+          service.updateSite(USER, ORG, site.id, { name: 'Changed', screenResolutions: screens }),
+        );
+      }
+      faces = await service.listFaces(site.id);
+      assert.equal(faces.find((f) => f.id === first.id)?.pixelWidth, 2560);
+      assert.equal(
+        (await ds.query('SELECT name FROM billboard_sites WHERE id=$1', [site.id]))[0].name,
+        'Ikorodu Road Panel',
+      );
+    });
+  });
+  it('rejects invalid pixels on create/edit and preserves values across format changes', async () => {
+    await withSchema(async (ds) => {
+      const service = await setup(ds);
+      const site = await service.createSite(
+        ORG,
+        createDto({
+          format: 'digital_led',
+          screenResolutions: [{ pixelWidth: 1920, pixelHeight: 1080 }],
+        }),
+      );
+      const face = (await service.listFaces(site.id))[0];
+      for (const value of [0, -1, 1.5, 2147483648, NaN]) {
+        await assert.rejects(() =>
+          service.createSite(
+            ORG,
+            createDto({ format: 'digital_led', screenResolutions: [{ pixelWidth: value }] }),
+          ),
+        );
+        await assert.rejects(() =>
+          service.updateSite(USER, ORG, site.id, {
+            screenResolutions: [{ faceId: face.id, pixelHeight: value }],
+          }),
+        );
+      }
+      await assert.rejects(() =>
+        service.createSite(ORG, createDto({ screenResolutions: [{ pixelWidth: 1920 }] })),
+      );
+      await service.updateSite(USER, ORG, site.id, { format: 'static' });
+      assert.equal((await service.listFaces(site.id))[0].pixelWidth, 1920);
+      await assert.rejects(() =>
+        service.updateSite(USER, ORG, site.id, {
+          screenResolutions: [{ faceId: face.id, pixelWidth: 800 }],
+        }),
+      );
+      await service.updateSite(USER, ORG, site.id, { format: 'digital_led' });
+      assert.equal((await service.listFaces(site.id))[0].pixelHeight, 1080);
+    });
+  });
+  it('creates a first screen on edit only with inventory-create capability and retains incomplete drafts', async () => {
+    await withSchema(async (ds) => {
+      const service = await setup(ds);
+      const site = await service.createSite(ORG, createDto({ format: 'digital_led' }));
+      assert.equal((await service.listFaces(site.id)).length, 0);
+      await ds.query(
+        "INSERT INTO user_capability_overrides(user_id,organization_id,capability,action) VALUES ('kwame-1','org-partner','INVENTORY_CREATE','revoke')",
+      );
+      await assert.rejects(
+        () => service.updateSite(USER, ORG, site.id, { screenResolutions: [{ pixelWidth: 1920 }] }),
+        ForbiddenException,
+      );
+      assert.equal((await service.listFaces(site.id)).length, 0);
+      await ds.query('DELETE FROM user_capability_overrides');
+      const request = {
+        screenResolutions: [{ clientRequestId: randomUUID(), pixelWidth: 1920, pixelHeight: 1080 }],
+      };
+      await service.updateSite(USER, ORG, site.id, request);
+      await service.updateSite(USER, ORG, site.id, request);
+      await assert.rejects(
+        () =>
+          service.updateSite(USER, ORG, site.id, {
+            screenResolutions: [{ ...request.screenResolutions[0], pixelWidth: 2048 }],
+          }),
+        /already saved/,
+      );
+      assert.equal((await service.listFaces(site.id))[0].pixelWidth, 1920);
+      assert.equal((await service.listFaces(site.id)).length, 1);
+      await service.removeFace(USER, ORG, (await service.listFaces(site.id))[0].id);
+      await assert.rejects(() => service.updateSite(USER, ORG, site.id, request), /was removed/);
+      assert.equal((await service.listFaces(site.id)).length, 0);
+    });
+  });
+});

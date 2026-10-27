@@ -351,8 +351,15 @@ face-level `pixelWidth` and `pixelHeight` fields, distinct from physical dimensi
 in metres/feet and from uploaded media dimensions. The face-registration/editing
 step labels screen width and height in px and accepts positive whole numbers.
 Saved partner, review and buyer views display width × height px for each digital
-face; missing values remain explicit. Registration explains that per-screen pixels
-are entered after saving the site draft. This adds no new schema or completeness
+face; missing values remain explicit. Registration and main site editing collect
+pixels beside physical dimensions.
+Registration with resolution creates a Main screen face in the draft transaction.
+Editing addresses each existing face by ID and shows its name; no resolution is
+copied across faces. First-screen creation requires inventory-create permission.
+Switching format preserves stored face resolutions; static forms hide pixel entry.
+Single-screen advanced settings are collapsed; multi-screen settings use named screens.
+Physical multi-sided inventory uses “Advertising sides” in these controls.
+This adds no new schema or completeness
 requirement to existing inventory; prior digital publication rules remain.
 
 **Site capture requirements (2026-10-23).** Drafts may be saved with incomplete
