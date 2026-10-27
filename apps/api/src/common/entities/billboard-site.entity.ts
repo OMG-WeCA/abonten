@@ -61,6 +61,8 @@ export class BillboardSiteEntity {
   @Column({ name: 'illumination_type' }) illuminationType!: string;
   @Column({ name: 'illumination_hours', nullable: true }) illuminationHours?: string;
   @Column({ type: 'text', nullable: true }) description?: string;
+  @Column({ name: 'media_requirements_version', type: 'smallint', default: 2 })
+  mediaRequirementsVersion!: number;
   @Column({ default: 'draft' }) status!: string;
   @Column({ name: 'rejection_reason', type: 'text', nullable: true }) rejectionReason?:
     string | null;

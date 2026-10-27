@@ -13,7 +13,7 @@ export class SiteAssetEntity {
 
   @Column({ name: 'site_id' }) siteId!: string;
   @Column({ name: 'face_id', nullable: true }) faceId?: string;
-  @Column() kind!: string; // front | context | night | diagram | board_video
+  @Column() kind!: string; // wide | close_up | panorama | site_video | front | context | night | diagram | board_video
   @Column({ name: 'storage_ref' }) storageRef!: string;
   @Column({ name: 'captured_at', type: 'timestamptz', nullable: true }) capturedAt?: Date;
 

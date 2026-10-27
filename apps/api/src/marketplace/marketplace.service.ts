@@ -19,7 +19,7 @@ import { demoVisibilitySql, demoDisclosure } from '../common/demo-inventory';
 import { researchDisclosure } from '../common/research-inventory';
 
 const SITE_COLUMNS =
-  'id, (demo_agency_id IS NOT NULL) AS "isDemo", (research_agency_id IS NOT NULL) AS "isResearchReference", research_provenance AS "researchProvenance", code, name, type, format, sub_format AS "subFormat", address, city, region, country, ' +
+  'media_requirements_version AS "mediaRequirementsVersion", id, (demo_agency_id IS NOT NULL) AS "isDemo", (research_agency_id IS NOT NULL) AS "isResearchReference", research_provenance AS "researchProvenance", code, name, type, format, sub_format AS "subFormat", address, city, region, country, ' +
   'market_id AS "marketId", orientation_deg AS "orientationDeg", viewing_distance AS "viewingDistance", ' +
   'elevation, width, height, area, units, illumination_type AS "illuminationType", illumination_hours AS "illuminationHours", ' +
   'description, status, permit_ref AS "permitRef", permit_expires_at AS "permitExpiresAt", ' +
@@ -105,7 +105,6 @@ export class MarketplaceService {
       "s.status = 'listed'",
       listingEligibilitySql('s'),
       `(s.permit_expires_at IS NULL OR ((s.permit_expires_at AT TIME ZONE 'UTC')::date >= ${UTC_TODAY_SQL} AND (s.permit_expires_at AT TIME ZONE 'UTC')::date >= ${periodEnd}))`,
-      "(s.demo_agency_id IS NOT NULL OR EXISTS (SELECT 1 FROM site_assets a WHERE a.site_id = s.id::text AND a.kind = 'front' AND a.captured_at IS NOT NULL))",
       'NOT EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = s.id::text AND f.bookable ' +
         `AND ((${bookableFace}) IS NOT TRUE OR NOT EXISTS (SELECT 1 FROM rate_cards r WHERE ${currentRateForFace})))`,
       'EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = s.id::text AND ' +
@@ -251,12 +250,7 @@ export class MarketplaceService {
       load(RateCardEntity, (r) => r.find({ where: { siteId } })),
     ]);
     checkDetailCancelled(signal);
-    const problems = publicationProblems(
-      site,
-      faces,
-      rateCards,
-      assets.some((asset) => asset.kind === 'front' && !!asset.capturedAt),
-    );
+    const problems = publicationProblems(site, faces, rateCards, assets);
     if (problems.length) throw new NotFoundException('Site is not ready for the marketplace');
     return {
       ...site,

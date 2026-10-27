@@ -137,17 +137,8 @@ class MemRepo {
     if (s.includes('FROM billboard_sites WHERE id =')) {
       return this.table.filter((r) => r.id === params[0]);
     }
-    if (this.variant === 'site' && s.startsWith('SELECT 1 FROM site_assets')) {
-      const assets = this.opts.assetTable ?? [];
-      return assets.some(
-        (r) =>
-          r.siteId === params[0] &&
-          r.kind === 'front' &&
-          (!s.includes('captured_at IS NOT NULL') || r.capturedAt != null),
-      )
-        ? [{ ok: 1 }]
-        : [];
-    }
+    if (this.variant === 'site' && s.includes('FROM site_assets'))
+      return (this.opts.assetTable ?? []).filter((r) => r.siteId === params[0]);
     if (this.variant === 'asset' && s.startsWith('SELECT count(*)')) {
       return [
         {
@@ -404,6 +395,24 @@ const png = (): { buffer: Buffer; mimetype: string; originalname: string } => ({
   originalname: 'front.png',
 });
 
+const captureSet = (siteId: string): Row[] => [
+  {
+    id: 'wide-photo',
+    siteId,
+    kind: 'wide',
+    mediaType: 'image',
+    capturedAt: new Date('2026-08-01'),
+  },
+  {
+    id: 'close-photo',
+    siteId,
+    kind: 'close_up',
+    mediaType: 'image',
+    capturedAt: new Date('2026-08-01'),
+  },
+  { id: 'site-video', siteId, kind: 'site_video', mediaType: 'video', durationSeconds: 20 },
+];
+
 describe('inventory boundary regressions (round-13 hardening)', () => {
   describe('listed-site read boundary (assertCanReadSite)', () => {
     it('403s a cross-tenant INVENTORY_VIEW holder on a listed site detail', async () => {
@@ -514,7 +523,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
         (err: unknown) => {
           assert.ok(err instanceof BadRequestException);
           const msg = (err as BadRequestException).message;
-          assert.match(msg, /front-on reference photo/);
+          assert.match(msg, /wide \/ long-view photo/);
           assert.match(msg, /latitude must be between -90 and 90/);
           assert.match(msg, /longitude must be between -180 and 180/);
           assert.match(msg, /format is required/);
@@ -550,6 +559,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
     it('completes draft -> pending_review -> listed when the site is complete', async () => {
       const { service, sites, faces, rateCards } = buildFixture({
         assets: [
+          ...captureSet('site-1'),
           {
             siteId: 'site-1',
             kind: 'front',
@@ -602,6 +612,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
     it('requires a current price for every bookable face', async () => {
       const { service, faces, rateCards } = buildFixture({
         assets: [
+          ...captureSet('site-1'),
           {
             siteId: 'site-1',
             kind: 'front',
@@ -781,7 +792,7 @@ describe('inventory boundary regressions (round-13 hardening)', () => {
         () => service.deleteAsset(USER, 'org-partner', 'site-1', 'asset-1'),
         (err: unknown) => {
           assert.ok(err instanceof ForbiddenException);
-          assert.match((err as ForbiddenException).message, /upload a replacement front-on photo/);
+          assert.match((err as ForbiddenException).message, /Upload replacement media.*front-on reference photo/);
           return true;
         },
       );

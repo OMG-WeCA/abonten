@@ -1,5 +1,6 @@
 'use client';
 
+import { siteMediaLabel } from '../../../lib/site-media';
 import { displayUiText } from '../../../lib/display-ui-text';
 
 import {
@@ -28,6 +29,7 @@ import {
   updateSite,
   listMarkets,
   uploadAsset,
+  uploadSiteVideo,
   uploadBoardVideo,
   type Market,
 } from '../../../lib/sites-api';
@@ -127,20 +129,7 @@ export default function RegisterSitePage() {
   const uploadCancelledRef = useRef(false);
   const marketsRef = useRef<Market[] | null>(null);
   const [markets, setMarkets] = useState<Market[]>([]);
-  const kindToUpload = (kind: PendingSiteMedia['kind']) =>
-    kind === 'board_video'
-      ? locale === 'fr'
-        ? 'Vidéo du panneau LED'
-        : 'LED board video'
-      : copy.register[
-          kind === 'front'
-            ? 'photoFront'
-            : kind === 'context'
-              ? 'photoContext'
-              : kind === 'night'
-                ? 'photoNight'
-                : 'photoDiagram'
-        ];
+  const kindToUpload = (kind: PendingSiteMedia['kind']) => siteMediaLabel(kind, locale);
   const [mediaErrors, setMediaErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -295,6 +284,11 @@ export default function RegisterSitePage() {
       next.provSource = next.provSource ?? copy.register.provenanceRequired;
       next.provMethod = next.provMethod ?? copy.register.provenanceRequired;
     }
+    if (form.format !== 'digital_led' && photos.some((photo) => photo.kind === 'board_video'))
+      next.format = t(
+        'Remove the LED board recording or choose an LED format. A site video works for any format.',
+        'Retirez l’enregistrement du panneau LED ou choisissez un format LED. Une vidéo du site convient à tous les formats.',
+      );
     setErrors(next);
     const errored = (Object.entries(next) as Array<[keyof FormState, string]>).filter(([, v]) => v);
     setErrorSummary(
@@ -314,15 +308,6 @@ export default function RegisterSitePage() {
     setSubmitError('');
     setMediaErrors({});
     if (!validate() || !orgId || saving) return;
-    if (form.format !== 'digital_led' && photos.some((media) => media.kind === 'board_video')) {
-      setSubmitError(
-        t(
-          'A board video is still selected. Restore LED format or remove the video before saving.',
-          'Une vidéo du panneau est toujours sélectionnée. Rétablissez le format LED ou retirez la vidéo avant l’enregistrement.',
-        ),
-      );
-      return;
-    }
     setSaving(true);
     const lat = parseDecimal(form.latitude) as number;
     const lon = parseDecimal(form.longitude) as number;
@@ -404,8 +389,8 @@ export default function RegisterSitePage() {
         const controller = new AbortController();
         uploadAbortRef.current = controller;
         try {
-          if (photo.kind === 'board_video') {
-            await uploadBoardVideo(
+          if (photo.kind === 'site_video' || photo.kind === 'board_video') {
+            await (photo.kind === 'board_video' ? uploadBoardVideo : uploadSiteVideo)(
               orgId,
               site.id,
               photo.file,
@@ -713,6 +698,14 @@ export default function RegisterSitePage() {
 
           <section className="max-w-3xl rounded-xl border border-border bg-surface px-5 py-5">
             {sectionHeading(<Ruler className="h-4 w-4" />, copy.register.sectionPhysical)}
+            {form.format === 'digital_led' && (
+              <p className="mt-3 text-sm leading-6 text-muted">
+                {t(
+                  'Enter the physical size here. After saving the draft, add each screen under Faces to enter its width and height in pixels (px).',
+                  'Indiquez ici les dimensions physiques. Après avoir enregistré le brouillon, ajoutez chaque écran dans Faces pour saisir sa largeur et sa hauteur en pixels (px).',
+                )}
+              </p>
+            )}
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label={copy.register.width} htmlFor="siteWidth" error={errors.width}>
                 <span className="flex gap-2">
@@ -937,10 +930,10 @@ export default function RegisterSitePage() {
           {sectionHeading(<Camera className="h-4 w-4" />, copy.register.sectionPhotos)}
           <div className="mt-3">
             <MediaCapturePicker
+              allowBoardVideo={form.format === 'digital_led'}
               value={photos}
               onChange={setPhotos}
               locale={locale}
-              allowVideo={form.format === 'digital_led'}
               disabled={saving}
               errors={mediaErrors}
             />

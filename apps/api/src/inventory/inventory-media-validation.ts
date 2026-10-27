@@ -43,7 +43,7 @@ export async function validateInventoryMedia(
   if (!file.buffer.length) throw new BadRequestException('The uploaded file is empty.');
   if (file.buffer.length > (video ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES)) {
     throw new PayloadTooLargeException(
-      video ? 'Board videos are limited to 50 MB.' : 'Reference photos are limited to 10 MB.',
+      video ? 'Site videos are limited to 50 MB.' : 'Reference photos are limited to 10 MB.',
     );
   }
   parsing++;
@@ -125,7 +125,7 @@ async function validateVideo(file: MediaFile): Promise<ValidatedMedia> {
     (mp4 && file.buffer.toString('ascii', 4, 8) !== 'ftyp') ||
     (webm && !file.buffer.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])))
   ) {
-    throw new BadRequestException('Use an actual MP4 or WebM recording of the LED board.');
+    throw new BadRequestException('Use an actual MP4 or WebM recording of the site.');
   }
   const dir = await mkdtemp(join(tmpdir(), 'abonten-board-video-'));
   const path = join(dir, mp4 ? 'board.mp4' : 'board.webm');
@@ -177,7 +177,7 @@ async function validateVideo(file: MediaFile): Promise<ValidatedMedia> {
       width * height > 1920 * 1080
     ) {
       throw new BadRequestException(
-        'Use one H.264 MP4 or VP8/VP9 WebM board recording, up to 60 seconds and 1920 × 1080 pixels (portrait also supported).',
+        'Use one H.264 MP4 or VP8/VP9 WebM site recording, up to 60 seconds and 1920 × 1080 pixels (portrait also supported).',
       );
     }
     const progress = await runMediaTool(
@@ -214,7 +214,7 @@ async function validateVideo(file: MediaFile): Promise<ValidatedMedia> {
     );
     if (!decodedTimes.length || decodedTimes.some((seconds) => seconds > 60)) {
       throw new BadRequestException(
-        'The decoded board recording must be no longer than 60 seconds.',
+        'The decoded site recording must be no longer than 60 seconds.',
       );
     }
     return {
@@ -247,7 +247,7 @@ function runMediaTool(command: string, args: string[], timeout: number): Promise
         if (err && 'code' in err && err.code === 'ENOENT') {
           reject(
             new ServiceUnavailableException(
-              'Board video validation is unavailable. Keep your file and retry after service recovery.',
+              'Video validation is unavailable. Keep your file and retry after service recovery.',
             ),
           );
         } else if (err) reject(err);

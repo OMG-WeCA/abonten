@@ -55,7 +55,9 @@
     "src/lib/site-metadata-display.spec.ts",
     "src/lib/map-provider.spec.ts",
     "src/lib/invitations-api.ts",
-    "src/lib/invitations-api.spec.ts"
+    "src/lib/invitations-api.spec.ts",
+    "src/lib/site-media.spec.ts",
+    "src/lib/screen-resolution.spec.ts"
   ],
   "exclude": []
 }

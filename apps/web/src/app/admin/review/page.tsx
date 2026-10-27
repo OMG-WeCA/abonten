@@ -1,5 +1,9 @@
 'use client';
 
+import { AuthPanorama } from '../../../components/sites/PanoramaViewer';
+import { AuthBoardVideo, MediaEvidence } from '../../../components/sites/BoardMedia';
+import { screenResolution } from '../../../lib/screen-resolution';
+import { siteMediaLabel } from '../../../lib/site-media';
 import { displayUiText } from '../../../lib/display-ui-text';
 
 import { AlertTriangle, ChevronDown, ExternalLink, Loader2, ShieldCheck, X } from 'lucide-react';
@@ -406,7 +410,7 @@ export default function ReviewQueuePage() {
                           : detail.data.faces
                               .map(
                                 (face) =>
-                                  `${face.faceLabel} (${displayNumber(face.width, locale)} × ${displayNumber(face.height, locale)} ${agencyEvidenceUnit(face.units, locale === 'fr' ? 'fr' : 'en')})`,
+                                  `${face.faceLabel} (${displayNumber(face.width, locale)} × ${displayNumber(face.height, locale)} ${agencyEvidenceUnit(face.units, locale === 'fr' ? 'fr' : 'en')})${detail.data.format === 'digital_led' ? ` · ${copy.detail.pixelDimensions}: ${screenResolution(face, locale)}` : ''}`,
                               )
                               .join(', ')}
                       </dd>
@@ -436,23 +440,38 @@ export default function ReviewQueuePage() {
                     </p>
                     <ul className="mt-2 flex flex-wrap gap-3">
                       {detail.data.assets.map((asset) => (
-                        <li key={asset.id}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setZoom({
-                                src: assetDisplay(asset),
-                                alt: site.name,
-                              })
-                            }
-                            className="rounded-lg transition hover:opacity-90"
-                          >
-                            <AuthAssetThumb
-                              display={assetDisplay(asset)}
-                              alt={`${site.name} — ${({ front: copy.register.photoFront, context: copy.register.photoContext, night: copy.register.photoNight, diagram: copy.register.photoDiagram, board_video: locale === 'fr' ? 'Vidéo du panneau' : 'Board video' } as Record<string, string>)[asset.kind] ?? asset.kind}`}
-                              size="h-28 w-40"
-                            />
-                          </button>
+                        <li
+                          key={asset.id}
+                          className={
+                            asset.kind === 'panorama' || asset.mediaType === 'video' ? 'w-full' : ''
+                          }
+                        >
+                          {asset.kind === 'panorama' ? (
+                            <AuthPanorama asset={asset} locale={locale} />
+                          ) : asset.mediaType === 'video' ? (
+                            <AuthBoardVideo asset={asset} locale={locale} />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setZoom({
+                                  src: assetDisplay(asset),
+                                  alt: site.name,
+                                })
+                              }
+                              className="rounded-lg transition hover:opacity-90"
+                            >
+                              <AuthAssetThumb
+                                display={assetDisplay(asset)}
+                                alt={`${site.name} — ${({ front: copy.register.photoFront, context: copy.register.photoContext, night: copy.register.photoNight, diagram: copy.register.photoDiagram, board_video: locale === 'fr' ? 'Vidéo du panneau' : 'Board video' } as Record<string, string>)[asset.kind] ?? asset.kind}`}
+                                size="h-28 w-40"
+                              />
+                            </button>
+                          )}
+                          <p className="mt-1 text-xs font-semibold">
+                            {siteMediaLabel(asset.kind, locale)}
+                          </p>
+                          <MediaEvidence asset={asset} locale={locale} />
                         </li>
                       ))}
                     </ul>

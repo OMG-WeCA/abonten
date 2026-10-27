@@ -1,3 +1,8 @@
+import {
+  siteMediaProblems,
+  siteMediaEligibilitySql,
+  type RequiredSiteMedia,
+} from './site-media-requirements';
 /** Inventory validity shared by writes, moderation and current buyer eligibility. */
 export const UTC_TODAY_SQL = "(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date";
 export const INVENTORY_CURRENCIES = ['NGN', 'GHS', 'XAF', 'XOF', 'USD', 'EUR'] as const;
@@ -30,6 +35,7 @@ export type IntegritySite = Dimensions & {
   latitude?: unknown;
   longitude?: unknown;
   permitExpiresAt?: Date | string | null;
+  mediaRequirementsVersion?: number;
   isDemo?: boolean;
   isResearchReference?: boolean;
 };
@@ -115,7 +121,7 @@ export function publicationProblems(
   site: IntegritySite,
   faces: IntegrityFace[],
   rates: IntegrityRate[],
-  datedFront: boolean,
+  datedFront: boolean | RequiredSiteMedia[],
   today = new Date().toISOString().slice(0, 10),
 ): string[] {
   if (site.isResearchReference) return []; // Existing references remain explicitly non-commercial.
@@ -124,8 +130,17 @@ export function publicationProblems(
     problems.push('latitude must be between -90 and 90');
   if (!Number.isFinite(Number(site.longitude)) || Math.abs(Number(site.longitude)) > 180)
     problems.push('longitude must be between -180 and 180');
-  if (!site.isDemo && !datedFront)
-    problems.push('a front-on reference photo with a known capture date is required');
+  if (!site.isDemo)
+    problems.push(
+      ...siteMediaProblems(
+        Array.isArray(datedFront)
+          ? datedFront
+          : datedFront
+            ? [{ kind: 'front', capturedAt: 'known' }]
+            : [],
+        site.mediaRequirementsVersion ?? 1,
+      ),
+    );
   if (site.permitExpiresAt && day(site.permitExpiresAt) < today)
     problems.push('the recorded permit has expired');
   const bookable = faces.filter((face) => face.bookable);
@@ -165,7 +180,7 @@ export function listingEligibilitySql(alias = 's'): string {
   ].join(' AND ');
   const face = `btrim(f.face_label) <> '' AND ${dimensions('f.')} AND ${digital}`;
   const rate = `EXISTS (SELECT 1 FROM rate_cards r WHERE r.site_id = ${s}id::text AND (r.face_id IS NULL OR r.face_id = f.id::text) AND r.currency IN (${currencies}) AND (r.effective_from AT TIME ZONE 'UTC')::date <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date AND (r.effective_to IS NULL OR (r.effective_to AT TIME ZONE 'UTC')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date) AND ((r.rates->>'perDay')::numeric > 0 OR (r.rates->>'perWeek')::numeric > 0 OR (r.rates->>'perMonth')::numeric > 0))`;
-  return `(${s}research_agency_id IS NOT NULL OR (btrim(${s}name) <> '' AND btrim(${s}city) <> '' AND btrim(${s}country) <> '' AND ${s}latitude BETWEEN -90 AND 90 AND ${s}longitude BETWEEN -180 AND 180 AND ${s}format IN (${formats}) AND ${dimensions(s)} AND (${s}permit_expires_at IS NULL OR (${s}permit_expires_at AT TIME ZONE 'UTC')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date) AND (${s}demo_agency_id IS NOT NULL OR EXISTS (SELECT 1 FROM site_assets a WHERE a.site_id = ${s}id::text AND a.kind = 'front' AND a.captured_at IS NOT NULL)) AND EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = ${s}id::text AND f.bookable) AND NOT EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = ${s}id::text AND f.bookable AND ((${face}) IS NOT TRUE OR NOT (${rate})))))`;
+  return `(${s}research_agency_id IS NOT NULL OR (btrim(${s}name) <> '' AND btrim(${s}city) <> '' AND btrim(${s}country) <> '' AND ${s}latitude BETWEEN -90 AND 90 AND ${s}longitude BETWEEN -180 AND 180 AND ${s}format IN (${formats}) AND ${dimensions(s)} AND (${s}permit_expires_at IS NULL OR (${s}permit_expires_at AT TIME ZONE 'UTC')::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date) AND (${s}demo_agency_id IS NOT NULL OR ${siteMediaEligibilitySql(s)}) AND EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = ${s}id::text AND f.bookable) AND NOT EXISTS (SELECT 1 FROM site_faces f WHERE f.site_id = ${s}id::text AND f.bookable AND ((${face}) IS NOT TRUE OR NOT (${rate})))))`;
 }
 export function effectiveStatusSql(alias = 's'): string {
   const s = alias ? alias + '.' : 'billboard_sites.';

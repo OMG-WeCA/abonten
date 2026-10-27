@@ -63,6 +63,7 @@ export interface AssetDisplay {
 }
 
 export interface SiteDetail extends SiteSummary {
+  mediaRequirementsVersion?: number;
   geoPolygon?: GeoPoint[] | null;
   marketId?: string | null;
   faces: SiteFace[];
@@ -507,6 +508,25 @@ export function uploadBoardVideo(
   if (clientRequestId) form.append('clientRequestId', clientRequestId);
   return request(
     `/sites/${siteId}/board-videos`,
+    { method: 'POST', body: form, timeoutMs: 180_000, signal },
+    orgId,
+  );
+}
+
+export function uploadSiteVideo(
+  orgId: string | undefined,
+  siteId: string,
+  file: File,
+  signal?: AbortSignal,
+  capturedAt?: string,
+  clientRequestId?: string,
+): Promise<SiteAsset> {
+  const form = new FormData();
+  form.append('file', file);
+  if (capturedAt) form.append('capturedAt', capturedAt);
+  if (clientRequestId) form.append('clientRequestId', clientRequestId);
+  return request(
+    `/sites/${siteId}/site-videos`,
     { method: 'POST', body: form, timeoutMs: 180_000, signal },
     orgId,
   );

@@ -35,6 +35,9 @@ import {
   MediaCapturePicker,
   type PendingSiteMedia,
 } from '../../../components/sites/MediaCapturePicker';
+import { AuthPanorama } from '../../../components/sites/PanoramaViewer';
+import { screenResolution } from '../../../lib/screen-resolution';
+import { missingSiteMedia, siteMediaLabel } from '../../../lib/site-media';
 import { AuthBoardVideo, MediaEvidence } from '../../../components/sites/BoardMedia';
 import { LocationVerification } from '../../../components/sites/LocationVerification';
 import { localizedRejectionReason } from '../../../lib/location-verification-locale';
@@ -66,6 +69,7 @@ import {
   updateFace,
   updateSite,
   uploadAsset,
+  uploadSiteVideo,
   uploadBoardVideo,
   withdrawFutureRateCard,
   type Market,
@@ -172,15 +176,17 @@ function DetailInner() {
 
   const detailsEditable = site !== null && canEdit;
   const canDelete = capabilities.includes('INVENTORY_DELETE');
-  const hasFrontPhoto =
-    site?.assets.some((asset) => asset.kind === 'front' && asset.capturedAt) ?? false;
-  const undatedFrontPhoto =
-    !hasFrontPhoto && (site?.assets.some((asset) => asset.kind === 'front') ?? false);
-  const frontPhotoRequirement = undatedFrontPhoto
-    ? locale === 'fr'
-      ? 'La date de la photo de face est inconnue. Importez une photo de remplacement avec une date intégrée ou indiquez sa date de prise de vue réelle.'
-      : 'The front photo capture date is unknown. Upload a replacement with embedded date metadata or declare its actual capture date.'
-    : copy.detail.frontRequired;
+  const needsNewMedia =
+    !site ||
+    ['draft', 'rejected'].includes(site.status) ||
+    (site.mediaRequirementsVersion ?? 1) >= 2;
+  const mediaProblems = needsNewMedia
+    ? missingSiteMedia(site?.assets ?? [], locale)
+    : site?.assets.some((a) => a.kind === 'front' && a.capturedAt)
+      ? []
+      : [copy.detail.frontRequired];
+  const hasFrontPhoto = mediaProblems.length === 0;
+  const frontPhotoRequirement = mediaProblems.join(' ');
   const today = new Date().toISOString().slice(0, 10);
   const bookableFaces = site?.faces.filter((face) => face.bookable) ?? [];
   const hasFace = bookableFaces.length > 0;
@@ -1153,7 +1159,8 @@ function PhotosSection({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const uploadAbortRef = useRef<AbortController | null>(null);
   const photos = site.assets.filter(
-    (asset) => asset.mediaType !== 'video' && asset.kind !== 'board_video',
+    (asset) =>
+      asset.mediaType !== 'video' && asset.kind !== 'board_video' && asset.kind !== 'panorama',
   );
   const videos = site.assets.filter(
     (asset) => asset.mediaType === 'video' || asset.kind === 'board_video',
@@ -1163,18 +1170,10 @@ function PhotosSection({
     display: assetDisplay(asset),
     kind: asset.kind,
     capturedAt: asset.capturedAt ?? null,
-    kindLabel: photoKindLabel(asset.kind, copy),
+    kindLabel: siteMediaLabel(asset.kind, locale),
   }));
   const upload = () => {
     if (!orgId || busy || pending.length === 0) return;
-    if (site.format !== 'digital_led' && pending.some((media) => media.kind === 'board_video')) {
-      setUploadError(
-        locale === 'fr'
-          ? 'Retirez la vidéo sélectionnée ou rétablissez le format LED avant l’enregistrement.'
-          : 'Remove the selected video or restore LED format before saving.',
-      );
-      return;
-    }
     setUploadError('');
     setMediaErrors({});
     onUploadSettled?.('upload-media');
@@ -1185,8 +1184,8 @@ function PhotosSection({
         for (const media of pending) {
           if (controller.signal.aborted) break;
           try {
-            if (media.kind === 'board_video')
-              await uploadBoardVideo(
+            if (media.kind === 'site_video' || media.kind === 'board_video')
+              await (media.kind === 'board_video' ? uploadBoardVideo : uploadSiteVideo)(
                 orgId,
                 site.id,
                 media.file,
@@ -1251,7 +1250,7 @@ function PhotosSection({
             ? locale === 'fr'
               ? 'Vidéo du panneau LED'
               : 'LED board video'
-            : photoKindLabel(asset.kind, copy),
+            : siteMediaLabel(asset.kind, locale),
         ),
       )
     )
@@ -1263,7 +1262,11 @@ function PhotosSection({
   };
   return (
     <SectionCard
-      title={locale === 'fr' ? 'Photos et vidéos du panneau' : 'Board photos and videos'}
+      title={
+        locale === 'fr'
+          ? 'Photos, vidéos et panoramas du site'
+          : 'Site photos, videos and panoramas'
+      }
     >
       {site.assets.length === 0 && <p className="text-sm text-muted">{copy.detail.noPhotos}</p>}
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -1276,19 +1279,19 @@ function PhotosSection({
               className="block w-full cursor-zoom-in text-left"
               aria-label={lightboxAlt(
                 {
-                  kindLabel: photoKindLabel(asset.kind, copy),
+                  kindLabel: siteMediaLabel(asset.kind, locale),
                   capturedAt: asset.capturedAt ?? null,
                 },
                 locale === 'fr' ? 'fr' : 'en',
               )}
             >
-              <AssetItem asset={asset} copy={copy} />
+              <AssetItem asset={asset} locale={locale} />
             </button>
             {editable && (
               <button
                 type="button"
                 disabled={Boolean(busy)}
-                aria-label={`${copy.register.photoRemove}: ${photoKindLabel(asset.kind, copy)}`}
+                aria-label={`${copy.register.photoRemove}: ${siteMediaLabel(asset.kind, locale)}`}
                 onClick={() => remove(asset)}
                 className="absolute right-1 top-1 grid min-h-9 min-w-9 place-items-center rounded-full bg-background/95 text-error"
               >
@@ -1299,6 +1302,24 @@ function PhotosSection({
           </li>
         ))}
       </ul>
+      {site.assets
+        .filter((asset) => asset.kind === 'panorama')
+        .map((asset) => (
+          <div key={asset.id} className="mt-4">
+            <AuthPanorama asset={asset} locale={locale} />
+            <MediaEvidence asset={asset} locale={locale} />
+            {editable && (
+              <button
+                type="button"
+                disabled={Boolean(busy)}
+                onClick={() => remove(asset)}
+                className="min-h-11 text-sm font-semibold text-error"
+              >
+                {locale === 'fr' ? 'Retirer le panorama' : 'Remove panorama'}
+              </button>
+            )}
+          </div>
+        ))}
       {videos.length > 0 && (
         <div className="mt-4 space-y-3">
           {videos.map((asset) => (
@@ -1322,10 +1343,11 @@ function PhotosSection({
       {editable && (
         <div className="mt-5 border-t border-border pt-4">
           <MediaCapturePicker
+            allowBoardVideo={site.format === 'digital_led'}
             value={pending}
             onChange={setPending}
             locale={locale}
-            allowVideo={site.format === 'digital_led'}
+            existing={site.assets}
             disabled={Boolean(busy)}
             errors={mediaErrors}
           />
@@ -1381,20 +1403,8 @@ function PhotosSection({
 /** Replace a single {{label}} placeholder in confirm-dialog copy. */
 const withLabel = (template: string, label: string): string => template.replace('{{label}}', label);
 
-function photoKindLabel(kind: SiteAsset['kind'], copy: ReturnType<typeof getSitesCopy>): string {
-  return kind === 'front'
-    ? copy.register.photoFront
-    : kind === 'context'
-      ? copy.register.photoContext
-      : kind === 'night'
-        ? copy.register.photoNight
-        : kind === 'diagram'
-          ? copy.register.photoDiagram
-          : kind;
-}
-
-function AssetItem({ asset, copy }: { asset: SiteAsset; copy: ReturnType<typeof getSitesCopy> }) {
-  const label = photoKindLabel(asset.kind, copy);
+function AssetItem({ asset, locale }: { asset: SiteAsset; locale?: string }) {
+  const label = siteMediaLabel(asset.kind, locale);
   return (
     <figure>
       <AuthAssetThumb
@@ -1638,6 +1648,11 @@ function FacesSection({
                         {formatArea(face.area, face.units, locale)}
                       </span>
                     </p>
+                    {isDigital && (
+                      <p className="mt-1 text-sm font-medium">
+                        {copy.detail.pixelDimensions}: {screenResolution(face, locale)}
+                      </p>
+                    )}
                     <p className="text-xs text-muted">
                       {copy.detail.faceBookable}: {face.bookable ? '✓' : '—'}
                       {face.printableArea
@@ -1866,7 +1881,8 @@ function FaceForm({
         <div className="rounded-lg border border-border bg-surface px-3 py-3">
           <h3 className="text-sm font-bold">{copy.detail.digitalHeading}</h3>
           <p className="mt-1 text-xs leading-5 text-muted">{copy.detail.digitalHeadingHint}</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <p className="mt-3 text-sm font-semibold">{copy.detail.pixelDimensions}</p>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
             <Field label={copy.detail.pixelWidth} htmlFor="facePixelWidth">
               <input
                 id="facePixelWidth"
@@ -1889,6 +1905,8 @@ function FaceForm({
                 className={inputClass}
               />
             </Field>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <Field label={copy.detail.spotLength} htmlFor="faceSpot">
               <input
                 id="faceSpot"

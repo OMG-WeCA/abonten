@@ -176,6 +176,41 @@ function harness(
 }
 
 describe('inventory photo admission and EXIF evidence', () => {
+  it('persists full panoramas and framing roles but rejects non-equirectangular images before storage', async () => {
+    const h = harness();
+    await assert.rejects(
+      h.service.upload(
+        user,
+        'qa-org',
+        site.id,
+        { buffer: await picture(), mimetype: 'image/jpeg', originalname: 'street.jpg' },
+        { kind: 'panorama' },
+      ),
+      /2:1 equirectangular/,
+    );
+    assert.equal(h.stored.length, 0);
+    const buffer = await sharp({
+      create: { width: 200, height: 100, channels: 3, background: 'blue' },
+    })
+      .jpeg()
+      .toBuffer();
+    for (const kind of ['wide', 'close_up', 'panorama']) {
+      const asset = await h.service.upload(
+        user,
+        'qa-org',
+        site.id,
+        { buffer, mimetype: 'image/jpeg', originalname: 'surroundings.jpg' },
+        { kind, capturedAt: '2026-10-20' },
+      );
+      assert.equal(asset.kind, kind);
+      assert.equal(asset.mediaType, 'image');
+      assert.equal(asset.metadata?.verification, 'unverified');
+      if (kind === 'panorama') assert.equal(asset.metadata?.projection, 'equirectangular');
+    }
+    assert.equal(h.stored.length, 3);
+    assert.equal(h.audits.length, 3);
+  });
+
   it('fully decodes JPEG/PNG/WebP and extracts actual EXIF in each supported container', async () => {
     const jpeg = await picture();
     const exif = Buffer.concat([Buffer.from('Exif\0\0'), tiffFixture()]);
@@ -394,7 +429,7 @@ describe('inventory media ownership, audit, compensation and retries', () => {
     );
   });
   it('guards upload and playback routes and supports bounded single-byte ranges', () => {
-    for (const method of ['uploadPhoto', 'uploadBoardVideo'] as const) {
+    for (const method of ['uploadPhoto', 'uploadBoardVideo', 'uploadSiteVideo'] as const) {
       assert.deepEqual(
         Reflect.getMetadata(GUARDS_METADATA, InventoryMediaController.prototype[method]),
         [JwtAuthGuard, CapabilitiesGuard, InventoryMediaAdmissionGuard],
@@ -459,6 +494,17 @@ describe('actual LED board video decoder', () => {
         assert.ok(media.durationSeconds! > 0 && media.durationSeconds! < 1);
         const h = harness(),
           asset = await h.service.upload(user, 'qa-org', site.id, file, {}, true);
+        const outdoor = harness({ format: 'static' });
+        const siteVideo = await outdoor.service.upload(
+          user,
+          'qa-org',
+          site.id,
+          file,
+          {},
+          'site_video',
+        );
+        assert.equal(siteVideo.kind, 'site_video');
+        assert.equal(outdoor.stored.length, 1);
         assert.equal(asset.kind, 'board_video');
         assert.equal(asset.mediaType, 'video');
         assert.equal(h.audits.length, 1);

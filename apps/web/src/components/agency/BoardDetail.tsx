@@ -6,7 +6,7 @@ import type { SiteGeographicContext } from '@abonten/contracts/enrichment';
 import { agencyEvidenceText, agencyEvidenceUnit } from '../../lib/agency-evidence-locale';
 import { displayDateOnly, displayNumber, displayUtcTimestamp } from '../../lib/locale-format';
 import { apiFetch } from '../../lib/api';
-import { assetDisplay, type SiteDetail, type SiteFace } from '../../lib/sites-api';
+import { assetDisplay, type SiteAsset, type SiteDetail, type SiteFace } from '../../lib/sites-api';
 import { getGeographicContext, sourceWebUrl } from '../../lib/geographic-context';
 import type {
   FaceCostEstimate,
@@ -16,6 +16,9 @@ import type {
 import { ResearchBadge, ResearchReferenceFacts } from './ResearchReferenceFacts';
 import { draftFaceEligibility } from '../../lib/agency-draft';
 import { projectPlanningEnrichment } from '../../lib/agency-enrichment';
+import { screenResolution } from '../../lib/screen-resolution';
+import { siteMediaLabel } from '../../lib/site-media';
+import { AuthPanorama } from '../sites/PanoramaViewer';
 import { AuthBoardVideo, MediaEvidence } from '../sites/BoardMedia';
 import { GeographicContextContent } from '../sites/GeographicContextPanel';
 import { prettyFormat, prettyIllumination } from '../sites/sites-ui';
@@ -121,26 +124,27 @@ export function BoardDetail({
       <div className="agency-board-scroll">
         <BriefFitScore assessment={fitAssessment} locale={locale} />
         {!site.isResearchReference && <BoardPhoto site={site} locale={locale} />}
-        {site.format === 'digital_led' &&
-          site.assets.some(
-            (asset) => asset.kind === 'board_video' || asset.mediaType === 'video',
-          ) && (
-            <div className="px-4 py-3">
-              <details className="agency-evidence">
-                <summary>{t('Installed LED board', 'Panneau LED installé')}</summary>
-                <div className="mt-3 space-y-3">
-                  {site.assets
-                    .filter((asset) => asset.kind === 'board_video' || asset.mediaType === 'video')
-                    .map((asset) => (
-                      <div key={asset.id}>
+        {site.assets.some((asset) => asset.kind === 'panorama' || asset.mediaType === 'video') && (
+          <div className="px-4 py-3">
+            <details className="agency-evidence">
+              <summary>{t('Explore the site', 'Explorer le site')}</summary>
+              <div className="mt-3 space-y-3">
+                {site.assets
+                  .filter((asset) => asset.kind === 'panorama' || asset.mediaType === 'video')
+                  .map((asset) => (
+                    <div key={asset.id}>
+                      {asset.kind === 'panorama' ? (
+                        <AuthPanorama asset={asset} locale={locale} />
+                      ) : (
                         <AuthBoardVideo asset={asset} locale={locale} />
-                        <MediaEvidence asset={asset} locale={locale} />
-                      </div>
-                    ))}
-                </div>
-              </details>
-            </div>
-          )}
+                      )}
+                      <MediaEvidence asset={asset} locale={locale} />
+                    </div>
+                  ))}
+              </div>
+            </details>
+          </div>
+        )}
         <div className="agency-board-body">
           <p className="agency-spec-line">
             {prettyFormat(site.format, locale)} ·{' '}
@@ -149,6 +153,14 @@ export function BoardDetail({
               : unknown}{' '}
             · {prettyIllumination(site.illuminationType, locale)}
           </p>
+          {site.format === 'digital_led' && (
+            <dl className="agency-facts">
+              <div>
+                <dt>{t('Screen resolution', 'Résolution de l’écran')}</dt>
+                <dd>{screenResolution(face, locale)}</dd>
+              </div>
+            </dl>
+          )}
           <label className="agency-field">
             <span>{t('Viewing face', 'Face')}</span>
             <select
@@ -498,7 +510,52 @@ export function BoardDetail({
 function BoardPhoto({ site, locale }: { site: SiteDetail; locale: 'en' | 'fr' }) {
   // The seeded Picsum assets are unrelated placeholder photographs, not board evidence.
   const placeholder = (ref: string) => /^https?:\/\/(?:www\.)?picsum\.photos(?:\/|$)/i.test(ref);
-  const asset = site.assets.find((item) => item.kind === 'front' && !placeholder(item.storageRef));
+  const photos = site.assets.filter(
+    (item) =>
+      ['close_up', 'wide', 'front', 'context', 'night'].includes(item.kind) &&
+      !placeholder(item.storageRef),
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const asset = photos.find((item) => item.id === selectedId) ?? photos[0];
+  return (
+    <div>
+      {photos.length > 1 && (
+        <div
+          className="flex flex-wrap gap-2 px-4 py-2"
+          aria-label={locale === 'fr' ? 'Vues du site' : 'Site views'}
+        >
+          {photos.map((photo) => (
+            <button
+              key={photo.id}
+              type="button"
+              onClick={() => setSelectedId(photo.id)}
+              aria-pressed={photo.id === asset?.id}
+              className={
+                'min-h-11 rounded-lg border px-3 text-sm ' +
+                (photo.id === asset?.id
+                  ? 'border-primary text-primary'
+                  : 'border-border text-muted')
+              }
+            >
+              {siteMediaLabel(photo.kind, locale)}
+            </button>
+          ))}
+        </div>
+      )}
+      <BoardPhotoImage key={asset?.id ?? site.id} site={site} asset={asset} locale={locale} />
+    </div>
+  );
+}
+function BoardPhotoImage({
+  site,
+  asset,
+  locale,
+}: {
+  site: SiteDetail;
+  asset?: SiteAsset;
+  locale: 'en' | 'fr';
+}) {
+  const placeholder = (ref: string) => /^https?:\/\/(?:www\.)?picsum\.photos(?:\/|$)/i.test(ref);
   const excludedPlaceholder = site.assets.some(
     (item) => item.kind === 'front' && placeholder(item.storageRef),
   );
@@ -533,7 +590,7 @@ function BoardPhoto({ site, locale }: { site: SiteDetail; locale: 'en' | 'fr' })
       {src && !failed ? (
         <img
           src={src}
-          alt={`${site.name} · ${locale === 'fr' ? 'photo de référence' : 'reference photo'}`}
+          alt={`${site.name} · ${siteMediaLabel(asset?.kind ?? 'front', locale)}`}
           onError={() => setFailed(true)}
         />
       ) : (
@@ -549,7 +606,7 @@ function BoardPhoto({ site, locale }: { site: SiteDetail; locale: 'en' | 'fr' })
       )}
       {src && !failed && (
         <figcaption>
-          {locale === 'fr' ? 'Photo de référence' : 'Reference photo'} ·{' '}
+          {siteMediaLabel(asset?.kind ?? 'front', locale)} ·{' '}
           {asset?.capturedAt
             ? displayDateOnly(asset.metadata?.time?.declaredDate || asset.capturedAt, locale)
             : locale === 'fr'

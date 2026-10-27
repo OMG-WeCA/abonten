@@ -51,7 +51,10 @@ export class InventoryMediaAdmissionGuard implements CanActivate {
       );
     const req = context.switchToHttp().getRequest<Request>();
     const res = context.switchToHttp().getResponse<Response>();
-    const max = req.path.endsWith('/board-videos') ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES;
+    const max =
+      req.path.endsWith('/board-videos') || req.path.endsWith('/site-videos')
+        ? VIDEO_MAX_BYTES
+        : IMAGE_MAX_BYTES;
     const length = req.headers['content-length'];
     if (length && (!/^\d+$/.test(length) || Number(length) > max + 64 * 1024)) {
       throw new BadRequestException('The media upload is larger than the allowed limit.');
@@ -151,6 +154,23 @@ export class InventoryMediaController {
   ) {
     if (!file) throw new BadRequestException('Choose a recording of the actual LED board.');
     return this.media.upload(user, orgContext(req), siteId, file, dto, true);
+  }
+
+  @Post('sites/:siteId/site-videos')
+  @UseGuards(JwtAuthGuard, CapabilitiesGuard, InventoryMediaAdmissionGuard)
+  @RequireCapabilities(Capability.INVENTORY_EDIT)
+  @UseInterceptors(upload(true))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload a site-context video for any inventory format' })
+  async uploadSiteVideo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: AuthReq,
+    @Param('siteId', ParseUUIDPipe) siteId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: UploadInventoryMediaDto,
+  ) {
+    if (!file) throw new BadRequestException('Choose a video of the site and its surroundings.');
+    return this.media.upload(user, orgContext(req), siteId, file, dto, 'site_video');
   }
 
   @Get('sites/:siteId/assets/:assetId/file')

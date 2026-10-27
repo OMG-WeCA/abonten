@@ -1,3 +1,4 @@
+import { SiteCaptureRequirements1760000008000 } from './migrations/1760000008000-SiteCaptureRequirements';
 import 'reflect-metadata';
 import { InviteOnlyAdmission1760000007000 } from './migrations/1760000007000-InviteOnlyAdmission';
 import { DataSource } from 'typeorm';
@@ -47,6 +48,7 @@ export const AppDataSource = new DataSource({
     AgencyDemoInventoryScope1760000005000,
     AgencyResearchInventoryScope1760000006000,
     InviteOnlyAdmission1760000007000,
+    SiteCaptureRequirements1760000008000,
   ],
   migrationsRun: false,
   logging: ['error', 'migration'],

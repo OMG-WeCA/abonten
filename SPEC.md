@@ -346,6 +346,31 @@ videos are separate inventory evidence from campaign creative, are available in 
 inspection, and do not autoplay. Media stays in object storage and remains tenant-
 controlled before authorized marketplace publication.
 
+**Digital screen dimensions (2026-10-27).** Screen resolution uses the existing
+face-level `pixelWidth` and `pixelHeight` fields, distinct from physical dimensions
+in metres/feet and from uploaded media dimensions. The face-registration/editing
+step labels screen width and height in px and accepts positive whole numbers.
+Saved partner, review and buyer views display width × height px for each digital
+face; missing values remain explicit. Registration explains that per-screen pixels
+are entered after saving the site draft. This adds no new schema or completeness
+requirement to existing inventory; prior digital publication rules remain.
+
+**Site capture requirements (2026-10-23).** Drafts may be saved with incomplete
+media. Before submission for review, a partner supplies a wide/long-view photo
+showing the site in its surroundings and a close-up/short-view photo showing the
+board clearly, plus at least one site-context video or 360° panorama. Both photos
+need a known capture date; absent EXIF dates may be honestly declared. The media
+types are explicitly chosen, never inferred from legacy front/context photos.
+Site videos are available for every inventory format, separate from existing LED
+board recordings and campaign creative. Panorama uploads use full 360° 2:1
+equirectangular still images and open in an interactive, keyboard/touch-accessible
+viewer. The format check establishes compatibility, not proof of authentic capture.
+Already approved/listed sites keep their prior media policy until their next submission;
+new sites and submissions use the new requirements. No legacy media is relabeled.
+Registration and editing show illustrative framing guidance and explain each
+requirement in English and French. Reviewers and authorized buyers can inspect
+the same media. Existing provenance, tenant boundaries and upload limits remain.
+
 Partner terms are immutable versioned content with an affirmative, authorized-
 representative acceptance event tied to the exact content digest, locale, organization,
 user and UTC time. The supplied Abonten draft is a review version; production

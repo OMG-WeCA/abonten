@@ -220,3 +220,14 @@ test('mixed-face completion warns only about the invalid or unlabelled face', ()
     ['East', '   '],
   );
 });
+
+test('screen pixels reject zero, negative and fractional values while drafts allow missing values', () => {
+  for (const pixelWidth of [0, -1])
+    assert.equal(faceInputProblem({ width: 12, height: 6, pixelWidth }), 'digitalPositive');
+  for (const pixelHeight of [0.5, 1080.5])
+    assert.equal(faceInputProblem({ width: 12, height: 6, pixelHeight }), 'digitalInteger');
+  assert.equal(
+    faceInputProblem({ width: 12, height: 6, pixelWidth: 1920, pixelHeight: 1080 }),
+    null,
+  );
+});

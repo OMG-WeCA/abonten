@@ -1,3 +1,5 @@
+import { siteMediaEligibilitySql, siteMediaProblems } from './site-media-requirements';
+import { SiteCaptureRequirements1760000008000 } from '../migrations/1760000008000-SiteCaptureRequirements';
 import 'reflect-metadata';
 import { strict as assert } from 'node:assert';
 import { randomUUID } from 'node:crypto';
@@ -53,6 +55,7 @@ async function withSchema(work: (db: DataSource, stored: Map<string, Buffer>) =>
     const runner = db.createQueryRunner();
     try {
       await new InventoryMediaEvidence1760000002000().up(runner);
+      await new SiteCaptureRequirements1760000008000().up(runner);
     } finally {
       await runner.release();
     }
@@ -184,4 +187,96 @@ describe('real PostgreSQL media evidence and audit', { skip: !url }, () => {
       assert.equal(Object.hasOwn(rows[0], 'metadata'), false);
     });
   });
+});
+
+describe('site capture policy — actual PostgreSQL', { skip: !url }, () => {
+  it('keeps SQL and application eligibility aligned for each missing view and either walkthrough alternative', async () =>
+    withSchema(async (db) => {
+      const assets = [
+        { kind: 'wide', mediaType: 'image', capturedAt: '2026-10-20' },
+        { kind: 'close_up', mediaType: 'image', capturedAt: '2026-10-20' },
+        { kind: 'panorama', mediaType: 'image', width: 2000, height: 1000 },
+        { kind: 'site_video', mediaType: 'video', durationSeconds: 20 },
+      ];
+      for (const selection of [
+        [],
+        [0],
+        [0, 1],
+        [0, 2],
+        [1, 2],
+        [0, 1, 2],
+        [0, 1, 3],
+        [0, 1, 2, 3],
+      ]) {
+        await db.query('DELETE FROM site_assets');
+        for (const index of selection) {
+          const a = assets[index];
+          await db.query(
+            'INSERT INTO site_assets(site_id,kind,storage_ref,media_type,captured_at,width,height,duration_seconds,content_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+            [
+              siteId,
+              a.kind,
+              'capture/' + a.kind,
+              a.mediaType,
+              'capturedAt' in a ? a.capturedAt : null,
+              'width' in a ? a.width : null,
+              'height' in a ? a.height : null,
+              'durationSeconds' in a ? a.durationSeconds : null,
+              a.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
+            ],
+          );
+        }
+        const [row] = await db.query(
+          `SELECT ${siteMediaEligibilitySql('s.')} AS ready FROM billboard_sites s WHERE id=$1`,
+          [siteId],
+        );
+        assert.equal(
+          row.ready,
+          siteMediaProblems(selection.map((i) => assets[i])).length === 0,
+          JSON.stringify(selection),
+        );
+      }
+      await assert.rejects(
+        db.query(
+          "INSERT INTO site_assets(site_id,kind,storage_ref,media_type,width,height) VALUES($1,'panorama','bad','image',1200,800)",
+          [siteId],
+        ),
+      );
+      const runner = db.createQueryRunner();
+      try {
+        await assert.rejects(
+          new SiteCaptureRequirements1760000008000().down(runner),
+          /Site videos exist/,
+        );
+      } finally {
+        await runner.release();
+      }
+      assert.equal(
+        (
+          await db.query("SELECT count(*)::int AS count FROM site_assets WHERE kind='site_video'")
+        )[0].count,
+        1,
+      );
+    }));
+  it('grandfathers approved inventory without upgrading draft evidence or rewriting photos', async () =>
+    withSchema(async (db) => {
+      await db.query("UPDATE billboard_sites SET status='listed' WHERE id=$1", [siteId]);
+      const runner = db.createQueryRunner();
+      try {
+        await new SiteCaptureRequirements1760000008000().down(runner);
+        await new SiteCaptureRequirements1760000008000().up(runner);
+      } finally {
+        await runner.release();
+      }
+      assert.equal(
+        (
+          await db.query(
+            'SELECT media_requirements_version AS version FROM billboard_sites WHERE id=$1',
+            [siteId],
+          )
+        )[0].version,
+        1,
+      );
+      assert.equal((await db.query('SELECT count(*)::int AS count FROM site_assets'))[0].count, 0);
+    }));
 });

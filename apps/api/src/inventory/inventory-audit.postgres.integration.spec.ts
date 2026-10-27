@@ -1,3 +1,4 @@
+import { SiteCaptureRequirements1760000008000 } from '../migrations/1760000008000-SiteCaptureRequirements';
 import { MarketplaceService } from '../marketplace/marketplace.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { strict as assert } from 'node:assert';
@@ -203,6 +204,7 @@ async function withSchema(
       ...(applyInventoryMigration ? [new PartOneInventoryTrust1720000000007()] : []),
       new SiteLocationVerification1760000001000(),
       new InventoryMediaEvidence1760000002000(),
+      new SiteCaptureRequirements1760000008000(),
     ];
     for (const migration of migrations) {
       const runner = dataSource.createQueryRunner();
@@ -491,7 +493,7 @@ describe('inventory eligibility — real Postgres regressions', { skip: !databas
         effectiveFrom: '2020-01-01',
       });
       await dataSource.query(
-        "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at) VALUES ($1,'front','synthetic.png',CURRENT_TIMESTAMP)",
+        "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at,media_type,width,height) VALUES ($1,'front','front.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'wide','approach.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'close_up','board.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'panorama','surroundings.jpg',NULL,'image',2000,1000)",
         [site.id],
       );
       await service.submitSite(USER, ORG, site.id);
@@ -578,7 +580,7 @@ describe('legacy invalid inventory publication — real Postgres', { skip: !data
         effectiveFrom: '2020-01-01',
       });
       await dataSource.query(
-        "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at) VALUES ($1,'front','synthetic.png',CURRENT_TIMESTAMP)",
+        "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at,media_type,width,height) VALUES ($1,'front','front.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'wide','approach.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'close_up','board.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'panorama','surroundings.jpg',NULL,'image',2000,1000)",
         [site.id],
       );
       await service.submitSite(USER, ORG, site.id);
@@ -690,7 +692,7 @@ describe('review follow-up — real Postgres semantics', { skip: !databaseUrl },
           effectiveFrom: '2020-01-01',
         });
         await dataSource.query(
-          "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at) VALUES ($1,'front','synthetic.png',CURRENT_TIMESTAMP)",
+          "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at,media_type,width,height) VALUES ($1,'front','front.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'wide','approach.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'close_up','board.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'panorama','surroundings.jpg',NULL,'image',2000,1000)",
           [site.id],
         );
         await service.submitSite(USER, ORG, site.id);
@@ -746,7 +748,7 @@ describe(
           effectiveFrom: '2020-01-01',
         });
         await dataSource.query(
-          "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at) VALUES ($1,'front','synthetic.png',CURRENT_TIMESTAMP)",
+          "INSERT INTO site_assets(site_id,kind,storage_ref,captured_at,media_type,width,height) VALUES ($1,'front','front.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'wide','approach.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'close_up','board.jpg',CURRENT_TIMESTAMP,'image',1200,800), ($1,'panorama','surroundings.jpg',NULL,'image',2000,1000)",
           [site.id],
         );
         await service.submitSite(USER, ORG, site.id);
@@ -756,7 +758,9 @@ describe(
           assert.equal((await service.getSite(USER, ORG, site.id)).status, 'listed');
           assert.equal((await service.listSites(USER, ORG, { status: 'listed' })).total, 1);
           assert.equal(
-            (await market.search({}, undefined, 'agency')).items.some((row: { id: string }) => row.id === site.id),
+            (await market.search({}, undefined, 'agency')).items.some(
+              (row: { id: string }) => row.id === site.id,
+            ),
             true,
           );
           assert.equal((await service.getSite(buyer, 'agency', site.id)).status, 'listed');
@@ -777,7 +781,9 @@ describe(
           assert.equal((await service.getSite(USER, ORG, site.id)).status, 'draft', values);
           assert.equal((await service.listSites(USER, ORG, { status: 'listed' })).total, 0, values);
           assert.equal(
-            (await market.search({}, undefined, 'agency')).items.some((row: { id: string }) => row.id === site.id),
+            (await market.search({}, undefined, 'agency')).items.some(
+              (row: { id: string }) => row.id === site.id,
+            ),
             false,
             values,
           );

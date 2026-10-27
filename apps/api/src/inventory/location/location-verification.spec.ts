@@ -187,7 +187,16 @@ function inventoryHarness(
   let datedFront = true;
   let lockedFrontReads = 0;
   const query = async (sql: string, params: unknown[]) => {
-    if (sql.includes('FROM site_assets')) return datedFront ? [{ ok: 1 }] : [];
+    if (sql.includes('FROM site_assets'))
+      return datedFront
+        ? [
+            { kind: 'front', capturedAt: new Date() },
+            { kind: 'wide', mediaType: 'image', capturedAt: new Date() },
+            { kind: 'close_up', mediaType: 'image', capturedAt: new Date() },
+            { kind: 'site_video', mediaType: 'video', durationSeconds: 20 },
+          ]
+        : [];
+    if (sql.startsWith('UPDATE billboard_sites SET media_requirements_version')) return [];
     if (sql.startsWith('SELECT')) return params[0] === site.id ? [structuredClone(site)] : [];
     if (sql.startsWith('UPDATE billboard_sites SET location_verification')) {
       site.locationVerification = JSON.parse(params[0] as string);

@@ -13,9 +13,11 @@ import {
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UploadInventoryMediaDto {
-  @ApiPropertyOptional({ enum: ['front', 'context', 'night', 'diagram'] })
+  @ApiPropertyOptional({
+    enum: ['wide', 'close_up', 'panorama', 'front', 'context', 'night', 'diagram'],
+  })
   @IsOptional()
-  @IsIn(['front', 'context', 'night', 'diagram'])
+  @IsIn(['wide', 'close_up', 'panorama', 'front', 'context', 'night', 'diagram'])
   kind?: string;
   @ApiPropertyOptional({
     description: 'Explicit partner-declared capture date; never default to upload time.',

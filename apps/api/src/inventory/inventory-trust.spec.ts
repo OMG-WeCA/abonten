@@ -144,16 +144,8 @@ class MemRepo {
         )
         .map(clone);
     }
-    if (/SELECT 1 FROM site_assets/.test(s)) {
-      return this.assetTable.some(
-        (r) =>
-          r.siteId === params[0] &&
-          r.kind === 'front' &&
-          (!s.includes('captured_at IS NOT NULL') || r.capturedAt != null),
-      )
-        ? [{ ok: 1 }]
-        : [];
-    }
+    if (s.includes('FROM site_assets'))
+      return this.assetTable.filter((r) => r.siteId === params[0]).map(clone);
     if (/SELECT count\(\*\)/.test(s)) {
       return [
         {
@@ -491,6 +483,11 @@ describe('inventory audit: exactly one transactional row per mutation', () => {
       rates: { perDay: 100 },
       currency: 'NGN',
     });
+    h.assets.push(
+      { siteId: 'site-1', kind: 'wide', mediaType: 'image', capturedAt: new Date() },
+      { siteId: 'site-1', kind: 'close_up', mediaType: 'image', capturedAt: new Date() },
+      { siteId: 'site-1', kind: 'site_video', mediaType: 'video', durationSeconds: 20 },
+    );
     await h.service.submitSite(USER, ORG, 'site-1');
     await h.service.approveSite(USER, ORG, 'site-1');
     await h.service.suspendSite(USER, ORG, 'site-1');

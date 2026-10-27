@@ -1,14 +1,26 @@
 'use client';
 
+import { flushSync } from 'react-dom';
 import { Camera, Loader2, PlusCircle, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { SiteCaptureGuide } from './SiteCaptureGuide';
+import type { SiteAsset } from '../../lib/sites-api';
 import { Field, inputClass } from './sites-ui';
 import { displayNumber } from '../../lib/locale-format';
 import { agencyEvidenceText } from '../../lib/agency-evidence-locale';
 
 export interface PendingSiteMedia {
   id: string;
-  kind: 'front' | 'context' | 'night' | 'diagram' | 'board_video';
+  kind:
+    | 'wide'
+    | 'close_up'
+    | 'panorama'
+    | 'site_video'
+    | 'front'
+    | 'context'
+    | 'night'
+    | 'diagram'
+    | 'board_video';
   file: File;
   capturedAt: string;
   captureMethod: 'uploaded' | 'device_camera';
@@ -24,21 +36,25 @@ export function MediaCapturePicker({
   value,
   onChange,
   locale,
-  allowVideo = false,
+  existing = [],
+  allowBoardVideo = false,
   disabled = false,
   errors = {},
 }: {
   value: PendingSiteMedia[];
   onChange: (value: PendingSiteMedia[]) => void;
   locale?: string;
-  allowVideo?: boolean;
+  existing?: SiteAsset[];
+  allowBoardVideo?: boolean;
   disabled?: boolean;
   errors?: Record<string, string>;
 }) {
   const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
   const id = useId();
-  const [selectedKind, setKind] = useState<PendingSiteMedia['kind']>('front');
-  const kind = selectedKind === 'board_video' && !allowVideo ? 'front' : selectedKind;
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [selectedKind, setKind] = useState<PendingSiteMedia['kind']>('wide');
+  const kind = selectedKind === 'board_video' && !allowBoardVideo ? 'wide' : selectedKind;
+  const videoKind = kind === 'site_video' || kind === 'board_video';
   const [error, setError] = useState('');
   const [opening, setOpening] = useState(false);
   const [camera, setCamera] = useState(false);
@@ -191,26 +207,16 @@ export function MediaCapturePicker({
     onChange(value.map((media) => (media.id === mediaId ? { ...media, ...patch } : media)));
   return (
     <div className="space-y-3">
-      <p className="text-sm leading-6 text-muted">
-        {t(
-          'Show the actual board and its surroundings. Embedded GPS and capture time are read after upload; absent metadata stays unknown.',
-          'Montrez le panneau réel et son environnement. Les coordonnées GPS et la date intégrées sont lues après import ; les métadonnées absentes restent inconnues.',
-        )}
-      </p>
-      <p className="text-xs leading-5 text-muted">
-        {t(
-          'Before listing, a front photo needs a known capture date. Embedded metadata can supply it; otherwise declare the actual date. Unknown dates are accepted into the draft.',
-          'Avant publication, une photo de face doit avoir une date connue. Les métadonnées intégrées peuvent la fournir ; sinon, indiquez la date réelle. Les dates inconnues sont acceptées dans le brouillon.',
-        )}
-      </p>
-      {!allowVideo && value.some((media) => media.kind === 'board_video') && (
-        <p role="alert" className="text-sm text-warning">
-          {t(
-            'LED video is selected for a non-LED format. Remove it or restore LED format before saving.',
-            'Une vidéo LED est sélectionnée pour un format non LED. Retirez-la ou rétablissez le format LED avant l’enregistrement.',
-          )}
-        </p>
-      )}
+      <SiteCaptureGuide
+        value={value}
+        existing={existing}
+        locale={locale}
+        onChoose={(next) => {
+          if (disabled) return;
+          flushSync(() => setKind(next));
+          fileInput.current?.click();
+        }}
+      />
       <div className="flex flex-wrap items-end gap-3">
         <Field label={t('Media type', 'Type de média')} htmlFor={`${id}-kind`}>
           <select
@@ -220,13 +226,21 @@ export function MediaCapturePicker({
             onChange={(event) => setKind(event.target.value as PendingSiteMedia['kind'])}
             className={inputClass}
           >
+            <option value="wide">{t('Wide / long-view photo', 'Photo en vue large')}</option>
+            <option value="close_up">
+              {t('Close-up / short-view photo', 'Photo en vue rapprochée')}
+            </option>
+            {allowBoardVideo && (
+              <option value="board_video">
+                {t('LED board recording (optional)', 'Enregistrement du panneau LED (facultatif)')}
+              </option>
+            )}
+            <option value="site_video">{t('Site video', 'Vidéo du site')}</option>
+            <option value="panorama">{t('360° panorama', 'Panorama 360°')}</option>
             <option value="front">{t('Front photo', 'Photo de face')}</option>
             <option value="context">{t('Street context', 'Environnement')}</option>
             <option value="night">{t('Night photo', 'Photo de nuit')}</option>
             <option value="diagram">{t('Diagram', 'Schéma')}</option>
-            {allowVideo && (
-              <option value="board_video">{t('LED board video', 'Vidéo du panneau LED')}</option>
-            )}
           </select>
         </Field>
         <label
@@ -235,19 +249,18 @@ export function MediaCapturePicker({
           <PlusCircle className="h-4 w-4 text-primary" />
           {t('Choose file', 'Choisir un fichier')}
           <input
+            ref={fileInput}
             type="file"
             disabled={disabled}
             aria-label={t('Choose board media', 'Choisir un média du panneau')}
             className="sr-only"
-            accept={
-              kind === 'board_video' ? 'video/mp4,video/webm' : 'image/jpeg,image/png,image/webp'
-            }
+            accept={videoKind ? 'video/mp4,video/webm' : 'image/jpeg,image/png,image/webp'}
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = '';
               setError('');
               if (!file) return;
-              const video = kind === 'board_video';
+              const video = videoKind;
               if (
                 !(
                   video ? ['video/mp4', 'video/webm'] : ['image/jpeg', 'image/png', 'image/webp']
@@ -290,7 +303,7 @@ export function MediaCapturePicker({
             {t('Cancel camera request', 'Annuler la demande de caméra')}
           </button>
         )}
-        {kind !== 'board_video' && (
+        {!videoKind && kind !== 'panorama' && (
           <button
             type="button"
             disabled={disabled || opening}
@@ -306,11 +319,19 @@ export function MediaCapturePicker({
           </button>
         )}
       </div>
-      {kind === 'board_video' && (
+      {videoKind && (
         <p className="text-xs leading-5 text-muted">
           {t(
-            'Film the installed LED board, not an ad creative. MP4 (H.264) or WebM, up to 60 seconds, 50 MB and 1920 × 1080 pixels. Audio is not required.',
-            'Filmez le panneau LED installé, pas un fichier publicitaire. MP4 (H.264) ou WebM, 60 secondes, 50 Mo et 1920 × 1080 pixels maximum. Le son n’est pas nécessaire.',
+            'Film the site and its surroundings, not an ad creative. MP4 (H.264) or WebM, up to 60 seconds, 50 MB and 1920 × 1080 pixels. Audio is not required.',
+            'Filmez le site et ses alentours, pas un fichier publicitaire. MP4 (H.264) ou WebM, 60 secondes, 50 Mo et 1920 × 1080 pixels maximum. Le son n’est pas nécessaire.',
+          )}
+        </p>
+      )}
+      {kind === 'panorama' && (
+        <p className="text-sm leading-6 text-muted">
+          {t(
+            'Use a full 360° photo exported as a 2:1 equirectangular JPEG, PNG or WebP (up to 10 MB). A regular phone panorama is not a full 360° image; choose a site video if you do not have one.',
+            'Utilisez une photo 360° complète exportée en image équirectangulaire 2:1 JPEG, PNG ou WebP (10 Mo maximum). Un panorama classique de téléphone n’est pas une image 360° complète ; choisissez une vidéo du site si nécessaire.',
           )}
         </p>
       )}
@@ -524,7 +545,7 @@ function PendingPreview({ media }: { media: PendingSiteMedia }) {
     return () => URL.revokeObjectURL(url);
   }, [media.file]);
   if (!src) return null;
-  return media.kind === 'board_video' ? (
+  return media.kind === 'site_video' || media.kind === 'board_video' ? (
     <video
       src={src}
       controls

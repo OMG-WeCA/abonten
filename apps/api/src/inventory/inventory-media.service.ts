@@ -208,15 +208,19 @@ export class InventoryMediaService {
     siteId: string,
     file: MediaFile,
     dto: UploadInventoryMediaDto,
-    video = false,
+    video: boolean | 'site_video' = false,
   ): Promise<SiteAssetEntity> {
     const site = await this.ownedSite(orgId, siteId);
-    if (video && site.format !== 'digital_led')
+    if (video === true && site.format !== 'digital_led')
       throw new BadRequestException(
         'Board recordings are only available for digital LED inventory.',
       );
-    const kind = video ? 'board_video' : (dto.kind ?? 'front');
-    if (!video && !['front', 'context', 'night', 'diagram'].includes(kind))
+    const kind =
+      video === 'site_video' ? 'site_video' : video ? 'board_video' : (dto.kind ?? 'front');
+    if (
+      !video &&
+      !['wide', 'close_up', 'panorama', 'front', 'context', 'night', 'diagram'].includes(kind)
+    )
       throw new BadRequestException('Unknown photo kind.');
     const contentSha256 = createHash('sha256').update(file.buffer).digest('hex');
     // Only fixed, validated DTO fields enter the digest. It carries no device
@@ -244,7 +248,11 @@ export class InventoryMediaService {
         ).findOne({ where: { siteId, clientRequestId: dto.clientRequestId } })
       : null;
     if (existing) return projectMediaAssetEvidence(replay(existing, requestFingerprint), site);
-    const media = await validateInventoryMedia(file, video);
+    const media = await validateInventoryMedia(file, !!video);
+    if (kind === 'panorama' && Math.abs(media.width - 2 * media.height) > 2)
+      throw new BadRequestException(
+        'Use a full 360° panorama exported as a 2:1 equirectangular image, or upload a site video instead.',
+      );
     const evidence = photoEvidence(media, dto, site);
     const storageRef = `assets/${siteId}/${randomUUID()}.${media.extension}`;
     let stored = false;
@@ -259,7 +267,7 @@ export class InventoryMediaService {
         );
         if (!rows[0] || rows[0].organizationId !== orgId)
           throw new ForbiddenException('Not your site');
-        if (video && rows[0].format !== 'digital_led')
+        if (video === true && rows[0].format !== 'digital_led')
           throw new BadRequestException(
             'Board recordings are only available for digital LED inventory.',
           );
@@ -284,7 +292,11 @@ export class InventoryMediaService {
             width: media.width,
             height: media.height,
             durationSeconds: media.durationSeconds,
-            metadata: { ...evidence, requestFingerprint },
+            metadata: {
+              ...evidence,
+              requestFingerprint,
+              ...(kind === 'panorama' ? { projection: 'equirectangular' } : {}),
+            },
             clientRequestId: dto.clientRequestId,
             contentSha256,
           }),

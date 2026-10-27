@@ -1,3 +1,4 @@
+import { siteMediaProblems } from './site-media-requirements';
 import {
   dimensionProblems,
   digitalProblems,
@@ -74,7 +75,7 @@ const SITE_DETAIL_COLUMNS =
   'viewing_distance AS "viewingDistance", elevation, width, height, area, units, ' +
   'illumination_type AS "illuminationType", illumination_hours AS "illuminationHours", ' +
   'location_verification AS "locationVerification", description, status, rejection_reason AS "rejectionReason", permit_ref AS "permitRef", permit_expires_at AS "permitExpiresAt", ' +
-  'created_at AS "createdAt", updated_at AS "updatedAt"';
+  'media_requirements_version AS "mediaRequirementsVersion", created_at AS "createdAt", updated_at AS "updatedAt"';
 
 // Same columns as SITE_DETAIL_COLUMNS but table-qualified with `s.` for the list
 // query, which lateral-joins the newest front photo for list thumbnails.
@@ -364,7 +365,7 @@ export class InventoryService {
       `SELECT ${LIST_SITE_COLUMNS.replace('s.description, s.status,', `s.description, ${effectiveStatusSql('s')} AS status,`)}, sa.id AS "frontAssetId", sa.storage_ref AS "frontAssetRef" ` +
         `FROM billboard_sites s ` +
         `LEFT JOIN LATERAL (` +
-        `  SELECT a.id, a.storage_ref FROM site_assets a WHERE a.site_id::text = s.id::text AND a.kind = 'front' ORDER BY a.created_at DESC LIMIT 1` +
+        `  SELECT a.id, a.storage_ref FROM site_assets a WHERE a.site_id::text = s.id::text AND a.kind IN ('close_up','wide','front') ORDER BY CASE a.kind WHEN 'close_up' THEN 0 WHEN 'wide' THEN 1 ELSE 2 END, a.created_at DESC LIMIT 1` +
         `) sa ON true ` +
         `${whereSql} ` +
         `ORDER BY s.created_at DESC LIMIT ${limit} OFFSET ${offset}`,
@@ -405,12 +406,7 @@ export class InventoryService {
       this.listAssets(siteId, site),
       this.listRateCards(siteId),
     ]);
-    const currentProblems = publicationProblems(
-      site,
-      faces,
-      rateCards,
-      assets.some((asset) => asset.kind === 'front' && !!asset.capturedAt),
-    );
+    const currentProblems = publicationProblems(site, faces, rateCards, assets);
     if (currentProblems.length && reader === 'marketplace')
       throw new NotFoundException('Site is not ready for the marketplace');
     if (currentProblems.length && site.status === 'listed') site.status = 'draft';
@@ -689,7 +685,7 @@ export class InventoryService {
     if (!['draft', 'rejected'].includes(current.status)) {
       throw new ForbiddenException(`Site is ${current.status}, expected draft/rejected`);
     }
-    const problems = await this.listingProblems(siteId);
+    const problems = await this.listingProblems(siteId, undefined, true);
     if (problems.length > 0) {
       throw new BadRequestException(`Site is not ready for review: ${problems.join('; ')}.`);
     }
@@ -784,7 +780,7 @@ export class InventoryService {
       if (submit) {
         // The provider call deliberately holds no locks. Re-read readiness under
         // this parent lock, shared with readiness-affecting child mutations.
-        const problems = await this.listingProblems(siteId, manager);
+        const problems = await this.listingProblems(siteId, manager, true);
         if (problems.length > 0) {
           throw new BadRequestException(`Site is not ready for review: ${problems.join('; ')}.`);
         }
@@ -826,6 +822,10 @@ export class InventoryService {
         !submit && decision.status === 'mismatch' && ['listed', 'approved'].includes(status)
           ? 'suspended'
           : status;
+      if (submit)
+        await manager.query('UPDATE billboard_sites SET media_requirements_version=2 WHERE id=$1', [
+          siteId,
+        ]);
       await manager.query(
         'UPDATE billboard_sites SET location_verification = $1::jsonb, status = $2, rejection_reason = $3 WHERE id = $4',
         [JSON.stringify(decision), persistedStatus, reason, siteId],
@@ -1162,28 +1162,27 @@ export class InventoryService {
       const repo = manager.getRepository(SiteAssetEntity);
       const asset = await repo.findOne({ where: { id: assetId, siteId } });
       if (!asset) throw new NotFoundException('Asset not found');
-      // A listed or in-review site must keep its front-on reference photo
-      // (SPEC §7.1): deleting the last one would leave invalid live inventory.
+      const siteRows = await manager.query(
+        'SELECT status, (demo_agency_id IS NOT NULL) AS "isDemo", (research_agency_id IS NOT NULL) AS "isResearchReference", media_requirements_version AS "mediaRequirementsVersion" FROM billboard_sites WHERE id = $1 FOR UPDATE',
+        [siteId],
+      );
       if (
-        (asset as { kind: string; capturedAt?: Date | null }).kind === 'front' &&
-        asset.capturedAt
+        !siteRows[0]?.isDemo &&
+        !siteRows[0]?.isResearchReference &&
+        ['pending_review', 'approved', 'listed'].includes(siteRows[0]?.status)
       ) {
-        const siteRows = await manager.query(
-          `SELECT status FROM billboard_sites WHERE id = $1 FOR UPDATE`,
-          [siteId],
+        const remaining = (await repo.find({ where: { siteId } })).filter(
+          (item) => item.id !== assetId,
         );
-        const status = siteRows[0]?.status;
-        if (status === 'pending_review' || status === 'approved' || status === 'listed') {
-          const fronts = await manager.query(
-            `SELECT count(*)::int AS c FROM site_assets WHERE site_id = $1 AND kind = 'front' AND captured_at IS NOT NULL`,
-            [siteId],
+        const version = siteRows[0].mediaRequirementsVersion ?? 1;
+        const before = siteMediaProblems([...remaining, asset], version);
+        const missing = siteMediaProblems(remaining, version).filter(
+          (problem) => !before.includes(problem),
+        );
+        if (missing.length)
+          throw new ForbiddenException(
+            'Upload replacement media before removing this file: ' + missing.join('; '),
           );
-          if ((fronts[0]?.c ?? 0) <= 1) {
-            throw new ForbiddenException(
-              'This site is in review or listed — upload a replacement front-on photo before removing this one.',
-            );
-          }
-        }
       }
       storageRef = (asset as { storageRef: string }).storageRef;
       await repo.delete({ id: assetId, siteId });
@@ -1733,19 +1732,23 @@ export class InventoryService {
 
   // ----------------------------------------------------------------- helpers
   /** SPEC §7.1 listing-completeness problems, checked at submit and approval. */
-  private async listingProblems(siteId: string, manager?: EntityManager): Promise<string[]> {
+  private async listingProblems(
+    siteId: string,
+    manager?: EntityManager,
+    requireNewMedia = false,
+  ): Promise<string[]> {
     const repo = manager
       ? manager.getRepository(BillboardSiteEntity)
       : await this.db.repo(BillboardSiteEntity);
     const rows = await repo.query(
-      `SELECT name, city, country, latitude, longitude, format, width, height, area, (demo_agency_id IS NOT NULL) AS "isDemo", (research_agency_id IS NOT NULL) AS "isResearchReference", (permit_expires_at AT TIME ZONE 'UTC')::date::text AS "permitExpiresAt"
+      `SELECT media_requirements_version AS "mediaRequirementsVersion", name, city, country, latitude, longitude, format, width, height, area, (demo_agency_id IS NOT NULL) AS "isDemo", (research_agency_id IS NOT NULL) AS "isResearchReference", (permit_expires_at AT TIME ZONE 'UTC')::date::text AS "permitExpiresAt"
        FROM billboard_sites WHERE id = $1`,
       [siteId],
     );
     if (!rows[0]) throw new NotFoundException('Site not found');
     const s = rows[0];
     const front = await repo.query(
-      `SELECT 1 FROM site_assets WHERE site_id = $1 AND kind = 'front' AND captured_at IS NOT NULL LIMIT 1`,
+      `SELECT kind, media_type AS "mediaType", captured_at AS "capturedAt", width, height, duration_seconds AS "durationSeconds" FROM site_assets WHERE site_id = $1`,
       [siteId],
     );
     const faces = manager
@@ -1754,7 +1757,12 @@ export class InventoryService {
     const rates = manager
       ? await manager.getRepository(RateCardEntity).find({ where: { siteId } })
       : await this.listRateCards(siteId);
-    return publicationProblems(s, faces, rates, !!front[0]);
+    return publicationProblems(
+      { ...s, ...(requireNewMedia ? { mediaRequirementsVersion: 2 } : {}) },
+      faces,
+      rates,
+      front,
+    );
   }
 
   /** No read writes status. A normal write reconciles expired eligibility atomically. */

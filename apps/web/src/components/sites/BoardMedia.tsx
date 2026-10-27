@@ -53,7 +53,7 @@ export function AuthBoardVideo({ asset, locale }: { asset: SiteAsset; locale?: s
           preload="metadata"
           onError={() => setError(true)}
           className="max-h-80 w-full bg-background"
-          aria-label={t('Video of the installed LED board', 'Vidéo du panneau LED installé')}
+          aria-label={t('Site video', 'Vidéo du site')}
         />
       ) : (
         <div className="flex min-h-28 flex-col items-center justify-center gap-2 p-4 text-center">
@@ -61,7 +61,7 @@ export function AuthBoardVideo({ asset, locale }: { asset: SiteAsset; locale?: s
             <>
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
               <p role="status" className="text-xs text-muted">
-                {t('Loading board video…', 'Chargement de la vidéo…')}
+                {t('Loading video…', 'Chargement de la vidéo…')}
               </p>
               <button
                 type="button"
@@ -92,7 +92,7 @@ export function AuthBoardVideo({ asset, locale }: { asset: SiteAsset; locale?: s
               >
                 {error
                   ? t('Retry video', 'Réessayer la vidéo')
-                  : t('Load board video', 'Charger la vidéo du panneau')}
+                  : t('Load video', 'Charger la vidéo')}
               </button>
             </>
           )}
@@ -100,8 +100,8 @@ export function AuthBoardVideo({ asset, locale }: { asset: SiteAsset; locale?: s
       )}
       <figcaption className="px-3 py-2 text-xs text-muted">
         {t(
-          'Installed LED board · partner-supplied reference media',
-          'Panneau LED installé · média de référence fourni par le partenaire',
+          'Site video · partner-supplied reference media',
+          'Vidéo du site · média de référence fourni par le partenaire',
         )}
         {asset.durationSeconds != null &&
           ` · ${displayNumber(Math.round(asset.durationSeconds), locale)} s`}
