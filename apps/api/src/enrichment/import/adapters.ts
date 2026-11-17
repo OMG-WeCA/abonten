@@ -116,6 +116,8 @@ export function normalizeFeature(
         oneway: optionalText(tags.oneway),
         lanes: optionalText(tags.lanes),
         maxspeed: optionalText(tags.maxspeed),
+        access: optionalText(tags.access),
+        motorVehicle: optionalText(tags.motorcar ?? tags.motor_vehicle ?? tags.vehicle),
       },
     };
   }

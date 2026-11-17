@@ -212,6 +212,33 @@ export class OpenAiPlannerProvider {
     signal?: AbortSignal,
     admission?: PlannerAdmission,
   ): Promise<ModelPlan> {
+    return this.structured(
+      input,
+      scope,
+      {
+        instructions: INSTRUCTIONS,
+        schema: MODEL_SCHEMA,
+        name: 'abonten_agency_plan',
+        validate: validateModelPlan,
+      },
+      signal,
+      admission,
+    );
+  }
+
+  /** Same bounded transport, admission and telemetry for an editable planning proposal. */
+  async structured<T>(
+    input: ProviderInput,
+    scope: { userId: string; orgId: string },
+    policy: {
+      instructions: string;
+      schema: unknown;
+      name: string;
+      validate: (value: unknown) => T;
+    },
+    signal?: AbortSignal,
+    admission?: PlannerAdmission,
+  ): Promise<T> {
     if (!this.configured)
       throw new ServiceUnavailableException('The AI planner is not configured.');
     if (signal?.aborted) throw new HttpException('The planner request was cancelled.', 499);
@@ -220,7 +247,7 @@ export class OpenAiPlannerProvider {
       reasoning: { effort: 'none' },
       store: false,
       max_output_tokens: 1800,
-      instructions: INSTRUCTIONS,
+      instructions: policy.instructions,
       input: [
         ...input.history,
         {
@@ -236,9 +263,9 @@ export class OpenAiPlannerProvider {
       text: {
         format: {
           type: 'json_schema',
-          name: 'abonten_agency_plan',
+          name: policy.name,
           strict: true,
-          schema: MODEL_SCHEMA,
+          schema: policy.schema,
         },
       },
     });
@@ -371,7 +398,7 @@ export class OpenAiPlannerProvider {
         throw new BadGatewayException(
           'The planner returned an unsupported response. Please retry manually.',
         );
-      const result = validateModelPlan(JSON.parse(messages[0].content[0].text));
+      const result = policy.validate(JSON.parse(messages[0].content[0].text));
       outcome = 'success';
       resultStatus = 200;
       return result;

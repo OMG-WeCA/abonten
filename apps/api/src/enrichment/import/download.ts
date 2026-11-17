@@ -2,29 +2,14 @@ import { createWriteStream } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { configuredSource, type SourceConfiguration } from '../registry';
+import {
+  configuredSource,
+  isRegisteredSourceUrl as isRegisteredUrl,
+  type SourceConfiguration,
+} from '../registry';
+export { isRegisteredSourceUrl as isRegisteredUrl } from '../registry';
 import { record } from './geometry';
 import { requiredString } from './manifest';
-export function isRegisteredUrl(value: string, source: SourceConfiguration): boolean {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
-  }
-  if (
-    url.protocol !== 'https:' ||
-    url.username ||
-    url.password ||
-    url.hash ||
-    url.search ||
-    (url.port && url.port !== '443')
-  )
-    return false;
-  return source.allowedUrlPrefixes.some((prefix) =>
-    prefix.endsWith('/') ? url.href.startsWith(prefix) : url.href === prefix,
-  );
-}
 async function requestRegistered(
   url: string,
   source: SourceConfiguration,

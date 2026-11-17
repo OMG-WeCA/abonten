@@ -1,6 +1,7 @@
 /** Source configuration is the only country-specific code in the import pipeline. */
 export type Bounds = readonly [west: number, south: number, east: number, north: number];
-export type EnrichmentLayer = 'roads' | 'pois' | 'admin1' | 'admin2' | 'population' | 'traffic';
+export type EnrichmentLayer =
+  'roads' | 'pois' | 'admin1' | 'admin2' | 'population' | 'population_demographics' | 'traffic';
 export interface CountryConfiguration {
   code: string;
   iso3: string;
@@ -32,6 +33,36 @@ export const countries: readonly CountryConfiguration[] = [
     geofabrikSlug: 'ghana',
     boundaryLicences: { admin1: 'CC-BY-SA-2.0', admin2: 'CC-BY-4.0' },
   },
+  {
+    code: 'BJ',
+    iso3: 'BEN',
+    name: 'Benin',
+    aliases: ['Bénin'],
+    bbox: [0.5, 5.8, 4, 12.7],
+    bounds: [0.5, 5.8, 4, 12.7],
+    geofabrikSlug: 'benin',
+    boundaryLicences: { admin1: 'Public-Domain', admin2: 'Public-Domain' },
+  },
+  {
+    code: 'CI',
+    iso3: 'CIV',
+    name: "Côte d'Ivoire",
+    aliases: ['Cote d Ivoire', 'Ivory Coast'],
+    bbox: [-9, 4, -2, 11],
+    bounds: [-9, 4, -2, 11],
+    geofabrikSlug: 'ivory-coast',
+    boundaryLicences: { admin1: 'CC-BY-4.0', admin2: 'CC-BY-4.0' },
+  },
+  {
+    code: 'CM',
+    iso3: 'CMR',
+    name: 'Cameroon',
+    aliases: ['Cameroun'],
+    bbox: [7.9, 1.2, 16.5, 13.3],
+    bounds: [7.9, 1.2, 16.5, 13.3],
+    geofabrikSlug: 'cameroon',
+    boundaryLicences: { admin1: 'CC-BY-3.0', admin2: 'CC-BY-4.0' },
+  },
 ];
 export function countryFor(value: string): CountryConfiguration | undefined {
   if (typeof value !== 'string') return undefined;
@@ -57,6 +88,35 @@ export interface SourceConfiguration {
   allowedUrlPrefixes: readonly string[];
   warnings: readonly string[];
 }
+
+/** Apply the same official-source policy to downloads, redirects and import manifests. */
+export function isRegisteredSourceUrl(value: string, source: SourceConfiguration): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.hash ||
+    url.search ||
+    (url.port && url.port !== '443')
+  )
+    return false;
+  if (source.key === 'osm-geofabrik' && source.url) {
+    const latest = new URL(source.url);
+    const datedPath = latest.pathname.replace('-latest.osm.pbf', '-\\d{6}\\.osm\\.pbf');
+    if (url.origin === latest.origin && new RegExp(`^${datedPath}$`).test(url.pathname))
+      return true;
+  }
+  return source.allowedUrlPrefixes.some((prefix) =>
+    prefix.endsWith('/') ? url.href.startsWith(prefix) : url.href === prefix,
+  );
+}
+
 export function configuredSource(
   countryCode: string,
   sourceKey: string,
@@ -97,7 +157,9 @@ export function configuredSource(
       licenceUrl:
         licence === 'CC-BY-SA-2.0'
           ? 'https://creativecommons.org/licenses/by-sa/2.0/'
-          : 'https://creativecommons.org/licenses/by/4.0/',
+          : licence === 'Public-Domain'
+            ? 'https://www.geoboundaries.org/'
+            : `https://creativecommons.org/licenses/by/${licence === 'CC-BY-3.0' ? '3.0' : '4.0'}/`,
       attribution:
         'geoBoundaries (William & Mary geoLab) and the upstream boundary producer; preserve metadata attribution',
       unit: 'administrative_areas',
@@ -127,6 +189,47 @@ export function configuredSource(
       referenceYear: 2026,
       version: 'R2025A-v1-2026',
       allowedUrlPrefixes: [url],
+    };
+  }
+  const demographic = /^worldpop-age-sex:([fm]):(\d{1,2}_\d{1,2}|80_plus)$/.exec(sourceKey);
+  if (demographic) {
+    const [, sex, band] = demographic;
+    const firstAge = Number(band.split('_')[0]);
+    if (
+      !['0_4', '80_plus'].includes(band) &&
+      (firstAge < 5 ||
+        firstAge > 75 ||
+        firstAge % 5 !== 0 ||
+        band !== `${firstAge}_${firstAge + 4}`)
+    )
+      return undefined;
+    const baseUrl = `https://data.worldpop.org/GIS/AgeSex_structures/Global_2015_2030/R2025A/2026/${country.iso3}/v1/1km_ua/constrained/`;
+    // Native classes are 0, 1–4, then five-year bands named by their lower age;
+    // 90 is open-ended. They are not single-year rasters.
+    const starts = band === '0_4' ? [0, 1] : band === '80_plus' ? [80, 85, 90] : [firstAge];
+    const urls = starts.map(
+      (age) =>
+        `${baseUrl}${country.iso3.toLowerCase()}_${sex}_${String(age).padStart(2, '0')}_2026_CN_1km_R2025A_UA_v1.tif`,
+    );
+    return {
+      key: sourceKey,
+      label: `WorldPop Global2 R2025A ${sex === 'f' ? 'female' : 'male'} ages ${band.replace('_', '-')}`,
+      layers: ['population_demographics'],
+      url: urls.length === 1 ? urls[0] : null,
+      licence: 'CC-BY-4.0',
+      licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
+      attribution: 'WorldPop, University of Southampton (Global2 R2025A)',
+      unit: 'persons_per_pixel',
+      referenceYear: 2026,
+      version: 'R2025A-v1-2026',
+      allowedUrlPrefixes: urls,
+      warnings: [
+        'WorldPop R2025A projected resident age/sex structure is not an observed traveler profile',
+        'Demographic grids use 1 km cells; local estimates retain their spatial coverage and resolution',
+        ...(urls.length > 1
+          ? [`Band ${band} sums the corresponding native WorldPop age grids: ${starts.join(', ')}`]
+          : []),
+      ],
     };
   }
   if (sourceKey === 'observed-traffic') {

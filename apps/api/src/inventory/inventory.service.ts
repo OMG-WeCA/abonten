@@ -1,3 +1,4 @@
+import { planningProfileProblems } from './face-planning-profile';
 import { siteMediaProblems } from './site-media-requirements';
 import {
   dimensionProblems,
@@ -953,7 +954,11 @@ export class InventoryService {
       await this.lockOwnedSite(manager, orgId, siteId);
       await this.reconcilePublication(manager, siteId, user, orgId);
       const repo = manager.getRepository(SiteFaceEntity);
-      const integrity = [...dimensionProblems(dto), ...digitalProblems(dto)];
+      const integrity = [
+        ...dimensionProblems(dto),
+        ...digitalProblems(dto),
+        ...planningProfileProblems(dto.planningProfile),
+      ];
       if (!dto.faceLabel?.trim()) integrity.push('face label is required');
       if (integrity.length) throw new BadRequestException(`Please fix: ${integrity.join('; ')}.`);
       const face = await repo.save(
@@ -975,6 +980,7 @@ export class InventoryService {
           loopLengthSeconds: dto.loopLengthSeconds,
           spotsPerLoop: dto.spotsPerLoop,
           proofOfPlay: dto.proofOfPlay,
+          planningProfile: dto.planningProfile,
         }),
       );
       await writeInventoryAudit(manager, actorOf(user, orgId), {
@@ -1100,7 +1106,11 @@ export class InventoryService {
       const effective = { ...face, ...dto };
       if (dto.area === undefined && (dto.width !== undefined || dto.height !== undefined))
         effective.area = effective.width * effective.height;
-      const integrity = [...dimensionProblems(effective), ...digitalProblems(effective)];
+      const integrity = [
+        ...dimensionProblems(effective),
+        ...digitalProblems(effective),
+        ...planningProfileProblems(effective.planningProfile),
+      ];
       if (!effective.faceLabel?.trim()) integrity.push('face label is required');
       if (integrity.length) throw new BadRequestException(`Please fix: ${integrity.join('; ')}.`);
       Object.assign(face, {
@@ -1120,6 +1130,7 @@ export class InventoryService {
         ...(dto.loopLengthSeconds !== undefined && { loopLengthSeconds: dto.loopLengthSeconds }),
         ...(dto.spotsPerLoop !== undefined && { spotsPerLoop: dto.spotsPerLoop }),
         ...(dto.proofOfPlay !== undefined && { proofOfPlay: dto.proofOfPlay }),
+        ...(dto.planningProfile !== undefined && { planningProfile: dto.planningProfile }),
       });
       face.area = face.width * face.height;
       const saved = await repo.save(face);
@@ -2063,6 +2074,7 @@ function faceAuditSnapshot(face: unknown): Record<string, unknown> {
     loopLengthSeconds: f.loopLengthSeconds ?? null,
     spotsPerLoop: f.spotsPerLoop ?? null,
     proofOfPlay: f.proofOfPlay ?? null,
+    planningProfile: f.planningProfile ?? null,
   };
 }
 

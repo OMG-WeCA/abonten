@@ -46,6 +46,7 @@ import { missingSiteMedia, siteMediaLabel } from '../../../lib/site-media';
 import { AuthBoardVideo, MediaEvidence } from '../../../components/sites/BoardMedia';
 import { LocationVerification } from '../../../components/sites/LocationVerification';
 import { localizedRejectionReason } from '../../../lib/location-verification-locale';
+import { FacePlanningFields } from '../../../components/sites/FacePlanningFields';
 import { RegistrationMap } from '../../../components/sites/RegistrationMap';
 import { Lightbox, lightboxAlt, type LightboxAsset } from '../../../components/sites/Lightbox';
 import { SiteMapView } from '../../../components/sites/SiteMap';
@@ -83,6 +84,7 @@ import {
   type SiteAsset,
   type SiteDetail,
   type SiteFace,
+  type FacePlanningProfile,
 } from '../../../lib/sites-api';
 import { SUPPORTED_MARKETS, findMarket } from '../../../lib/markets';
 import { SUPPORTED_CURRENCIES } from '../../../lib/currencies';
@@ -1592,6 +1594,7 @@ function FacesSection({
     loopLengthSeconds: '',
     spotsPerLoop: '',
     proofOfPlay: false,
+    planningProfile: null as FacePlanningProfile | null,
   };
   const [form, setForm] = useState(emptyForm);
   const isDigital = site.format === 'digital_led';
@@ -1709,6 +1712,7 @@ function FacesSection({
         ...(form.substrate.trim() ? { substrate: form.substrate.trim() } : {}),
         ...(form.fileRequirements.trim() ? { fileRequirements: form.fileRequirements.trim() } : {}),
         ...digitalValues(),
+        planningProfile: form.planningProfile,
       });
       setForm({ ...emptyForm, units: form.units });
       setAdding(false);
@@ -1732,6 +1736,7 @@ function FacesSection({
         substrate: form.substrate.trim() || null,
         fileRequirements: form.fileRequirements.trim() || null,
         ...digitalValues(),
+        planningProfile: form.planningProfile,
       });
       setEditingId(null);
       await reload();
@@ -1756,6 +1761,7 @@ function FacesSection({
       loopLengthSeconds: face.loopLengthSeconds != null ? String(face.loopLengthSeconds) : '',
       spotsPerLoop: face.spotsPerLoop != null ? String(face.spotsPerLoop) : '',
       proofOfPlay: face.proofOfPlay ?? false,
+      planningProfile: face.planningProfile ?? null,
     });
   };
 
@@ -1788,6 +1794,7 @@ function FacesSection({
                   form={form}
                   setForm={setForm}
                   isDigital={isDigital}
+                  site={site}
                   formError={displayUiText(formError, locale)}
                   busy={busy}
                   busyKey={`face-edit-${face.id}`}
@@ -1806,6 +1813,15 @@ function FacesSection({
                         {agencyEvidenceUnit(face.units, locale === 'fr' ? 'fr' : 'en')} ·{' '}
                         {formatArea(face.area, face.units, locale)}
                       </span>
+                    </p>
+                    <p className="mt-1 text-xs text-muted">
+                      {face.planningProfile?.sightline
+                        ? locale === 'fr'
+                          ? 'Point de visibilité enregistré'
+                          : 'Road viewpoint saved'
+                        : locale === 'fr'
+                          ? 'Visibilité à compléter pour la planification'
+                          : 'Add viewing details for planning'}
                     </p>
                     {isDigital && (
                       <p className="mt-1 text-sm font-medium">
@@ -1878,6 +1894,7 @@ function FacesSection({
           form={form}
           setForm={setForm}
           isDigital={isDigital}
+          site={site}
           formError={displayUiText(formError, locale)}
           busy={busy}
           busyKey="face"
@@ -1892,6 +1909,7 @@ function FacesSection({
 }
 
 function FaceForm({
+  site,
   form,
   setForm,
   isDigital,
@@ -1919,7 +1937,9 @@ function FaceForm({
     loopLengthSeconds: string;
     spotsPerLoop: string;
     proofOfPlay: boolean;
+    planningProfile: FacePlanningProfile | null;
   };
+  site: SiteDetail;
   setForm: React.Dispatch<React.SetStateAction<typeof form>>;
   isDigital: boolean;
   formError: string;
@@ -2107,6 +2127,12 @@ function FaceForm({
           </div>
         </div>
       )}
+      <FacePlanningFields
+        value={form.planningProfile}
+        site={site}
+        locale={locale}
+        onChange={(planningProfile) => setForm({ ...form, planningProfile })}
+      />
       {formError && (
         <p role="alert" className="text-xs font-medium text-error">
           {displayUiText(formError, locale)}

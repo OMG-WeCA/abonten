@@ -23,6 +23,7 @@ import { workspaceAccessState } from '../../lib/account-session-recovery';
 import { confirmUnsavedNavigation } from '../../lib/unsaved-navigation';
 import { useAuth } from '../auth/AuthProvider';
 import { LanguageSwitcher, useLocale } from '../LocaleProvider';
+import { AgencyWorkspaceHeader } from '../agency/AgencyWorkspaceHeader';
 
 export function WorkspaceFrame({
   children,
@@ -99,154 +100,161 @@ export function WorkspaceFrame({
     }
   };
 
+  const agencyDashboard = activeOrganization.type === 'agency' && current === 'dashboard';
+
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-xl">
-        <div className="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center gap-3 px-4 py-2 sm:px-6">
-          <button
-            type="button"
-            onClick={() => {
-              if (confirmUnsavedNavigation()) router.push('/dashboard');
-            }}
-            className="flex shrink-0 items-center gap-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            aria-label={copy.workspace.dashboard}
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-black text-white shadow-lg shadow-primary/20">
-              A
-            </span>
-            <span className="hidden text-base font-extrabold uppercase tracking-tight sm:inline">
-              Abonten
-            </span>
-          </button>
-
-          {canReview && activeOrganization.type === 'platform' && organizations.length === 1 ? (
-            <div className="order-3 flex min-w-0 basis-full items-center gap-2 text-sm font-semibold text-muted sm:order-none sm:basis-auto">
-              <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0" />
-              <span>{locale === 'fr' ? 'Administration plateforme' : 'Platform Admin'}</span>
-            </div>
-          ) : (
-            <label className="relative order-3 min-w-0 basis-full sm:order-none sm:flex-1 sm:basis-auto sm:max-w-xs">
-              <span className="sr-only">{copy.workspace.activeOrganization}</span>
-              <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <select
-                value={activeOrganization.organizationId}
-                disabled={switching || organizations.length < 2}
-                onChange={(event) => void switchTo(event.target.value)}
-                className="h-10 w-full appearance-none rounded-lg border border-border bg-surface-2 py-2 pl-9 pr-8 text-sm font-semibold text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:cursor-default disabled:opacity-100"
-              >
-                {organizations.map((organization) => (
-                  <option key={organization.organizationId} value={organization.organizationId}>
-                    {organization.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-            </label>
-          )}
-
-          <nav
-            className="ml-auto flex shrink-0 items-center gap-1 [&>button]:min-h-11 [&>button]:min-w-11"
-            aria-label={copy.workspace.navigation}
-          >
+      {agencyDashboard ? (
+        <AgencyWorkspaceHeader switching={switching} onSwitch={switchTo} />
+      ) : (
+        <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur-xl">
+          <div className="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center gap-3 px-4 py-2 sm:px-6">
             <button
               type="button"
               onClick={() => {
                 if (confirmUnsavedNavigation()) router.push('/dashboard');
               }}
-              aria-label={copy.workspace.home}
-              className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
-                current === 'dashboard'
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted hover:bg-surface hover:text-foreground'
-              }`}
+              className="flex shrink-0 items-center gap-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label={copy.workspace.dashboard}
             >
-              <LayoutGrid className="h-4 w-4" />
-              <span className="hidden sm:inline">{copy.workspace.home}</span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-black text-white shadow-lg shadow-primary/20">
+                A
+              </span>
+              <span className="hidden text-base font-extrabold uppercase tracking-tight sm:inline">
+                Abonten
+              </span>
             </button>
-            {activeOrganization.type === 'agency' && capabilities.includes('MARKETPLACE_VIEW') && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirmUnsavedNavigation()) router.push('/planner');
-                }}
-                aria-label={locale === 'fr' ? 'Ouvrir le planificateur' : 'Open planner'}
-                className="flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold text-muted transition hover:bg-surface hover:text-foreground sm:px-3"
-              >
-                <Map className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {locale === 'fr' ? 'Planifier' : 'Planner'}
-                </span>
-              </button>
+
+            {canReview && activeOrganization.type === 'platform' && organizations.length === 1 ? (
+              <div className="order-3 flex min-w-0 basis-full items-center gap-2 text-sm font-semibold text-muted sm:order-none sm:basis-auto">
+                <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0" />
+                <span>{locale === 'fr' ? 'Administration plateforme' : 'Platform Admin'}</span>
+              </div>
+            ) : (
+              <label className="relative order-3 min-w-0 basis-full sm:order-none sm:flex-1 sm:basis-auto sm:max-w-xs">
+                <span className="sr-only">{copy.workspace.activeOrganization}</span>
+                <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                <select
+                  value={activeOrganization.organizationId}
+                  disabled={switching || organizations.length < 2}
+                  onChange={(event) => void switchTo(event.target.value)}
+                  className="h-10 w-full appearance-none rounded-lg border border-border bg-surface-2 py-2 pl-9 pr-8 text-sm font-semibold text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:cursor-default disabled:opacity-100"
+                >
+                  {organizations.map((organization) => (
+                    <option key={organization.organizationId} value={organization.organizationId}>
+                      {organization.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              </label>
             )}
-            {canSeeSites && (
+
+            <nav
+              className="ml-auto flex shrink-0 items-center gap-1 [&>button]:min-h-11 [&>button]:min-w-11"
+              aria-label={copy.workspace.navigation}
+            >
               <button
                 type="button"
                 onClick={() => {
-                  if (confirmUnsavedNavigation()) router.push('/sites');
+                  if (confirmUnsavedNavigation()) router.push('/dashboard');
                 }}
-                aria-label={sitesCopy.nav.sites}
+                aria-label={copy.workspace.home}
                 className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
-                  current === 'sites'
+                  current === 'dashboard'
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted hover:bg-surface hover:text-foreground'
                 }`}
               >
-                <LandmarkIcon className="h-4 w-4" />
-                <span className="hidden sm:inline">{sitesCopy.nav.sites}</span>
+                <LayoutGrid className="h-4 w-4" />
+                <span className="hidden sm:inline">{copy.workspace.home}</span>
               </button>
-            )}
-            {canReview && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirmUnsavedNavigation()) router.push('/admin/review');
-                }}
-                className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
-                  current === 'review'
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted hover:bg-surface hover:text-foreground'
-                }`}
-              >
-                <ShieldCheck className="h-4 w-4" />
-                <span className="hidden sm:inline">{sitesCopy.nav.review}</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                if (confirmUnsavedNavigation()) router.push('/settings');
-              }}
-              aria-label={copy.workspace.settings}
-              className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
-                current === 'settings'
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted hover:bg-surface hover:text-foreground'
-              }`}
-            >
-              <Settings2 className="h-4 w-4" />
-              <span className="hidden sm:inline">{copy.workspace.settings}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirmUnsavedNavigation())
-                  void signOut().then(() => router.replace('/sign-in'));
-              }}
-              aria-label={copy.workspace.signOut}
-              className="ml-1 flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold text-muted transition hover:bg-surface hover:text-foreground sm:px-3"
-            >
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="" className="h-5 w-5 rounded-full object-cover" />
-              ) : (
-                <CircleUserRound className="h-4 w-4" />
+              {activeOrganization.type === 'agency' &&
+                capabilities.includes('MARKETPLACE_VIEW') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirmUnsavedNavigation()) router.push('/planner');
+                    }}
+                    aria-label={locale === 'fr' ? 'Ouvrir le planificateur' : 'Open planner'}
+                    className="flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold text-muted transition hover:bg-surface hover:text-foreground sm:px-3"
+                  >
+                    <Map className="h-4 w-4" />
+                    <span className="hidden sm:inline">
+                      {locale === 'fr' ? 'Planifier' : 'Planner'}
+                    </span>
+                  </button>
+                )}
+              {canSeeSites && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirmUnsavedNavigation()) router.push('/sites');
+                  }}
+                  aria-label={sitesCopy.nav.sites}
+                  className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
+                    current === 'sites'
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted hover:bg-surface hover:text-foreground'
+                  }`}
+                >
+                  <LandmarkIcon className="h-4 w-4" />
+                  <span className="hidden sm:inline">{sitesCopy.nav.sites}</span>
+                </button>
               )}
-              <span className="hidden lg:inline">{copy.workspace.signOut}</span>
-              <LogOut className="hidden h-4 w-4 lg:block" />
-            </button>
-          </nav>
-          <LanguageSwitcher />
-        </div>
-      </header>
+              {canReview && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirmUnsavedNavigation()) router.push('/admin/review');
+                  }}
+                  className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
+                    current === 'review'
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-muted hover:bg-surface hover:text-foreground'
+                  }`}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span className="hidden sm:inline">{sitesCopy.nav.review}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmUnsavedNavigation()) router.push('/settings');
+                }}
+                aria-label={copy.workspace.settings}
+                className={`flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold transition sm:px-3 ${
+                  current === 'settings'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted hover:bg-surface hover:text-foreground'
+                }`}
+              >
+                <Settings2 className="h-4 w-4" />
+                <span className="hidden sm:inline">{copy.workspace.settings}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmUnsavedNavigation())
+                    void signOut().then(() => router.replace('/sign-in'));
+                }}
+                aria-label={copy.workspace.signOut}
+                className="ml-1 flex min-h-10 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold text-muted transition hover:bg-surface hover:text-foreground sm:px-3"
+              >
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="h-5 w-5 rounded-full object-cover" />
+                ) : (
+                  <CircleUserRound className="h-4 w-4" />
+                )}
+                <span className="hidden lg:inline">{copy.workspace.signOut}</span>
+                <LogOut className="hidden h-4 w-4 lg:block" />
+              </button>
+            </nav>
+            <LanguageSwitcher />
+          </div>
+        </header>
+      )}
       {switchError && (
         <p
           role="alert"
@@ -256,7 +264,11 @@ export function WorkspaceFrame({
         </p>
       )}
       <main
-        className={`mx-auto max-w-7xl px-4 sm:px-6 ${current === 'dashboard' ? 'py-4 lg:py-6' : 'py-8 lg:py-10'}`}
+        className={
+          agencyDashboard
+            ? 'agency-workspace-main'
+            : `mx-auto max-w-7xl px-4 sm:px-6 ${current === 'dashboard' ? 'py-4 lg:py-6' : 'py-8 lg:py-10'}`
+        }
       >
         {children}
       </main>

@@ -60,7 +60,7 @@ const road = {
 test('country aliases normalize NG/GH ISO2 ISO3/name without guessing unsupported countries', () => {
   assert.equal(countryFor(' NGA ')?.code, 'NG');
   assert.equal(countryFor('Republic of Ghana')?.code, 'GH');
-  assert.equal(countryFor('CM'), undefined);
+  assert.equal(countryFor('KE'), undefined);
   assert.equal(configuredSource('GH', 'made-up'), undefined);
 });
 test('manifest requires explicit provenance, known licence, quality, units and digest', () => {

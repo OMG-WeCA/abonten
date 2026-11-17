@@ -29,11 +29,21 @@ export interface AgencyMapProps {
   onSelect: (id: string) => void;
   locale: 'en' | 'fr';
   focusVersion?: number;
+  center?: readonly [number, number];
+  routes?: readonly AgencyMapRoute[];
+  showUntiled?: boolean;
+  panelLayout?: string;
+}
+
+interface AgencyMapRoute {
+  id: string;
+  points: { latitude: number; longitude: number }[];
+  weightShare?: number;
 }
 
 const DEFAULT_CENTER: [number, number] = [6.46, 3.42];
 
-function validPoint(site: AgencyMapSite): boolean {
+function validPoint(site: Pick<AgencyMapSite, 'latitude' | 'longitude'>): boolean {
   return (
     Number.isFinite(site.latitude) &&
     Number.isFinite(site.longitude) &&
@@ -57,19 +67,35 @@ function mapPadding(map: LeafletMap, hasSelection: boolean) {
   const rectangle = map.getContainer().getBoundingClientRect();
   const stage = map.getContainer().closest('.agency-map-stage');
   const visible = (selector: string) => {
-    const element = stage?.querySelector<HTMLElement>(selector);
-    const bounds = element?.getBoundingClientRect();
-    return bounds && bounds.width > 0 && bounds.height > 0 ? bounds : null;
+    const elements = stage?.querySelectorAll<HTMLElement>(selector) ?? [];
+    for (const element of elements) {
+      if (element.closest('.journey-filter-popover')) continue;
+      const bounds = element.getBoundingClientRect();
+      if (bounds.width > 0 && bounds.height > 0) return bounds;
+    }
+    return null;
   };
-  const card = hasSelection ? visible('.agency-board') : null;
-  const planner = visible('.agency-planner');
+  const card =
+    visible('[data-map-panel="left"]') ?? (hasSelection ? visible('.agency-board') : null);
+  const planner = visible('[data-map-panel="right"]') ?? visible('.agency-planner');
+  const analysis = visible('[data-map-panel="analysis"]');
+  const review = visible('[data-map-panel="review"]');
   const controls = visible('.agency-map-controls');
   // Include the full 44px pin, its stem and a gap, rather than only its anchor.
-  const left = card ? Math.max(70, card.right - rectangle.left + 32) : 70;
   const right = planner ? Math.max(36, rectangle.right - planner.left + 32) : 36;
-  const bottom = controls ? Math.max(135, rectangle.bottom - controls.top + 14) : 135;
+  // In a study or review the zoom controls occupy only the left edge.
+  const bottom =
+    controls && !analysis && !review ? Math.max(135, rectangle.bottom - controls.top + 14) : 135;
+  const leftPanel = review && rectangle.right - review.right > 185 ? review : card;
+  const left = leftPanel
+    ? Math.min(Math.max(70, leftPanel.right - rectangle.left + 32), rectangle.width - right - 100)
+    : 70;
+  const topPanel = analysis ?? (review && leftPanel !== review ? review : null);
+  const top = topPanel
+    ? Math.min(topPanel.bottom - rectangle.top + 58, rectangle.height - bottom - 100)
+    : 70;
   return {
-    paddingTopLeft: [left, 70] as [number, number],
+    paddingTopLeft: [Math.max(36, left), Math.max(70, top)] as [number, number],
     paddingBottomRight: [right, bottom] as [number, number],
   };
 }
@@ -81,6 +107,10 @@ export function AgencyMap({
   onSelect,
   locale,
   focusVersion = 0,
+  center = DEFAULT_CENTER,
+  routes,
+  showUntiled = false,
+  panelLayout,
 }: AgencyMapProps) {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
@@ -113,12 +143,16 @@ export function AgencyMap({
     const map = mapRef.current;
     const L = leafletRef.current;
     const points = sitesRef.current.filter(validPoint);
+    const shortlisted = /^(review|compare):/.test(panelLayout ?? '')
+      ? points.filter((site) => shortlistIds.includes(site.id))
+      : [];
+    const shown = shortlisted.length ? shortlisted : points;
     if (!map || !L) return;
     if (!points.length) {
-      map.setView(DEFAULT_CENTER, 10, { animate: motionAllowed() });
+      map.setView([center[0], center[1]], 10, { animate: motionAllowed() });
       return;
     }
-    map.fitBounds(L.latLngBounds(points.map((site) => [site.latitude, site.longitude])), {
+    map.fitBounds(L.latLngBounds(shown.map((site) => [site.latitude, site.longitude])), {
       ...mapPadding(map, selectedRef.current !== null),
       maxZoom: 15,
       animate: motionAllowed(),
@@ -127,7 +161,7 @@ export function AgencyMap({
   };
 
   useEffect(() => {
-    if (!SITE_MAP_ENABLED) return;
+    if (!SITE_MAP_ENABLED && !showUntiled) return;
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
     let themeObserver: MutationObserver | null = null;
@@ -160,33 +194,35 @@ export function AgencyMap({
                 'streets-v12',
                 document.documentElement.dataset.theme === 'dark' ? 'dark-v11' : 'streets-v12',
               );
-        tiles = L.tileLayer(tileUrl(), SITE_MAP_TILE_OPTIONS).addTo(map);
-        let tileErrors = 0;
-        let loadedThisRequest = false;
-        tiles.on('loading', () => {
-          loadedThisRequest = false;
-          tileErrors = 0;
-        });
-        tiles.on('tileload', () => {
-          if (cancelled) return;
-          loadedThisRequest = true;
-          tileErrors = 0;
-          if (loadTimeout) clearTimeout(loadTimeout);
-          setTilesReady(true);
-          setFailed(false);
-        });
-        tiles.on('tileerror', () => {
-          tileErrors += 1;
-          if (!cancelled && !loadedThisRequest && tileErrors >= 3) setFailed(true);
-        });
-        loadTimeout = setTimeout(() => {
-          if (!cancelled && !loadedThisRequest) setFailed(true);
-        }, 15000);
-        themeObserver = new MutationObserver(() => tiles?.setUrl(tileUrl()));
-        themeObserver.observe(document.documentElement, {
-          attributes: true,
-          attributeFilter: ['data-theme'],
-        });
+        if (SITE_MAP_ENABLED) {
+          tiles = L.tileLayer(tileUrl(), SITE_MAP_TILE_OPTIONS).addTo(map);
+          let tileErrors = 0;
+          let loadedThisRequest = false;
+          tiles.on('loading', () => {
+            loadedThisRequest = false;
+            tileErrors = 0;
+          });
+          tiles.on('tileload', () => {
+            if (cancelled) return;
+            loadedThisRequest = true;
+            tileErrors = 0;
+            if (loadTimeout) clearTimeout(loadTimeout);
+            setTilesReady(true);
+            setFailed(false);
+          });
+          tiles.on('tileerror', () => {
+            tileErrors += 1;
+            if (!cancelled && !loadedThisRequest && tileErrors >= 3) setFailed(true);
+          });
+          loadTimeout = setTimeout(() => {
+            if (!cancelled && !loadedThisRequest) setFailed(true);
+          }, 15000);
+          themeObserver = new MutationObserver(() => tiles?.setUrl(tileUrl()));
+          themeObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['data-theme'],
+          });
+        }
         resizeObserver = new ResizeObserver(() => {
           map.invalidateSize({ animate: false });
           const selected = sitesRef.current.find(
@@ -218,7 +254,7 @@ export function AgencyMap({
       mapRef.current = null;
       leafletRef.current = null;
     };
-  }, [retryVersion]);
+  }, [retryVersion, showUntiled]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -314,7 +350,7 @@ export function AgencyMap({
   useEffect(() => {
     if (ready) fitInventory();
     // Selection/style changes should preserve the planner's current map view.
-  }, [ready, mapVersion, coordinateKey, focusVersion]);
+  }, [ready, mapVersion, coordinateKey, focusVersion, center[0], center[1]]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -326,6 +362,52 @@ export function AgencyMap({
       });
     }
   }, [ready, mapVersion, selectedId, coordinateKey]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = leafletRef.current;
+    const stage = canvasRef.current?.closest('.agency-map-stage');
+    if (!ready || !map || !L || !stage || !panelLayout) return;
+    const routed = routes?.flatMap(({ points }) => points.filter(validPoint)) ?? [];
+    let frame = 0;
+    function adjust() {
+      if (!map || !L) return;
+      const selected = sitesRef.current.find(
+        (site) => site.id === selectedRef.current && validPoint(site),
+      );
+      const reviewing = /^(review|compare):/.test(panelLayout ?? '');
+      const included = reviewing
+        ? sitesRef.current.filter((site) => shortlistIds.includes(site.id) && validPoint(site))
+        : [];
+      const padding = mapPadding(map, Boolean(selected));
+      if (routed.length || included.length) {
+        map.fitBounds(
+          L.latLngBounds(
+            [...routed, ...included, ...(selected ? [selected] : [])].map(
+              ({ latitude, longitude }) => [latitude, longitude],
+            ),
+          ),
+          {
+            ...padding,
+            maxZoom: 15,
+            animate: false,
+          },
+        );
+      } else if (selected)
+        map.panInside([selected.latitude, selected.longitude], { ...padding, animate: false });
+    }
+    function schedule() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(adjust);
+    }
+    const observer = new ResizeObserver(schedule);
+    for (const panel of stage.querySelectorAll('[data-map-panel]')) observer.observe(panel);
+    schedule();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [ready, mapVersion, coordinateKey, panelLayout, routes, shortlistIds]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -377,9 +459,62 @@ export function AgencyMap({
     };
   }, [ready, mapVersion, sites, shortlistIds, locale]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    const L = leafletRef.current;
+    if (!ready || !map || !L || !routes?.length) return;
+    const group = L.layerGroup().addTo(map);
+    for (const route of routes) {
+      const points = route.points.filter(validPoint);
+      if (points.length < 2) continue;
+      L.polyline(
+        points.map(({ latitude, longitude }) => [latitude, longitude]),
+        {
+          weight: 2 + 8 * Math.sqrt(Math.max(0, route.weightShare ?? 0)),
+          opacity: 0.78,
+          interactive: false,
+          className: 'agency-map-demand-route',
+        },
+      ).addTo(group);
+      const middle = Math.floor((points.length - 1) / 2);
+      const from = points[middle];
+      const to = points[middle + 1];
+      const start = map.project([from.latitude, from.longitude]);
+      const end = map.project([to.latitude, to.longitude]);
+      if (start.equals(end)) continue;
+      const bearing = (Math.atan2(end.x - start.x, start.y - end.y) * 180) / Math.PI;
+      const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      arrow.setAttribute('viewBox', '0 0 18 18');
+      arrow.setAttribute('aria-hidden', 'true');
+      arrow.style.transform = `rotate(${bearing}deg) translateX(6px)`;
+      const tip = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      tip.setAttribute('d', 'M9 1 16 14 9 11 2 14Z');
+      tip.setAttribute('fill', 'currentColor');
+      arrow.append(tip);
+      const markerBody = document.createElement('span');
+      markerBody.append(arrow);
+      L.marker(map.unproject(start.add(end).divideBy(2)), {
+        interactive: false,
+        keyboard: false,
+        pane: 'overlayPane',
+        icon: L.divIcon({
+          html: markerBody,
+          className: 'agency-map-demand-arrow',
+          iconSize: [18, 18],
+        }),
+      }).addTo(group);
+    }
+    return () => {
+      group.remove();
+    };
+  }, [ready, mapVersion, routes]);
+
   const unavailable = !SITE_MAP_ENABLED || failed;
   return (
-    <div className={`agency-map${selectedId ? ' has-selection' : ''}`} data-testid="agency-map">
+    <div
+      className={`agency-map${selectedId ? ' has-selection' : ''}${showUntiled && ready && unavailable ? ' is-untiled' : ''}`}
+      data-testid="agency-map"
+    >
       <div
         ref={canvasRef}
         className="agency-map-canvas"
@@ -393,8 +528,12 @@ export function AgencyMap({
           <strong>
             {unavailable
               ? fr
-                ? 'Carte indisponible'
-                : 'Map unavailable'
+                ? showUntiled
+                  ? 'Fond de carte indisponible'
+                  : 'Carte indisponible'
+                : showUntiled
+                  ? 'Basemap unavailable'
+                  : 'Map unavailable'
               : fr
                 ? 'Chargement de la carte'
                 : 'Loading the map'}

@@ -1,4 +1,9 @@
-import { configuredSource, countryFor, type EnrichmentLayer } from '../registry';
+import {
+  configuredSource,
+  countryFor,
+  isRegisteredSourceUrl,
+  type EnrichmentLayer,
+} from '../registry';
 import { record, validateGeometry, type Coverage } from './geometry';
 export interface ImportManifest {
   countryCode: string;
@@ -88,17 +93,16 @@ export function validateManifest(value: unknown): ImportManifest {
     throw new Error(`Version must be ${source.version} or ${source.version}@<operator-revision>`);
   if (source.referenceYear && raw.referenceYear !== source.referenceYear)
     throw new Error('referenceYear does not match registered product');
-  const quality = layer === 'population' ? 'modelled' : layer === 'traffic' ? 'observed' : 'mapped';
+  const quality = ['population', 'population_demographics'].includes(layer)
+    ? 'modelled'
+    : layer === 'traffic'
+      ? 'observed'
+      : 'mapped';
   if (raw.quality !== quality) throw new Error(`Layer requires quality ${quality}`);
   const sourceUrl = httpsUrl(raw.sourceUrl, 'sourceUrl');
   const licenceUrl = httpsUrl(raw.licenceUrl, 'licenceUrl');
   const normalizedUrl = new URL(sourceUrl);
-  if (
-    source.url &&
-    !source.allowedUrlPrefixes.some((p) =>
-      p.endsWith('/') ? normalizedUrl.href.startsWith(p) : normalizedUrl.href === p,
-    )
-  )
+  if (source.url && !isRegisteredSourceUrl(normalizedUrl.href, source))
     throw new Error('sourceUrl is not a registered official URL');
   if (normalizedUrl.search || (normalizedUrl.port && normalizedUrl.port !== '443'))
     throw new Error('sourceUrl must not contain query credentials or a custom port');

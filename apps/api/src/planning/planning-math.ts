@@ -1,3 +1,5 @@
+import type { PlanningStudyInput, PlanningStudyTarget } from '@abonten/contracts/planning-study';
+
 /** Canonical deterministic planning rules for API grounding and the web planner.
  * This module has no transport, framework, provider or secret dependencies. The
  * web re-exports this source so displayed numbers and grounded facts cannot drift.
@@ -634,4 +636,91 @@ export function summarizeResearchPrices(
       'Availability, LED slot duration/share, permits and operator approval remain unconfirmed.',
     ],
   };
+}
+
+/** Strip space-family group separators (regular, NBSP, narrow NBSP, apostrophe). */
+function withoutGrouping(raw: string): string {
+  return raw
+    .trim()
+    .replace(/[\u00A0\u202F\u2009']/g, '')
+    .replace(/ /g, '');
+}
+
+/**
+ * Parse a money amount. Spaces (and NBSP/apostrophes) are thousands grouping;
+ * a comma or point followed by at most two digits is a decimal separator.
+ * Ambiguous patterns — a separator followed by three digits ('6,000',
+ * '6.000'), or both separators present — are rejected, not reinterpreted.
+ */
+export function parsePlanningAmount(raw: string): number | null {
+  const s = withoutGrouping(raw);
+  if (!s) return null;
+  if (s.includes('.') && s.includes(',')) return null;
+  if (s.includes(',')) {
+    if (!/^\d+(,\d{1,2})?$/.test(s)) return null; // '6,000' → ambiguous
+    const value = Number(s.replace(',', '.'));
+    return Number.isFinite(value) ? value : null;
+  }
+  if (s.includes('.')) {
+    if (!/^\d+(\.\d{1,2})?$/.test(s)) return null; // '6.000' → ambiguous
+    const value = Number(s);
+    return Number.isFinite(value) ? value : null;
+  }
+  if (!/^\d+$/.test(s)) return null; // signs, letters, stray symbols → invalid
+  const value = Number(s);
+  return Number.isFinite(value) ? value : null;
+}
+
+type StudyBasisInput = Pick<
+  PlanningStudyInput,
+  | 'countryCode'
+  | 'center'
+  | 'radiusKm'
+  | 'timeZone'
+  | 'flight'
+  | 'dayparts'
+  | 'sampling'
+  | 'target'
+  | 'secondaryTarget'
+  | 'digitalAllocations'
+>;
+const targetBasis = (target: PlanningStudyTarget) => [
+  [...(target.locations ?? [])].sort((a, b) => a - b),
+  [...(target.travelPurposes ?? [])].sort(),
+  [...(target.ageBands ?? [])].sort(),
+  target.sex ?? null,
+  [...(target.sec?.groups ?? [])].sort(),
+  Boolean(target.household?.parentsOfSchoolChildren),
+  target.household?.parentsOfSchoolChildren?.childAgeMin ?? null,
+  target.household?.parentsOfSchoolChildren?.childAgeMax ?? null,
+  target.household?.parentsOfSchoolChildren?.schoolLocation?.scope ?? null,
+  target.household?.economicDescription ?? null,
+  [...(target.unsupportedCriteria ?? [])].sort(),
+];
+/** JSONB may reorder objects. Only these semantic values determine whether retained journeys apply. */
+export function planningStudyBasis(input: StudyBasisInput): string {
+  const sampling = input.sampling ?? { mode: 'recommended' };
+  const referencePairs = sampling.referencePairs ?? 72;
+  return JSON.stringify([
+    input.countryCode,
+    input.center.latitude,
+    input.center.longitude,
+    input.radiusKm,
+    input.timeZone,
+    input.flight.startDate,
+    input.flight.endDate,
+    input.dayparts
+      .map((part) => [part.id, part.localHour, part.dayType ?? 'all'])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    sampling.mode,
+    sampling.mode === 'recommended'
+      ? Math.min(sampling.directedPairs ?? 34, referencePairs)
+      : (sampling.directedPairs ?? 34),
+    referencePairs,
+    targetBasis(input.target),
+    input.secondaryTarget ? targetBasis(input.secondaryTarget) : null,
+    [...(input.digitalAllocations ?? [])]
+      .sort((a, b) => a.faceId.localeCompare(b.faceId))
+      .map((row) => [row.faceId, row.advertiserSpotsPerLoop]),
+  ]);
 }

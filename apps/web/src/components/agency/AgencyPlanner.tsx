@@ -31,7 +31,8 @@ import {
   type selectionDistances,
   type summarizeBudget,
 } from '../../lib/agency-planning';
-import type { ShortlistFace } from './AgencyDashboard';
+import type { SiteDetail } from '../../lib/sites-api';
+
 import { agencyEvidenceText } from '../../lib/agency-evidence-locale';
 import { parseAmount } from '../../lib/number-format';
 import { displayDateOnly, displayNumber, displayUtcTimestamp } from '../../lib/locale-format';
@@ -43,6 +44,12 @@ import {
   ResearchReferenceFacts,
 } from './ResearchReferenceFacts';
 import { researchAskingPrice, researchFaceLabel } from '../../lib/research-reference';
+
+interface ShortlistFace {
+  site: SiteDetail;
+  faceId: string;
+  pricingCurrency?: string;
+}
 
 interface PlannerProps {
   open: boolean;

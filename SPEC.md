@@ -61,10 +61,6 @@ clients rarely get reliable proof that their sites are live. OMG WeCA's involvem
 Joint Industry Audience Measurement reform underscores regional demand for measurement
 discipline. Abonten turns that demand into product.
 
-**Initial scope.** This specification covers the full product vision and a phased delivery
-roadmap (MVP → V1 → V2). Implementation begins after this spec is approved; no application code
-is scaffolded in the initialization phase.
-
 ---
 
 ## 2. Product Vision
@@ -81,8 +77,8 @@ channel.
 
 - **Street-first, not desk-first.** The hardest users to serve are field operatives capturing
   proof of performance on low-bandwidth phones in the rain. Optimize for them first.
-- **Measure what was promised.** Every booked site carries KPI estimates at planning time and a
-  verification trail at delivery time. The gap between the two is the product's core value.
+- **Measure what was promised.** Plans carry KPI estimates where the evidence supports them.
+  Each booking has a verification trail at delivery time.
 - **Multi-tenant by default.** Media partners, agencies, and brands are separate organizations
   sharing one marketplace. Tenant isolation and role-based access are foundational, not added
   later.
@@ -267,7 +263,8 @@ station panels), 3D and spectacular displays, and tri-vision panels.
 - **Illumination:** `none`, `front_lit`, `back_lit`, `edge_lit`, `led`; illumination hours; whether
   illumination is required for visibility at night.
 - **Creative / substrate:** printable area, bleed, mounting substrate, file requirements per face.
-- **Media assets:** reference photos (front, context/street, night), site diagrams.
+- **Media assets:** site photos, a site video or 360° panorama, and optional site diagrams.
+  See the capture requirements below.
 - **Commercial:** default rate card (per day/week/month), currency, minimum booking duration,
   blackout/seasonal rules.
 - **Compliance:** permit reference, permit expiry, regulatory class (where applicable).
@@ -294,14 +291,11 @@ station panels), 3D and spectacular displays, and tri-vision panels.
    level. Enrichment records also carry a `data_class` (`demo` | `production`): demo-class rows
    are excluded from production reads, planning surfaces, and any model input, and are labelled
    wherever they render.
-5. **Reference photos.** `front` assets require a known `captured_at` before listing; upload may retain an
-   explicitly unknown date for later correction. UI guidance warns when a
-   supplied capture date is older than 12 months. Unknown capture dates are left empty rather
-   than invented.
+5. **Capture dates.** Draft uploads can leave capture dates unknown for later correction.
+   The UI suggests replacing photos older than 12 months.
 6. **Entry plausibility checks (server-enforced).** Orientation within 0–359°; positive viewing
    distance and elevation; illumination hours matched against a time-range pattern; coordinates
-   inside the declared country's bounding box when the country is one of Nigeria, Ghana, or
-   Cameroon.
+   inside the declared country's bounding box for supported markets.
 7. **Deliberate deferrals (approved):** geo-fenced polygon _capture_ stays V1 (the column, DTO and
    storage are live; the map-drawing UI is not); booking calendars/holds stay V1
    per §5.6/§6.2; viewing angle, traffic exposure, and regulatory class stay V1 with provenance (they are model inputs for the
@@ -314,8 +308,9 @@ Face-level prices override the site default while effective; a future rate can b
 before it takes effect, while an active rate is ended and retained in the record.
 Until agency-side quoting can combine rate segments, a search window spanning a face-specific
 price change must not be shown at the site-default price.
-A new listing must have at least one bookable face, a current rate
-covering each bookable face (a site-wide rate may be used as its default), and the reference photo above.
+A new listing must meet the site capture requirements below and have at least one
+bookable face with a current rate for every bookable face. A site-wide rate can
+serve as the default.
 For digital faces, the pixel and loop/spot fields must be complete before that face can be
 offered for booking. A recorded permit expiry that has passed makes a site unbookable; permits
 that do not apply should remain unrecorded rather than inventing a reference. An existing
@@ -372,8 +367,8 @@ Site videos are available for every inventory format, separate from existing LED
 board recordings and campaign creative. Panorama uploads use full 360° 2:1
 equirectangular still images and open in an interactive, keyboard/touch-accessible
 viewer. The format check establishes compatibility, not proof of authentic capture.
-Already approved/listed sites keep their prior media policy until their next submission;
-new sites and submissions use the new requirements. No legacy media is relabeled.
+Already approved or listed sites on the earlier media policy keep their dated
+front photo requirement until their next submission. Existing asset labels are retained.
 Registration and editing show illustrative framing guidance and explain each
 requirement in English and French. Reviewers and authorized buyers can inspect
 the same media. Existing provenance, tenant boundaries and upload limits remain.
@@ -396,8 +391,7 @@ draft → pending_review → approved → listed → (suspended) → decommissio
 
 - `draft` — created by the media partner, not yet submitted.
 - `pending_review` — submitted to platform admin for listing approval.
-- `approved` / `listed` — visible and bookable in the marketplace. (Admin may auto-approve trusted
-  partners; new partners require manual review.)
+- `approved` → `listed` — platform approval publishes the eligible site to the marketplace.
 - `suspended` — temporarily unbookable (maintenance, permit lapse, quality hold).
 - `decommissioned` — permanently retired; retained for historical reporting.
 
@@ -408,8 +402,7 @@ draft → pending_review → approved → listed → (suspended) → decommissio
 - As a media partner, I can manage multiple faces on a single structure as separately bookable
   units.
 - As a platform admin, I review submitted sites for completeness and accuracy before listing.
-- As a planner, I can trust that a listed site has verified coordinates and at least one reference
-  photo.
+- As a planner, I can inspect a listed site's coordinates, verification status and reference media.
 
 **Module phase mapping.** MVP: single-site registration, approval, listing, basic attributes.
 V1: bulk import, multi-face structures, full spec schema. V2: automated spec validation and
@@ -447,18 +440,19 @@ raster processing runs locally. GHSL/built-up indicators are optional future lay
 
 Real traffic observations may be imported separately with an observed interval, duration,
 count/unit, direction and vehicle-class definitions. A short count is never relabelled AADT
-or multiplied into an audience estimate. No traffic values are created from road class,
-population or demo records. Production traffic remains unavailable until actual licensed
-observations are imported. Additional countries are registry entries and source manifests,
-not new schemas or country-specific service branches.
+or multiplied into an audience estimate. Observed traffic requires licensed observations.
+Road class and residential population remain geographic context. Any future modelled
+circulation must qualify separately under [§5.3](#planning-measurement). Demo records are
+excluded from production measurement. Additional countries are registry entries and
+source manifests, not new schemas or country-specific service branches.
 
 **Enrichment dimensions.**
 
-- **Traffic counts:** Average Annual Daily Traffic (AADT) for vehicle exposure; peak/off-peak
+- **Traffic counts:** Average Annual Daily Traffic (AADT) for vehicle volume; peak/off-peak
   splits; pedestrian counts where relevant; source and vintage of the count.
-- **Visibility score:** composite of viewing angle, unobstructed sightline, viewing distance,
-  dwell time, and clutter/competition from adjacent sites. A normalized 0–100 score plus the
-  sub-components that produced it.
+- **Visibility inputs:** viewing angle, sightline, viewing distance, dwell time and nearby
+  visual clutter where documented. See [Viewability Fit](#planning-measurement) for the
+  planning calculation.
 - **Audience demographics:** modeled age, gender, socio-economic classification (SEC), and
   inferred interests where data permits; coverage confidence and data source.
 - **Surrounding Points of Interest (POIs):** malls, markets, schools, universities, religious
@@ -503,17 +497,446 @@ budgets, and schedules.
   (flight), currency, total budget.
 - Site selection: manual add from search, auto-recommend by KPI/budget fit, route-based selection
   (sites along a corridor), and saved shortlists.
-- **KPI estimation** per selected site and for the plan aggregate:
-  - Estimated **impressions** / opportunity-to-see (OTS) from traffic × visibility × days.
-  - **Reach** and **frequency** (plan-level), with demographic coverage breakdown.
-  - **GRP/TRP** where audience universe data is available.
-  - Cost metrics: total cost, **CPM**, **CPRP**, cost per site, budget utilization.
+- **KPI estimation** for selected faces and the plan where evidence supports the measure.
+  Use the [planning measurement definitions](#planning-measurement). Report demographic
+  breakdowns where supported and **GRP/TRP** where the audience universe and exposure basis
+  are known.
+- **Costs:** total cost, cost per site and budget utilization. Label **CPM** with the
+  impression type used and calculate **CPRP** only when rating points are available.
 - **Budget allocation:** distribute a total budget across sites with constraints (min/max per site,
   per-market caps); visualize allocation and remaining budget.
 - **Scheduling:** per-site start/end within the flight, sequencing, and conflict checks against
   availability.
 - **Scenarios:** save multiple plan variants, compare them side-by-side, and lock a winner into a
   booking.
+
+#### Planning measurement
+
+The planner UI, planning API and plan exports use these five groups in this order.
+Gross, viewable (OTS) and likelihood-to-see (LTS) impressions have separate labels
+and values. Map supplier metrics by their qualifying criteria.
+
+1. **Traffic and circulation.** Traffic counts vehicle passages. Circulation counts person
+   passages, including people on foot and occupants of vehicles where supported. Keep
+   these units separate and state the location, interval, direction and whether the
+   value is observed or modelled. Converting vehicles to persons requires supported
+   occupancy estimates.
+2. **Gross impressions.** Potential ad exposures from people present in the defined
+   exposure zone for a face while the face is functioning and the ad is displayed.
+   For digital faces, use the advertiser's play times or the planned slot schedule
+   for a forecast.
+3. **Viewable impressions (OTS).** The subset of gross impressions that meets the
+   applicable viewability criteria, including enough time to see the ad.
+4. **Likelihood-to-see impressions (LTS).** Viewable impressions with additional evidence
+   that the ad was likely noticed.
+5. **Audience, reach and frequency.** Audience requires stronger evidence beyond LTS
+   that people saw or were highly likely to see the ad. Reach counts distinct people
+   with at least one qualifying exposure across the selected faces in the stated period.
+   Frequency is qualifying exposures per person reached over the same faces and period.
+   Disclose the exposure basis and deduplication method and use the same basis for both.
+   A reach percentage also requires a defined population.
+
+These definitions follow the [MRC OOH Measurement Standards, December 2025, §§3.1–3.3](https://mediaratingcouncil.org/sites/default/files/Standards/MRC%20OOH%20Standards%20Combined_FINAL.pdf).
+
+A future circulation model can estimate directional flows from road and transit networks,
+POIs and sparse counts. Relative route demand derived from open data stays planning
+context until the model can estimate absolute passage volumes validated against
+independent observations for the relevant locations, directions and periods. A
+qualified model can supply circulation inputs to impression estimates. Each impression
+type still requires its own evidence. [WOO Global OOH Audience Measurement Guidelines 2.0, §2.1.1](https://cdn.oohcentral.com/research/world-ooh/global-ooh-audience-measurement-guidelines-2.0.pdf#page=14)
+
+**Abonten Directional Travel Demand Model (ADTM, V1).** A planner can compare directional
+route alternatives for a stated time window in any market with usable inputs. Each
+origin-to-destination pair has a relative demand weight and a declared source. The
+model assigns a pair's fixed demand to its routes in proportion to the inverse of
+their travel times. Changing travel times can redistribute demand across its routes.
+
+The generator in `POST /api/planning/v1/studies` takes a country, local study area,
+campaign flight, local dayparts and time zone. It uses current production
+OpenStreetMap roads and points of interest and WorldPop resident estimates from the
+geographic context imports. It groups them into zones, generates trips between
+residential and activity zones, and weights each direction using resident estimates,
+mapped destination categories, distance and a versioned local daypart profile.
+The profile expresses assumptions about trip timing, such as morning travel toward
+schools and offices and later travel toward homes. Return the data vintages and the
+weight contributions so planners can see what drove the result. Exclude unknown
+population from origin weights without substituting zero, and report missing coverage.
+
+The study keeps one board-relevant set of directed pairs across all requested
+dayparts, including local and through trips. Report the share of generated demand
+weight sent to routing and retain the unresolved weight of any pair Mapbox cannot
+route. Generated weights are relative to the selected area and assumptions.
+
+For comparisons based on planner-supplied weights and candidate routes, use
+`POST /api/planning/v1/travel-demand/scenarios`. Supply sourced durations directly
+or request Mapbox Directions estimates for an offset-qualified departure time.
+Use one travel time source per comparison.
+Only public road waypoints and departure time go to Mapbox when the planner
+deliberately starts a study. The study action authorizes that request; a separate
+provider-transfer checkbox is not part of the planning journey. Inventory, brief
+and client data stay within Abonten for routing. The provider
+can return a routing estimate in places where traffic coverage is absent. Report
+which inputs were used and distinguish a predicted duration from a confirmed
+traffic observation. If any alternative lacks a comparable duration, leave that
+pair's allocation unresolved and keep its weight in the scenario denominator.
+
+Shares describe the submitted scenario and its assumptions. They stay separate
+from traffic and circulation counts, board exposure and audience metrics.
+
+**Board route sample (V1).** The planner chooses **Recommended**
+or sets a **Custom** budget in directed origin-to-destination (OD) pairs. A → B
+and B → A count separately. Add both as a block where the inputs support both
+directions. Keep the selected pairs fixed across the compared dayparts and
+calculate weights and route choices for each daypart.
+Include both local and through trips. Let routes bypass the board and use their
+actual geometry to determine which routes cross its road. Show the number of
+directed pairs used and the actual candidate-route count for each daypart.
+
+Recommended uses the smallest tested sample that meets both checks against a
+larger, comparable reference for the board and still meets them at every larger
+tested sample size. For every face and daypart, the modeled split of passing
+weight by direction and Viewability Fit must each be within 3 percentage points
+of the reference. In every daypart, the sample must also capture at least 95%
+of the reference's modeled passing weight at the board. Compare
+passing weights on the same demand-weight scale, using the same road
+cross-section, face criteria and routing and weighting methods. Keep the
+reference pairs fixed across dayparts. Alongside the recommended count, show the
+reference size, the largest score difference and the lowest passing-weight
+coverage across dayparts. If the reference is unavailable or too weak to support
+the checks, explain why. If no tested sample meets both checks, show the shortfall.
+
+In the Accra pilot, the original placement met the checks with 16 directed pairs
+and the more demanding placement needed 34. The 34-pair sample differed by at most
+1.9 percentage points and captured at least 95.2% of modeled passing weight against
+the same 72 directed reference pairs across three dayparts. These are historical
+pilot findings. The integrated planner derives its recommendation for the actual
+board. If a smaller stable sample cannot be established, it uses the requested
+reference and explains the shortfall without declaring that reference converged.
+
+**Abonten Score.** Report Directional Demand and Viewability Fit separately for each
+face and time window. At a defined road cross-section, sum the ADTM weight of each
+route alternative once for the direction it crosses, using its trip-pair weight
+times its within-pair route share. Directional Demand is the percentile of that
+weight against declared comparable road approaches in the same time window.
+Use one routed sample for the board and its benchmark approaches, keep those
+approaches fixed across dayparts and report coverage. Show unavailable when the
+routed sample provides no matched weight for the direction or comparable
+approaches are unavailable.
+
+Viewability Fit is the share of all modeled passage weight crossing the board's
+road cross-section in either direction that meets the checks for that face.
+Assess the direction of travel, the face's orientation and position relative to
+the road, usable sightline, continuous time in view and display eligibility where
+supported. Estimate time in view from the lengths and speeds of the visible
+road sections for the time window. When using Mapbox, report the local segment
+speeds as routing estimates and indicate whether the response showed evidence
+of traffic coverage. A passage known to be ineligible contributes to the total
+passing weight only. Report assessment coverage as a share of that same total.
+Show Fit as unavailable when there is no matched weight or when any positive
+weight remains unresolved. Both results describe modeled route demand, separate
+from measured traffic, impressions and audience.
+
+**Abonten Audience Model (V1).** Estimate campaign reach and frequency by
+assigning ADTM trips to a weighted simulated population. Use census data or WorldPop
+to size the population, OpenStreetMap roads and destinations to describe where people
+can travel, and ADTM’s directional weights, routes and travel times to model journeys.
+Keep the same simulated people across all faces, dayparts and days in the flight so
+the model captures recurring trips and overlap between faces.
+
+Use the same engine across markets. Local travel surveys and counts can calibrate
+trip volumes and timing. Multi-day travel diaries or mobility panels can calibrate
+how often people repeat trips and how much audiences overlap across corridors.
+Use existing data first. A short opt-in browser diary can fill a specific gap
+without an app or hardware installation. Where recurrence is assumed, retain its
+basis in the internal methodology and show planners the estimated range and material
+limitations. Use contrasting
+markets with different travel patterns and data coverage for the first validation.
+
+Apply each face’s viewability checks and the campaign schedule to the simulated
+journeys. Report modeled OTS impressions, 1+ reach, reach at the planner's chosen positive
+whole-number threshold, and average OTS frequency. Calculate all four from the same
+frequency distribution across the flight. Count each person once at each reach threshold.
+A population total and relative trip weights alone are insufficient to support an absolute
+reach estimate. Publish estimates only where the inputs support person-trip scale, qualifying
+opportunities and a disclosed deduplication method. Audience measurement retains its
+separate evidence requirements above.
+
+AAM is part of the authenticated agency study API at `POST /api/planning/v1/studies`.
+`GET /api/planning/v1/studies/:id` reports progress and results, while
+`POST /api/planning/v1/studies/:id/evaluate` changes selected faces, objective, budget
+or the positive whole-number threshold using the retained study. This does not reroute
+or change its population. The study applies representative local weekday/weekend
+periods to each calendar day of the flight, using saved face profiles and planned
+display allocations to qualify opportunities. Report source coverage, weighted cohort
+basis and assumptions internally, with sensitivity results and material coverage
+limits in the planner interface. Cancellation and retry preserve controls.
+Interrupted, expired or source-incompatible studies require a new or retried study.
+Redis-backed attempt leases, shared capacity and cancellation keep progress consistent
+across API processes. Fence stale workers and overlapping evaluations so an earlier
+request cannot overwrite a newer accepted attempt or face selection.
+`POST /api/planning/v1/studies/:id/compare` evaluates a saved alternative against retained
+evidence without changing the current study. Bind displayed comparisons to the current
+study, applied decisions and saved alternative revisions; discard superseded responses.
+The superseded 1,000-person example API is removed to keep one audience engine.
+
+**Composite Abonten Score (V1).** Rank whole plans against the confirmed
+objective, target audience and flight. Apply comparable full-flight costs, the
+budget cap and availability as eligibility constraints. For a reach brief, use the
+Audience Model’s estimate of how many people have at least one qualifying opportunity.
+For a frequency brief, use the number of people who reach the brief’s frequency
+threshold, such as 3+. Recalculate overlap across the proposed faces. Explain how
+many new people a recommended face adds or how many it moves across the target
+threshold. Use the Abonten Score’s face-level signals to explain the underlying
+demand and viewability. The composite is a plan ranking based on forecast metrics
+and remains separate from delivery reporting.
+
+**Integrated planning release (2026-11-07 decision).** Complete the map-led journey
+from a confirmed market, flight, budget/currency, objective and target audience to
+face comparison, modeled audience, a recommended face mix and saved alternatives.
+Use the existing OMG Penpot planning journey and support both light and dark themes.
+All three models consume the same declared study, fixed directed trip pairs and
+versioned input evidence. Include local trips and trips entering/leaving the study
+area. Recommended sampling is computed for the actual board and its dayparts using
+the stability and passing-weight checks above. Custom sampling is a planner control.
+Show a reference shortfall or missing source as an actionable data state.
+
+Save face-level facing, viewing distance/angle, obstruction and display inputs once
+through the partner inventory workflow with provenance. Infer road approaches from
+public road geometry and offer map-assisted correction. Keep partner work limited
+to facts that maps cannot establish. A road proximity match alone cannot establish
+the sightline. Faces on one structure use the same nearest-road cross-section by
+default. A distinct optional `roadApproach` point selects another road explicitly.
+The furthest usable `sightline` point determines visibility and cannot silently
+change the road being assessed. Use directional Mapbox segment distances, durations and speeds when
+calculating continuous time in view, with the face's position, orientation and display
+conditions. Explain the score through the face's directional exposure, viewing
+time and material missing inputs; keep technical calibration in the methodology.
+Use a face's explicit illumination schedule or parseable saved site hours for night
+eligibility. A declared unlit site is ineligible at night; unknown operating hours
+remain unresolved. Disclose the day/night timing assumption. AAM may report an
+assessed subtotal with the excluded faces and periods named, without redistributing
+their journeys. Whole-flight Composite recommendations require complete coverage
+for each included face.
+
+The user approved population-wide modeled reach where observations are absent.
+Use a declared geographic population and explicit person-trip, participation,
+recurrence and route-choice assumptions with lower/base/higher sensitivity results.
+Report this as an uncalibrated planning estimate until independent observations
+support calibration. Relative trip weights alone never establish person-trip scale.
+Retain the same modeled population, journeys and geographic basis when changing
+selected faces. Apply local calendar days, weekday/weekend timing and the selected
+display schedule throughout the flight. Reach at each positive integer threshold,
+OTS impressions and average frequency come from the same frequency distribution.
+
+Targeting supports location and modeled travel-purpose groups, plus age and sex
+where public data supports them. Maintain source vintage, coverage and an explicit
+missing-data response for demographic inputs. Assess demographic coverage over the
+known resident population, excluding water and other NoData cells from the coverage
+denominator. Derive age/sex proportions within the demographic grid's own all-age,
+both-sex totals before applying them to the study's fixed resident population;
+different raster resolutions must not silently change that population. Resident demographics and destination
+categories do not establish individual traveler identity or measured interests.
+Household audience qualification and campaign-led strategy are described below.
+SEC qualification is included using the chosen A, B, C1, C2, D and E classes and
+versioned, market-appropriate evidence. Broader interest targeting remains outside this slice. Unsupported
+targeting cannot silently become an all-person estimate or earn a targeting bonus.
+The Composite Abonten Score uses the resulting objective-specific incremental reach
+and frequency with authorized inventory, current availability and comparable flight
+costs. Explain each selected face and the modeled people it adds or moves above the
+chosen frequency threshold. Preserve unknown commercial facts in research references.
+
+**Brief, strategy and audience qualification (2026-11-08 clarification, V1 §5.3).**
+Campaign setup is a structured media-planning form. Planners enter the campaign
+description, primary audience, optional secondary audience, target-group parameters
+such as age, gender and SEC, campaign objectives, market/geography, media budget,
+currency and flight. Campaign forms express first and last campaign days inclusively;
+the API retains its exclusive end-date contract, converted at the interface boundary.
+Saved plans, cost calculations and displayed dates must describe the same flight.
+A product, service or price mentioned in the description informs judgment about the
+target group (TG), geography and strategy. It is not a separate required field,
+an automatic household-affordability cutoff or an independent measurement-model
+input. Media budget and flight remain separate campaign constraints. Human or AI intelligence translates the context and
+available evidence into explicit, reviewable TG criteria and strategy decisions.
+The planner can revise that interpretation; never silently substitute education
+travelers, an age band or an income threshold for the requested audience.
+
+The primary path is enter campaign context → define audiences and objectives →
+build and compare plans. Planners decompose their own briefs and can complete the
+form without an AI request. Optionally, choose “Import brief” and select a file:
+that deliberate action starts extraction and fills the same campaign form with
+reviewable values. Do not insert a second raw-text/copy/save/proposal workflow.
+The extraction must read the full admitted text, including its tail, rather than
+confusing a bounded description with the original document. It must not invent missing details or apply an incompatible
+interpretation silently. Preserve existing saved context. There is no separate
+offer/payment form, save-context step or provider-sharing checkbox. Opening,
+editing or reopening campaign context never sends it automatically; a passive
+file attachment outside the deliberate import action is not an extraction request.
+Provider configuration and service privacy information belong in the appropriate
+organization/account context, not in the campaign form. Optional audience refinements
+must not turn every brief into a purchasing-profile or unsupported-requirements form.
+
+Use compact field groups, selected-parameter pills, audience tags, metric cards and
+comparison rows to make decisions and results scannable. Retain meaningful labels
+and accessible controls. Show reasons, detailed evidence and provenance on demand;
+do not stack paragraphs, repeated headings and introductions around every control.
+
+The primary audience drives portfolio optimization. Report secondary-audience
+population, modeled OTS, reach and frequency separately on the same fixed study
+and journeys. Audiences may overlap; do not add their totals or imply they are
+disjoint. SEC groups describe modeled socioeconomic profiles using occupation,
+education, household assets and living conditions, not a
+product-price affordability threshold. Preserve source vintage, classification
+definition, geographic coverage and uncertainty internally; do not fabricate
+class membership or silently ignore a selected SEC filter.
+
+The Abonten SEC model uses the A, B, C1, C2, D and E labels with a versioned
+multifactor method. Fit class probabilities from actual weighted joint public
+survey records, retaining the four input domains and learned class proportions.
+Do not substitute six equal wealth bands, import another country's class shares,
+or claim that model classes are observed NRS chief-income-earner grades. Survey
+respondent occupation is not the occupation of their household's principal earner;
+students, homemakers, retirees and people without work must not automatically
+become class E. Preserve missing input and unclassified mass. Adult-only evidence
+cannot silently qualify children. Aggregate reference outputs may be retained;
+raw respondent records, identifiers, free text and restricted coordinates do not
+enter product storage, source control or provider requests. Geography and joint
+age/gender support must reflect the source's actual sample; no neighborhood-level
+precision can be inferred from a national profile. Combining SEC and parent
+qualification must propagate uncertainty about their unobserved dependence.
+
+The initial feed is [Afrobarometer Round 10](https://www.afrobarometer.org/data/merged-data/),
+using published records under its [usage policy](https://www.afrobarometer.org/data/data-usage-and-access-policy/).
+The actual public file includes Nigeria, Ghana, Benin, Côte d'Ivoire and Cameroon.
+Fit a deterministic, regularized six-class categorical latent model per country,
+using a normalized four-domain likelihood: occupation, education, household-owned
+asset count and the source's official lived-poverty category. Occupation is nominal
+rather than an automatic status-to-class rule. Retain convergence and comparable
+regularized-objective diagnostics; optimizer instability does not become a sampling
+confidence interval. Six class names alone do not establish identifiable profiles.
+Order the resulting profiles from A to E by their education, assets and living
+conditions; learn the class proportions from weighted records. Preserve fractional
+posterior membership, unclassified mass and country/age/gender sample support.
+Calculate each selected class union within each retained fit, preserving covariance;
+do not sum six independent error margins. Unknown adults remain potentially eligible
+in the upper sensitivity scenario. Selecting all six classes is the full eligible
+adult union: a person cannot be excluded merely because their individual class is
+unknown. Its base and bounds therefore preserve the adult population, or the
+existing parent estimate when parent qualification is chosen, without pretending
+that every individual grade was classified. Report source classification coverage
+separately. A class-specific selection with no supported evidence yields an
+unavailable estimate, not a claimed zero.
+These are Abonten model classes, not survey-assigned A–E labels. Adult-only support
+starts at 18: within a native 15–19 population bin, the initial uniform-age
+approximation assigns 2/5 to ages 18–19, not the entire bin. Combining parent and
+SEC probabilities uses a conditional maximum-entropy base with structural
+Fréchet bounds for their unobserved dependence. The methodology, source version,
+fit checks and coverage remain inspectable without requiring planners to enter
+model coefficients.
+
+**Initial SEC publication rule.** Withhold a class-specific point estimate when
+the selected cohort's union share differs by more than five percentage points
+between comparable converged fits. Weight that diagnostic by the actual selected
+adult population; a sparse stratum alone must not disable a whole market. This is
+an internal pilot quality rule, not a WOO/MRC requirement or confidence interval.
+Keep its diagnostic and threshold in methodology metadata. An unreliable secondary
+audience does not block a supported primary recommendation. The exhaustive six-class
+union retains the adult/parent identity described above. Until a different display
+policy is chosen, use a short unavailable status rather than publishing an unstable
+point figure; retain its underlying range for analysis.
+
+The platform chatbot is a separate assistant, available alongside planning. A
+planner can ask it to inspect the current campaign/plan, edit draft context and
+audiences, find and compare faces, run ADTM/AAM and save alternatives. Give it the
+authorized context and platform tools so it can decide how to accomplish the
+request; do not encode a fixed intent router or mandatory action sequence. Reuse
+the same authorized domain operations as the interface, preserving tenant scope,
+ownership, optimistic revisions, idempotency and audit. Reflect completed actions
+in the visible plan and report actual tool results; a response cannot claim that
+an action succeeded when it did not. This scope does not authorize booking,
+publishing, payments or messages to other people. A deliberate chat send starts
+the request; editing or navigating never triggers silent agent actions.
+
+Planning intelligence receives the available audience capabilities, supported child
+ages and reference scope. A proposal uses the same campaign-period catalogue as the
+interface; the engine API may still accept explicitly supplied custom periods.
+Keep methodological notes separate from unsupported audience requirements. Preserve
+chosen criteria when a proposal leaves them unspecified, and discard proposals that
+finish after their brief or decisions have changed.
+AI observations and coverage cautions are advisory proposal notes, not new audience
+filters. A proposal preserves any unsupported requirements already chosen by the
+planner, but cannot turn its own free-text notes into hard qualification gates.
+The planner can explicitly add a must-have requirement through the audience controls.
+Show the applied audience and material scope before calculation; a proposal cannot
+claim that a criterion lacking evidence has been measured.
+
+ADTM models travel demand and journeys. AAM composes the chosen audience with those
+journeys and face viewing checks to estimate modeled OTS impressions, distinct
+1+/N+ reach and frequency. Household attributes belong in AAM when the chosen TG
+requires them. Parent status and a child's school location are separate criteria;
+an adult need not personally make an education-purpose trip to qualify as a parent.
+Composite ranks objective-specific incremental qualified reach from that same
+distribution within commercial constraints, applying qualification once.
+
+School geography describes where children attend school, independently of household
+residence. A modeled school catchment may combine public school locations, population
+and sourced enrollment or travel evidence. Preserve the distinction between observed
+household relationships and inferred school assignment, propagate uncertainty, and
+report missing school coverage rather than treating every local resident as eligible.
+Strategy decisions include the applied study area, dayparts, objective and frequency
+threshold; descriptive strategy text alone cannot change execution.
+
+Abonten owns technical calibration, reference selection, coefficients and validation
+internally. Customer controls express the brief and strategy in business terms;
+they do not require trip rates, household-generation parameters, spending-budget
+fractions or assumption acknowledgements. Explain results with useful reasons,
+estimated ranges, coverage and material data limitations in plain language. Retain
+technical assumptions and provenance in the model methodology and audit evidence.
+
+Keep the implementation market-independent through versioned reference inputs,
+including source, licence/access conditions, survey period, geographic grain,
+monetary base/currency where relevant, method and coverage. Use supported joint
+household evidence for parent, school-enrollment and economic TG attributes. Any
+derived relationships remain distinguishable internally from observations;
+relative area wealth alone cannot establish a monetary purchasing-capacity claim.
+Show qualified population evidence even when missing face facts prevent OTS.
+Missing reference or viewing evidence stays actionable and cannot qualify everyone.
+
+The first household reference feed uses published Nigerian and Ghanaian aggregates;
+its coverage varies by child age and school-location evidence. The initial parent
+estimate covers adults living with their biological children who attend school.
+Show this scope when chosen; it does not establish guardians or parents living
+elsewhere. Combine child-parent and school-participation marginals with documented
+internal association and sibling assumptions, then compose the resulting adult
+probabilities with the fixed age/sex population once. Lower/base/higher values are
+a structural sensitivity range, not a statistical confidence interval. The initial
+Nigerian school catchment uses mapped school locations and published school travel
+times. Preserve unknown destinations and missing mapping coverage; do not assign
+all unknown journeys to the selected area. Add markets through versioned reference
+data rather than market-specific calculation branches.
+
+Persist brief context, selected TG and strategy through saved alternatives; recheck
+reference versions on resume. Changing the offer context alone cannot silently
+change the target universe or measurement outputs: revised TG/strategy decisions
+drive recalculation. Preserve stable cohorts across selected-face and N changes.
+Add only missing Penpot states and retain both themes and the organized journey.
+Use the same versioned API for browser and integration clients. Verify context/TG
+separation, the Lagos school-parent brief, unsupported evidence, saved comparisons,
+population conservation and whole-plan ranking. No viewing facts or household
+observations may be invented to force positive exposure results.
+
+Drafts preserve model controls, face choices and scenario alternatives. Reopening
+rechecks current facts and reuses only source-compatible, authorized study results.
+Routing may run asynchronously with visible progress, cancellation and retry so a
+larger reference does not block navigation or lose planner work. Required API and
+browser QA cover the normal journey and relevant missing-data/recovery paths.
+
+Distinguish reported results for past periods from forecasts for planned flights.
+Disclose source, method, period, coverage and evidence status for each metric, along
+with the confidence or uncertainty of any estimate. Leave unsupported metrics
+unavailable. Show a whole-plan total only with comparable coverage across all
+selected faces and dates. Label a subtotal as partial and state which faces and
+periods it covers. Keep these measures separate from costs, inventory availability,
+geographic context, brief-fit scores and POP delivery evidence.
 
 **Agency location-intelligence workspace (2026-10-04 amendment).** The agency
 landing surface is a full-screen marketplace map with selectable board pins,
@@ -528,7 +951,9 @@ quote or calendar check remains unknown; known unavailability still blocks addin
 it, and incomplete facts never confirm budget fit. This tab retains bounded controls
 and at most 100 face identifiers, scoped to the user and agency. Returning reloads
 authorized inventory and availability; incomplete restoration keeps full-plan budget
-fit unknown. Signout clears these drafts. Briefs, chat and sharing consent are not stored.
+fit unknown. Signout clears these tab drafts. Raw uploads, transient chat and transfer
+authorization are not stored. Deliberately saved planning drafts retain reviewed
+brief context, target group and strategy as described above.
 Popup visibility follows the same source, classification and freshness rules as
 planner grounding. Malformed locations remain unknown and cannot create distances.
 
@@ -543,10 +968,13 @@ When the server has an approved OpenAI credential, the planner uses the fixed
 and a server-loaded marketplace snapshot; canonical pricing, availability and
 geodesic calculations remain authoritative facts separate from model commentary.
 Model recommendations must reference faces in that snapshot. For a provisional research shortlist, admitted research face IDs remain selectable interest despite unknown commercial availability; they must not be represented as bookable supply. When one shortlist is requested, recommendation IDs describe one portfolio; alternatives are not added to that portfolio. Its preliminary exact-calendar-month, same-currency asking subtotal must respect the planning ceiling; missing prices cannot become zero, a confirmed fit or a stated remaining balance. Structured response array/string bounds are communicated to the provider and enforced again on return. The model cannot
-book inventory, execute code or invoke tools. Confirmed brief text is shared only
-after explicit consent for that brief; consent resets when the brief changes.
-Without consent, brief text and potentially brief-derived conversation are kept
-out of provider requests. Requests are bounded, cancellable and rate-limited,
+book inventory or execute arbitrary code. The existing tool-less grounded
+recommendation endpoint does not invoke platform tools; the separate platform
+chatbot uses the scoped planning tools described above. The new planning journey sends the
+current brief only when the planner deliberately asks to extract its details or
+sends a chatbot request; that action authorizes its request, including after an edit. It does not create a
+standing permission or silently send later edits. Other chat integrations retain
+their own deliberate-send and brief-sharing boundaries. Requests are bounded, cancellable and rate-limited,
 use `store: false`, and never retry automatically. Configured-provider failures
 are visible and require a deliberate retry; they do not masquerade as local help.
 Server-only structured Nest log events record provider and final-plan outcomes,
@@ -572,10 +1000,23 @@ validated against the exact transferred IDs. Upload admission precedes buffering
 allows two 10 MB documents per process, bounds body reads to twenty seconds and
 parsing to fifteen seconds, and holds capacity until a cancelled child closes.
 Local document extraction remains available regardless of provider availability.
-Gross estimated OTS requires production, in-date traffic observations suitable for
-the flight and explicit visibility/model assumptions. Short observations and
-residential population cannot create daily exposure estimates. Missing inputs
-leave OTS unavailable; no deduplicated reach, frequency or GRPs are fabricated.
+The workspace reports OTS only when the [measurement requirements](#planning-measurement)
+are met.
+
+**Map-led planner.** Use the Planning journey page in the OMG Penpot project as the
+design reference for the map workspace, board browser, face and daypart analysis,
+shortlist and comparison. Keep the map in view while planners open these panels.
+The shortlist records explicit face choices and stays visible as the planner moves
+between panels. A planner can compare a board's faces by local weekday or weekend
+daypart and review routing coverage before using the scores. The route layer uses
+ADTM's relative demand. Display face scores only when their inputs support them.
+In plan review, show the selected faces, comparable flight costs and budget fit.
+Let planners run AAM on the selected viewable approaches and change the reach
+threshold using the resulting frequency distribution. Report the sample basis and
+missing inputs next to the estimate. The agency draft can save the objective,
+target audience and reach threshold as planner-entered controls. Recheck evidence
+and require the planner to start each new routing study deliberately; provider
+transfer authorization is carried by that action, without another checkbox.
 
 **Agency work continuity (2026-10-06 amendment).** The agency dashboard is a
 workspace home with a primary start-plan action, direct marketplace access,
@@ -583,9 +1024,10 @@ personal saved planning drafts, and actionable checks derived from those drafts.
 The full-screen location-intelligence planner remains first-class on its own route.
 Personal planning drafts are durable, scoped to the signed-in user and agency,
 and exposed through the versioned planning API. A draft stores a bounded name,
-flight, country/search/format controls, budget/currency and at most 100 face/site
-identifiers. It stores no uploaded document, extracted brief, conversation,
-sharing consent, quoted price, availability, enrichment snapshot or reservation.
+flight, country/search/format controls, budget/currency, optional audience planning
+controls, reviewed brief context, target group, strategy and at most 100 face/site
+identifiers. It stores no raw uploaded document, transient extraction, conversation,
+standing transfer authorization, quoted price, availability, enrichment snapshot or reservation.
 Saving and updating are authorized and audited; optimistic revisions prevent
 silent overwrites. These drafts are planning interest, not commercial campaigns.
 Resume rechecks current authorized inventory and availability, preserves unknown
@@ -596,6 +1038,40 @@ availability and provenance; geographic context is never audience exposure.
 Dashboard attention items state the precise underlying missing control, stale
 flight or failed recheck and open the relevant correction journey. Empty saved
 work is an invitation to make a real plan, never invented campaigns or metrics.
+
+**Agency dashboard (2026-11-09 implementation).** The agency home is a
+quiet campaign work list with flight dates, compact planning and committed budget
+context, inline operational follow-up and recent personal drafts. A restrained
+per-campaign bar compares committed bookings with that campaign's planning budget;
+it does not represent spend or delivery. Unbooked campaigns retain that state
+without a committed fill. Campaigns
+follow the lifecycle in §6.3; personal drafts and alternative plans remain separate
+from booked work. Financial totals stay within one currency and state their
+planning or commitment basis. Attention opens the relevant campaign or draft
+action, and current unsaved work remains recoverable. The authenticated versioned
+planning API reads actual agency-owned campaigns and campaign details; alternatives
+with `scenario_of` and personal planning drafts are excluded from campaign totals.
+An empty campaign register remains empty. Campaign-view permission opens the
+overview; booking, monitoring and issue permissions govern their respective facts.
+Restricted facts remain unavailable rather than appearing as zero.
+Commitment uses the quote subtotal before tax and requires an unambiguous issued
+or paid quote for each confirmed, live or completed booking in the campaign
+currency. The API identifies this basis as `quote_subtotal`; recorded taxes and
+totals remain separate detail facts. Missing or duplicate quotes and
+unmatched currencies keep the total unavailable; recorded rates have no assumed
+full-flight basis and no FX conversion is inferred. Campaign-wide quotes remain
+readable facts without an assumed booking-coverage allocation. Known subtotals
+remain explicitly partial. Requested or held bookings are not commitments.
+Campaign details expose existing line items, booking and quote facts,
+the latest synced check per booking, older synced checks linked to visible open
+issues, private photo previews and open issue records for follow-up.
+Photo reads follow campaign ownership through the booking and synced check, require
+monitoring permission independently of booking permission, and expose bounded
+image previews without storage keys or EXIF. Stored originals remain immutable.
+Flight and line-item end boundaries are exclusive; interfaces show the last
+included calendar day. This read slice does not
+create campaigns, reservations, proof, messages or payments. Light, dark and phone
+layouts follow the approved Penpot review; its sample figures are not runtime data.
 
 **Agency-scoped demonstration amendment (2026-10-06).** An explicitly authorized
 operator may add clearly labelled synthetic Lagos inventory and personal demo
@@ -639,15 +1115,20 @@ while the canonical full-flight cost and availability remain unconfirmed. Import
 references are insert-only, audited and idempotent; existing DEMO and user data are
 preserved. Existing source-media rights are not inferred and no photos are copied
 without authorization. An internally authored campaign brief is planning work and
-must not assert instructions from a real client. Uploaded briefs remain inert and
-provider sharing remains independently consented; confirming extracted controls
-alone does not permit transmitting brief-derived constraints to the model.
+must not assert instructions from a real client. Uploaded briefs remain inert;
+uploading or confirming extracted controls alone never transmits them. In the
+planning journey, a deliberate extraction or chatbot request authorizes its current
+brief for that request. Other chat integrations retain their own sharing boundary.
 
-**Canonical planner output amendment (2026-10-07, MVP §5.3).** Provider output
+**Canonical grounded-recommendation output amendment (2026-10-07, MVP §5.3).** For
+the existing tool-less recommendation endpoint, provider output
 selects admitted site/face identifiers and bounded, vetted advice/question/reason
 codes. Unconstrained model prose is never returned publicly or retained as chat
 history. The server derives concise English/French recommendation text and a
 separate proposal summary from those identifiers and authorized source facts.
+The separate platform chatbot may give concise natural-language explanations;
+its authoritative action cards, prices, availability and measurement results come
+from completed platform tools, not model-authored arithmetic or success claims.
 Proposed totals, source-qualified asking prices, dates, distances and missing data
 are recomputed independently from the current selection. A proposal whose known
 budget-currency subtotal already exceeds its comparable media ceiling is withheld
@@ -682,10 +1163,9 @@ Directional evidence considers face and approach bearings, distance, obstruction
 speed/dwell and lighting when supported, without a universal roadside penalty.
 Research coordinates cannot establish precise angular geometry. Digital exposure
 needs schedule/daypart, spot/loop and dwell context; share of time alone is insufficient.
-Geographic redundancy is a planning proxy, never deduplicated reach. No unsupported
-OTS, reach, exposure probability or CPM is produced. MRC 2025 sections 3.2/3.3,
-Route attention guidance and Geopath 2019 inform measurement distinctions; the WOO
-2026 public summary is contextual only, its gated full text has not been reviewed.
+Geographic redundancy informs portfolio selection. Keep unsupported exposure
+probabilities unavailable. Apply the [planning measurement requirements](#planning-measurement)
+when reporting OTS, reach and CPM.
 
 Portfolio selection applies comparable full-flight currency-qualified costs, or
 explicitly preliminary exact-calendar-month research asking comparisons, and hard
@@ -693,8 +1173,8 @@ constraints using a disclosed bounded deterministic search, with stable ties
 and diagnosed infeasibility. AI cannot override its admitted recommendations.
 Existing real inventory and saved plans are preserved. Optional draft-v1 preferences
 are additive; reopened plans disclose current scoring version and recalculation.
-Compact English/French scores, confidence and reasons expand into factor evidence
-and assumptions, including on mobile.
+Compact English/French scores, confidence and reasons expand into useful factor
+evidence and coverage limits, including on mobile. Technical calibration remains internal.
 
 **Usable-exposure correction (2026-10-09, §5.3).** Physical visibility, purchased
 campaign exposure, brief-fit utility and evidence confidence are distinct. Known
@@ -865,13 +1345,14 @@ can learn and justify spend.
 
 **Report families.**
 
-- **Campaign performance:** delivery vs. plan (sites live, days delivered, exceptions), KPI
-  achievement vs. estimate (impressions, reach, frequency), POP compliance rate, and cost
-  reconciliation.
+- **Campaign performance:** delivery vs. plan (sites live, days delivered, exceptions), POP
+  compliance and cost reconciliation. Compare reported and forecast KPIs where both are
+  available on a consistent [measurement basis](#planning-measurement).
 - **Inventory utilization (media partner):** occupancy by site/market/period, revenue, idle
   inventory, top-performing sites, booking lead times.
-- **Audience reach (plan/aggregate):** modeled reach and frequency across a campaign, with
-  demographic and geographic breakdowns where enrichment data supports it.
+- **Audience reach (plan/aggregate):** reach and frequency across a campaign where
+  qualifying exposure and deduplication evidence supports them. Include demographic
+  and geographic breakdowns where supported.
 - **Marketplace analytics (platform admin):** GMV, partner activity, listing quality, POP
   compliance across the platform, dispute trends.
 - **Client-facing reports:** clean, brandable delivery reports with photo evidence and KPI summary,
@@ -929,7 +1410,11 @@ API-first access per organization.
 **SiteFace** (bookable unit)
 `id`, `site_id`, `face_label`, `width`, `height`, `area`, `units`, `printable_area`, `bookable`,
 `pixel_width?`, `pixel_height?`, `spot_length_seconds?`, `loop_length_seconds?`, `spots_per_loop?`,
-`proof_of_play?`, audit. A site may have one or many faces; booking targets a face. The
+`proof_of_play?`, `planning_profile?`, audit. The optional planning profile stores face
+direction, usable sightline, viewing distance/angle, obstruction, minimum viewing
+time, display/illumination schedules, an optional analysis-road correction and
+source/method/date provenance. Missing inputs remain missing. A site may have one
+or many faces; booking targets a face. The
 `pixel_*`/`spot_*`/`loop_*`/`spots_per_loop`/`proof_of_play` fields apply to digital faces
 (`format = digital_led`) per §5.1.
 
@@ -1037,16 +1522,16 @@ Platform ──< AuditLog, ReferenceData, ReportRun (cross-tenant, admin-scoped)
 
 ### 7.1 Site registration → approval → listing
 
-1. **Capture:** Media partner creates a site (single form or bulk import) with required fields and
-   at least one reference photo → state `draft`.
+1. **Capture:** The media partner creates a `draft` and can save it with incomplete
+   reference media.
 2. **Submit:** Partner submits for listing → state `pending_review`. Validation requires
-   coordinates, format, dimensions, a front-on reference image, a bookable face, and a current
-   rate for every bookable face (site-wide or face-specific). Digital faces offered for booking also need their
-   screen and loop/spot specifications.
-3. **Review:** Platform admin reviews completeness/accuracy. Trusted partners may be auto-listed;
-   new partners are manually reviewed → `approved` or `rejected` (back to `draft` with notes).
-4. **List:** Approved sites become `listed` and appear in the marketplace with their enrichment and
-   rate card.
+   coordinates, format, dimensions, the site capture requirements in §5.1, at
+   least one bookable face and a current rate for each bookable face. Bookable
+   digital faces also need screen and loop/spot specifications.
+3. **Review:** A platform admin reviews the submission. Rejected sites return to
+   `draft` with notes.
+4. **List:** Approval moves the site to `listed` and publishes it in the marketplace
+   with its enrichment and rate card.
 5. **Maintain:** Partner updates specs/availability; admin may `suspend` for quality/permit issues
    or the partner may `decommission` retired sites. All changes are audited.
 
@@ -1078,9 +1563,9 @@ these corrections do not bulk rewrite historical data or add a scheduled write p
 5. **Execute:** On flight start, bookings go `live`; creatives are bound to faces.
 6. **Monitor:** Daily POP checks are captured; statuses flow to the client dashboard; exceptions
    raise issues and alerts; SLAs escalate misses.
-7. **Report:** At flight end, bookings go `completed`; delivery, KPI-vs-plan, POP compliance, and
-   audience-reach reports are generated and shared with the client; utilization rolls up to the
-   media partner.
+7. **Report:** At flight end, bookings go `completed`. The client receives delivery and
+   POP compliance reports, plus KPI comparisons and audience reach where evidence supports them.
+   Utilization rolls up to the media partner.
 
 ### 7.3 Proof-of-performance capture → verification → alert
 
@@ -1170,9 +1655,9 @@ these corrections do not bulk rewrite historical data or add a scheduled write p
   `platform-admin`, plus shared `core`/`contracts`. Start as a modular monolith; extract services
   only when load demands it.
 
-**Recommended stack (option A — TypeScript end-to-end).**
+**TypeScript stack.**
 
-- **API:** NestJS (TypeScript) with a modular monolith layout; OpenAPI-generated contract.
+- **API:** NestJS in a modular monolith with OpenAPI documentation.
 - **Data:** PostgreSQL with **PostGIS** for spatial queries; Redis for caching/queues; object
   storage (S3-compatible) for media.
 - **Web:** Next.js (React, TypeScript) for planner and admin dashboards.
@@ -1184,16 +1669,17 @@ these corrections do not bulk rewrite historical data or add a scheduled write p
 - **Infra:** containerized (Docker) deployable to cloud or on-prem; CI with lint, type-check,
   tests, and contract checks.
 
-**Alternative stack (option B — Python backend).** FastAPI (or Django) + PostgreSQL/PostGIS for
-the API, React/Next.js for web, React Native for mobile. Equally viable; choose based on team
-skills. **Recommendation: option A** for a single-language stack that shares types across API,
-web, and mobile.
+**SEC reference preparation (2026-11-08 decision).** A versioned offline Python
+generator may read the public SPSS source with `pyreadstat` and fit the SEC reference
+inside a bounded, temporary Docker container. This avoids adding a statistical-file
+parser or fitting runtime to the API. Retain the generator, reproducible invocation,
+source checksum and aggregate reference; keep raw survey files out of the repository.
+The serving API and web remain TypeScript, with no Python host installation or API
+runtime dependency.
 
-**Cross-cutting.** Shared contracts/types package generated from OpenAPI; a central config and
-feature-flag service; structured logging with request IDs; database migrations as versioned code.
-
-> The stack is a _direction_, not a final commitment. This spec phase does not scaffold code or
-> pin dependency versions; that decision is made at implementation kickoff.
+**Cross-cutting.** Shared TypeScript contracts, structured logging with request IDs,
+and versioned database migrations. Use central configuration and feature flags
+for features that require controlled rollout.
 
 ---
 
@@ -1221,7 +1707,8 @@ Goal: defensible planning and reliable accountability across Anglophone + Franco
 - Inventory: bulk import, multi-face structures, full spec schema, lifecycle maturity.
 - Site metadata enrichment: structured schema with source/confidence, third-party import, POI.
 - Planning: KPI estimation engine, budget allocation, scenarios, route-based selection, saved
-  shortlists.
+  shortlists, and the [planning models and scores](#planning-measurement). This includes ADTM,
+  the open-data baseline for the Abonten Audience Model, and the Composite Abonten Score.
 - Booking: holds with expiry, blackouts, amendments, multi-currency quotes/invoices with FX ref.
 - POP: offline capture + background sync, structured condition reports, SLA escalation, exception
   alerts.
@@ -1236,8 +1723,8 @@ Goal: automation, audience-grade measurement, and ecosystem integration across 2
 
 - AI-assisted POP verification (creative matching, occlusion/condition detection).
 - Dynamic pricing and automated partner acceptance policies.
-- Audience modeling from anonymized movement data; integration with regional audience-measurement
-  feeds (aligned with industry measurement reform).
+- Audience Model calibration from anonymized movement data and integration with regional
+  audience-measurement feeds (aligned with industry measurement reform).
 - Optimization solver for budget/KPI site selection.
 - Benchmarking across campaigns and markets; custom report builder.
 - Public marketplace API for third-party planners/ERPs; transaction/fee model.
@@ -1262,13 +1749,21 @@ Outdoor-advertising terms relevant to the WeCA market.
 | **Face**                            | A single bookable viewing surface of a panel; a structure may have several faces.       |
 | **Front-lit / Back-lit / Edge-lit** | Illumination styles for static panels; LED implies the panel itself emits light.        |
 | **Orientation / Facing**            | The compass direction a face points toward, affecting which traffic sees it.            |
-| **AADT**                            | Average Annual Daily Traffic — vehicles per day past a site; a key exposure input.      |
-| **Visibility score**                | Composite measure of how clearly and long a panel can be seen.                          |
-| **OTS / Impressions**               | Opportunity-to-See; estimated number of times the ad is potentially seen.               |
-| **Reach**                           | The number/percentage of the audience exposed at least once.                            |
-| **Frequency**                       | Average times an exposed individual sees the ad.                                        |
+| **AADT**                            | Average Annual Daily Traffic, in vehicle passages per day averaged over a year.         |
+| **Abonten Directional Travel Demand Model (ADTM)** | Models where and when people travel, using relative demand weights and route travel times. |
+| **Abonten Audience Model**          | Estimates reach and frequency using simulated people with recurring journeys across faces and days. |
+| **Abonten Score**                   | Planning readout with Directional Demand and Viewability Fit for each face and period.  |
+| **Composite Abonten Score**         | Ranks campaign plans against the objective, target audience, flight and budget.          |
+| **Directional Demand**              | Percentile of the modeled demand approaching the face against comparable approaches.   |
+| **Viewability Fit**                 | Share of modeled passing demand that meets the viewing requirements for the face.      |
+| **Gross impressions**               | Potential exposures while a functioning face displays the ad to its exposure zone.      |
+| **Viewable impressions (OTS)**      | Opportunity to see. Gross impressions that meet the viewability criteria.               |
+| **LTS impressions**                 | Likelihood-to-see impressions, with evidence a viewable ad was likely noticed.          |
+| **Audience**                        | People who meet the audience criteria in [§5.3](#planning-measurement).                 |
+| **Reach**                           | Distinct people with a qualifying exposure across the selected faces and period.        |
+| **Frequency**                       | Average qualifying exposures per person reached, on the same measurement basis.         |
 | **GRP / TRP**                       | Gross/Target Rating Points — reach × frequency expressed as a percentage of a universe. |
-| **CPM**                             | Cost per thousand impressions.                                                          |
+| **CPM**                             | Cost per thousand impressions of the stated type.                                       |
 | **CPRP**                            | Cost per rating point.                                                                  |
 | **Flight**                          | The scheduled run period of a campaign on a site or set of sites.                       |
 | **POP / Proof of Performance**      | Evidence (usually dated, geotagged photos) that a booked ad is live and intact.         |
@@ -1295,13 +1790,12 @@ Outdoor-advertising terms relevant to the WeCA market.
 - English and French are the launch languages; local languages follow in V2.
 - The platform owns the marketplace and booking workflow but is **not** a payments/permitting
   system; invoices are generated and tracked but payment processing is out of MVP scope.
-- Audience/KPI estimates are modeled, not measured, until V2 audience-measurement integrations
-  exist; estimates always carry confidence and source.
+- Planning forecasts and any audience estimates require the evidence and disclosures in
+  [§5.3](#planning-measurement). V2 adds audience-measurement integrations.
 
-**Open questions (resolve at implementation kickoff).**
+**Open questions.**
 
-- Final tech-stack decision (option A vs B) and hosting (cloud region vs. on-prem for data
-  residency).
+- Hosting and data residency requirements for each market.
 - Payments scope and whether invoicing ties into an existing OMG/agency finance system.
 - Data sourcing partners for traffic, POI, and audience enrichment, and licensing terms.
 - Auto-approval thresholds for trusted media partners vs. mandatory manual review.

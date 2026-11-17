@@ -1,3 +1,5 @@
+export { parsePlanningAmount as parseAmount } from '../../../api/src/planning/planning-math';
+
 // Locale-tolerant numeric parsing for partner-entered fields (SPEC §5.1).
 // Partners register sites from the field in English and French locales: a
 // French keyboard writes decimals with a comma (5,5597; 12,5) while English
@@ -5,14 +7,6 @@
 // naive separator-stripping turns 12,50 into 1250. These helpers accept one
 // decimal separator convention and REJECT ambiguous input instead of silently
 // changing it by orders of magnitude.
-
-/** Strip space-family group separators (regular, NBSP, narrow NBSP, apostrophe). */
-function withoutGrouping(raw: string): string {
-  return raw
-    .trim()
-    .replace(/[\u00A0\u202F\u2009']/g, '')
-    .replace(/ /g, '');
-}
 
 /**
  * Parse a coordinate or dimension value. Accepts a single decimal separator
@@ -30,31 +24,6 @@ export function parseDecimal(raw: string): number | null {
     return Number.isFinite(value) ? value : null;
   }
   if (!/^-?(\d+(\.\d+)?|\.\d+)$/.test(s)) return null;
-  const value = Number(s);
-  return Number.isFinite(value) ? value : null;
-}
-
-/**
- * Parse a money amount. Spaces (and NBSP/apostrophes) are thousands grouping;
- * a comma or point followed by at most two digits is a decimal separator.
- * Ambiguous patterns — a separator followed by three digits ('6,000',
- * '6.000'), or both separators present — are rejected, not reinterpreted.
- */
-export function parseAmount(raw: string): number | null {
-  const s = withoutGrouping(raw);
-  if (!s) return null;
-  if (s.includes('.') && s.includes(',')) return null;
-  if (s.includes(',')) {
-    if (!/^\d+(,\d{1,2})?$/.test(s)) return null; // '6,000' → ambiguous
-    const value = Number(s.replace(',', '.'));
-    return Number.isFinite(value) ? value : null;
-  }
-  if (s.includes('.')) {
-    if (!/^\d+(\.\d{1,2})?$/.test(s)) return null; // '6.000' → ambiguous
-    const value = Number(s);
-    return Number.isFinite(value) ? value : null;
-  }
-  if (!/^\d+$/.test(s)) return null; // signs, letters, stray symbols → invalid
   const value = Number(s);
   return Number.isFinite(value) ? value : null;
 }

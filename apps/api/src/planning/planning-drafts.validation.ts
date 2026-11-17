@@ -1,8 +1,12 @@
+import { normalizePlanningJourney } from './planning-journey';
+import { normalizePlanningModelControls } from './planning-model-controls';
 import { BadRequestException } from '@nestjs/common';
 import { isUUID } from 'class-validator';
 import type {
   AgencyPlanningDraftV1,
+  AudiencePlanPreferences,
   PlanningFitPreferences,
+  PlanningModelControls,
 } from '@abonten/contracts/planning-draft';
 import { PLANNING_CURRENCIES, planningDays } from './planning-math';
 
@@ -62,11 +66,43 @@ export function normalizeFitPreferences(value: unknown): PlanningFitPreferences 
   }
   return result;
 }
+function normalizeAudiencePlan(value: unknown): AudiencePlanPreferences {
+  const input = object(value, ['objective', 'targetAudience', 'minimumOpportunities']);
+  const { objective } = input;
+  const minimumOpportunities = text(input.minimumOpportunities, 1000).trim();
+  if (
+    (objective !== 'reach' && objective !== 'frequency') ||
+    !/^[1-9]\d*$/.test(minimumOpportunities)
+  )
+    throw invalid();
+  return {
+    objective,
+    targetAudience: text(input.targetAudience, 160).trim(),
+    minimumOpportunities,
+  };
+}
+function normalizeModelControls(value: unknown): PlanningModelControls {
+  try {
+    return normalizePlanningModelControls(value);
+  } catch {
+    throw invalid();
+  }
+}
+function normalizeJourney(value: unknown) {
+  try {
+    return normalizePlanningJourney(value);
+  } catch {
+    throw invalid();
+  }
+}
 export function normalizePlanningDraft(value: unknown): AgencyPlanningDraftV1 {
   const input = object(value, [
     'version',
     'briefDerivedContext',
+    'planning',
     'fitPreferences',
+    'audiencePlan',
+    'modelControls',
     'scoringVersion',
     'window',
     'country',
@@ -105,10 +141,17 @@ export function normalizePlanningDraft(value: unknown): AgencyPlanningDraftV1 {
   });
   return {
     version: 1,
+    ...(input.planning === undefined ? {} : { planning: normalizeJourney(input.planning) }),
     ...(input.briefDerivedContext === true ? { briefDerivedContext: true as const } : {}),
     ...(input.fitPreferences === undefined
       ? {}
       : { fitPreferences: normalizeFitPreferences(input.fitPreferences) }),
+    ...(input.audiencePlan === undefined
+      ? {}
+      : { audiencePlan: normalizeAudiencePlan(input.audiencePlan) }),
+    ...(input.modelControls === undefined
+      ? {}
+      : { modelControls: normalizeModelControls(input.modelControls) }),
     ...(input.scoringVersion === undefined
       ? {}
       : { scoringVersion: text(input.scoringVersion, 64) }),

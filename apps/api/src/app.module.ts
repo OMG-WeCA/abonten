@@ -7,6 +7,7 @@ import { CapabilitiesModule } from './capabilities/capabilities.module';
 import { AuthModule } from './auth/auth.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PlanningModule } from './planning/planning.module';
+import { TravelDemandModule } from './planning/travel-demand.module';
 import { BookingModule } from './booking/booking.module';
 import { PopModule } from './pop/pop.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
@@ -19,6 +20,7 @@ const featureModules = [
   AuthModule,
   InventoryModule,
   PlanningModule,
+  TravelDemandModule,
   BookingModule,
   PopModule,
   MonitoringModule,

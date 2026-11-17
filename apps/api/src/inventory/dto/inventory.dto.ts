@@ -136,7 +136,55 @@ export class ListSitesQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() search?: string;
 }
 
+export class PlanningHoursDto {
+  @ApiProperty() @IsNumber() @Min(0) @Max(24) startHour!: number;
+  @ApiProperty() @IsNumber() @Min(0) @Max(24) endHour!: number;
+}
+
+export class FacePlanningProfileDto {
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(0) @Max(359) facingDeg?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @IsPositive() viewingDistanceMetres?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(1) @Max(180) viewingAngleDeg?: number;
+  @ApiPropertyOptional({ enum: ['clear', 'partial', 'blocked', 'unknown'] })
+  @IsOptional()
+  @IsIn(['clear', 'partial', 'blocked', 'unknown'])
+  obstruction?: 'clear' | 'partial' | 'blocked' | 'unknown';
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @IsPositive() minimumViewSeconds?: number;
+  @ApiPropertyOptional({ type: GeoPointDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => GeoPointDto)
+  sightline?: GeoPointDto;
+  @ApiPropertyOptional({
+    type: GeoPointDto,
+    description: 'Explicit road correction; does not establish a clear sightline.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => GeoPointDto)
+  roadApproach?: GeoPointDto;
+  @ApiPropertyOptional({ type: PlanningHoursDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PlanningHoursDto)
+  displaySchedule?: PlanningHoursDto;
+  @ApiPropertyOptional({ type: PlanningHoursDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PlanningHoursDto)
+  illuminationSchedule?: PlanningHoursDto;
+  @ApiProperty() @IsString() @MinLength(2) @MaxLength(500) source!: string;
+  @ApiProperty() @IsString() @MinLength(2) @MaxLength(1000) method!: string;
+  @ApiPropertyOptional() @IsOptional() @IsDateString() collectedAt?: string;
+}
+
 export class CreateFaceDto {
+  @ApiPropertyOptional({ type: FacePlanningProfileDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FacePlanningProfileDto)
+  planningProfile?: FacePlanningProfileDto | null;
+
   @ApiProperty()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()

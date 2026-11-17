@@ -1,5 +1,7 @@
+import { FacePlanningProfile1760000010000 } from './migrations/1760000010000-FacePlanningProfile';
 import { SiteCaptureRequirements1760000008000 } from './migrations/1760000008000-SiteCaptureRequirements';
 import 'reflect-metadata';
+import { PopulationDemographics1760000011000 } from './migrations/1760000011000-PopulationDemographics';
 import { InviteOnlyAdmission1760000007000 } from './migrations/1760000007000-InviteOnlyAdmission';
 import { DataSource } from 'typeorm';
 import { ENTITIES } from './common/entities';
@@ -49,6 +51,8 @@ export const AppDataSource = new DataSource({
     AgencyResearchInventoryScope1760000006000,
     InviteOnlyAdmission1760000007000,
     SiteCaptureRequirements1760000008000,
+    FacePlanningProfile1760000010000,
+    PopulationDemographics1760000011000,
   ],
   migrationsRun: false,
   logging: ['error', 'migration'],

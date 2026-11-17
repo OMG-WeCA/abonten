@@ -167,5 +167,10 @@
   "Independent verification requires a platform reviewer.": "La vérification indépendante nécessite un réviseur de la plateforme.",
   "Audience, traffic and verified records require a source and method.": "Les données d’audience, de trafic et les données vérifiées nécessitent une source et une méthode.",
   "Confidence must be between 0 and 1.": "La confiance doit être comprise entre 0 et 1.",
-  "Choose a supported currency: NGN, GHS, XAF, XOF, USD or EUR.": "Choisissez une devise prise en charge : NGN, GHS, XAF, XOF, USD ou EUR."
+  "Choose a supported currency: NGN, GHS, XAF, XOF, USD or EUR.": "Choisissez une devise prise en charge : NGN, GHS, XAF, XOF, USD ou EUR.",
+  "The assistant is busy. Try again shortly.": "L’assistant est occupé. Réessayez dans quelques instants.",
+  "The assistant couldn’t finish this request. Your changes are kept.": "L’assistant n’a pas pu terminer cette demande. Vos modifications sont conservées.",
+  "The assistant is unavailable. You can continue editing and saving the plan manually.": "L’assistant est indisponible. Vous pouvez continuer à modifier et enregistrer le plan manuellement.",
+  "The assistant request was cancelled.": "La demande à l’assistant a été annulée.",
+  "The assistant timed out. Completed actions are listed below; retry the remaining work manually.": "L’assistant a mis trop de temps à répondre. Les actions terminées sont indiquées ci-dessous ; relancez les actions restantes manuellement."
 }

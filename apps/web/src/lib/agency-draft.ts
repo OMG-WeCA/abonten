@@ -1,4 +1,12 @@
-import type { PlanningFitPreferences } from '@abonten/contracts/planning-draft';
+import { normalizePlanningModelControls } from '../../../api/src/planning/planning-model-controls';
+import { normalizePlanningJourney } from '../../../api/src/planning/planning-journey';
+export { PARENT_EXCLUSION_REQUIREMENT } from '../../../api/src/planning/planning-journey';
+import type { PlanningJourneyContext } from '@abonten/contracts/planning-study';
+import type {
+  AudiencePlanPreferences,
+  PlanningFitPreferences,
+  PlanningModelControls,
+} from '@abonten/contracts/planning-draft';
 import { parsePlanningFitPreferences } from './planning-fit-preferences';
 import {
   faceFlightEligibility,
@@ -59,7 +67,10 @@ export function summarizeDraftBudget(
 }
 export interface AgencyDraft {
   version: 1;
+  planning?: PlanningJourneyContext;
   fitPreferences?: PlanningFitPreferences;
+  audiencePlan?: AudiencePlanPreferences;
+  modelControls?: PlanningModelControls;
   scoringVersion?: string;
   window: PlanningWindow;
   country: string;
@@ -80,6 +91,30 @@ const currency = (value: unknown): value is string =>
   typeof value === 'string' && PLANNING_CURRENCIES.some((code) => code === value);
 const bounded = (value: unknown, max: number): value is string =>
   typeof value === 'string' && value.length <= max;
+export function readModelControls(value: unknown): PlanningModelControls | null {
+  try {
+    return normalizePlanningModelControls(value);
+  } catch {
+    return null;
+  }
+}
+function readAudiencePlan(value: unknown): AudiencePlanPreferences | null {
+  if (!value || typeof value !== 'object') return null;
+  const { objective, targetAudience, minimumOpportunities } = value as Record<string, unknown>;
+  if (
+    (objective !== 'reach' && objective !== 'frequency') ||
+    !bounded(targetAudience, 160) ||
+    targetAudience.includes('\u0000') ||
+    !bounded(minimumOpportunities, 1000) ||
+    !/^[1-9]\d*$/.test(minimumOpportunities.trim())
+  )
+    return null;
+  return {
+    objective,
+    targetAudience: targetAudience.trim(),
+    minimumOpportunities: minimumOpportunities.trim(),
+  };
+}
 function key(userId: string, orgId: string): string | null {
   return id(userId) && id(orgId) ? `${PREFIX}${userId}.${orgId}` : null;
 }
@@ -90,6 +125,8 @@ export function parseAgencyDraft(raw: string | null): AgencyDraft | null {
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== 'object') return null;
     const row = value as Record<string, unknown>;
+    const planning =
+      row.planning === undefined ? undefined : normalizePlanningJourney(row.planning);
     const dates = row.window as PlanningWindow | undefined;
     if (
       row.version !== 1 ||
@@ -108,8 +145,14 @@ export function parseAgencyDraft(raw: string | null): AgencyDraft | null {
       row.fitPreferences === undefined
         ? undefined
         : parsePlanningFitPreferences(row.fitPreferences);
+    const audiencePlan =
+      row.audiencePlan === undefined ? undefined : readAudiencePlan(row.audiencePlan);
+    const modelControls =
+      row.modelControls === undefined ? undefined : readModelControls(row.modelControls);
     if (
       fitPreferences === null ||
+      audiencePlan === null ||
+      modelControls === null ||
       (row.scoringVersion !== undefined && !bounded(row.scoringVersion, 64))
     )
       return null;
@@ -141,7 +184,10 @@ export function parseAgencyDraft(raw: string | null): AgencyDraft | null {
       budget: row.budget,
       currency: row.currency,
       faces,
+      ...(planning ? { planning } : {}),
       ...(fitPreferences ? { fitPreferences } : {}),
+      ...(audiencePlan ? { audiencePlan } : {}),
+      ...(modelControls ? { modelControls } : {}),
       ...(typeof row.scoringVersion === 'string' ? { scoringVersion: row.scoringVersion } : {}),
       ...(row.briefDerivedContext === true ? { briefDerivedContext: true as const } : {}),
     };

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "weekday_morning",
+    "label": "weekday Morning",
+    "localHour": 8,
+    "dayType": "weekday"
+  },
+  {
+    "id": "weekend_morning",
+    "label": "weekend Morning",
+    "localHour": 8,
+    "dayType": "weekend"
+  },
+  {
+    "id": "weekday_afternoon",
+    "label": "weekday Afternoon",
+    "localHour": 14,
+    "dayType": "weekday"
+  },
+  {
+    "id": "weekend_afternoon",
+    "label": "weekend Afternoon",
+    "localHour": 14,
+    "dayType": "weekend"
+  },
+  {
+    "id": "weekday_evening",
+    "label": "weekday Evening",
+    "localHour": 18,
+    "dayType": "weekday"
+  },
+  {
+    "id": "weekend_evening",
+    "label": "weekend Evening",
+    "localHour": 18,
+    "dayType": "weekend"
+  },
+  {
+    "id": "weekday_night",
+    "label": "weekday Night",
+    "localHour": 22,
+    "dayType": "weekday"
+  },
+  {
+    "id": "weekend_night",
+    "label": "weekend Night",
+    "localHour": 22,
+    "dayType": "weekend"
+  }
+]

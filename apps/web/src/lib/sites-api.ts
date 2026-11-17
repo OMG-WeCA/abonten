@@ -1,3 +1,5 @@
+import type { FacePlanningProfile } from '@abonten/contracts/planning-profile';
+export type { FacePlanningProfile } from '@abonten/contracts/planning-profile';
 import type { ResearchProvenance } from '../../../api/src/common/research-inventory';
 // Typed client for the inventory API (apps/api/src/inventory). All calls carry the
 // tenant context via the X-Org-Id header, matching the controller's orgContext().
@@ -73,6 +75,7 @@ export interface SiteDetail extends SiteSummary {
 }
 
 export interface SiteFace {
+  planningProfile?: FacePlanningProfile | null;
   id: string;
   siteId: string;
   faceLabel: string;
@@ -227,6 +230,7 @@ export interface SiteDraftInput {
 
 /** Digital-face attributes sent with a face create/update. */
 export interface DigitalFaceAttrs {
+  planningProfile?: FacePlanningProfile | null;
   pixelWidth?: number;
   pixelHeight?: number;
   spotLengthSeconds?: number;

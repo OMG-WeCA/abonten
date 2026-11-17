@@ -1,8 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { dirname, join, resolve } from 'node:path';
-import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createReadStream, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { Readable } from 'node:stream';
 
 /**
  * Asset storage: local disk in development, S3-compatible (MinIO/AWS/etc.) in
@@ -39,7 +45,12 @@ export class StorageService {
     this.assertSafeRef(ref);
     if (this.s3) {
       await this.s3.send(
-        new PutObjectCommand({ Bucket: this.bucket, Key: ref, Body: buffer, ContentType: contentType }),
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: ref,
+          Body: buffer,
+          ContentType: contentType,
+        }),
       );
     } else {
       const resolved = this.resolveRef(ref);
@@ -50,21 +61,51 @@ export class StorageService {
   }
 
   /** Read an object by its internally stored relative ref. */
-  async read(ref: string): Promise<Buffer> {
+  async read(ref: string, maxBytes?: number): Promise<Buffer> {
     this.assertSafeRef(ref);
     if (this.s3) {
       const result = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: ref }));
       if (!result.Body) throw new Error('Stored object has no body');
+      if (maxBytes !== undefined) {
+        const body = result.Body;
+        if (!(body instanceof Readable)) throw new Error('Expected a Node object-storage stream');
+        if (result.ContentLength !== undefined && result.ContentLength > maxBytes) {
+          body.destroy();
+          throw new RangeError('Stored object exceeds read limit');
+        }
+        return this.readBounded(body, maxBytes);
+      }
       return Buffer.from(await result.Body.transformToByteArray());
     }
-    return readFileSync(this.resolveRef(ref));
+    const resolved = this.resolveRef(ref);
+    if (maxBytes !== undefined)
+      return this.readBounded(createReadStream(resolved, { end: maxBytes }), maxBytes);
+    return readFileSync(resolved);
+  }
+
+  private async readBounded(body: Readable, maxBytes: number): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    try {
+      for await (const chunk of body) {
+        const buffer = Buffer.from(chunk);
+        bytes += buffer.length;
+        if (bytes > maxBytes) throw new RangeError('Stored object exceeds read limit');
+        chunks.push(buffer);
+      }
+      return Buffer.concat(chunks, bytes);
+    } finally {
+      body.destroy();
+    }
   }
 
   /** Remove the object at `ref`. Best-effort: a missing object is not an error. */
   async remove(ref: string): Promise<void> {
     this.assertSafeRef(ref);
     if (this.s3) {
-      await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: ref })).catch(() => undefined);
+      await this.s3
+        .send(new DeleteObjectCommand({ Bucket: this.bucket, Key: ref }))
+        .catch(() => undefined);
     } else {
       try {
         unlinkSync(this.resolveRef(ref));

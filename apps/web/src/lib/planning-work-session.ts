@@ -113,3 +113,12 @@ export function savePlanningWorkSession(
     return false;
   }
 }
+
+/** Compare the visible working inputs, including temporarily invalid edits, independently of object key order. */
+export function planningInputSignature(input: unknown): string {
+  return JSON.stringify(input, (_key, value: unknown) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)))
+      : value,
+  );
+}

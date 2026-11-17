@@ -1,3 +1,10 @@
+import { PLANNING_AGE_BANDS } from './planning-journey';
+import {
+  BUSINESS_CAMPAIGN_PERIODS,
+  BRIEF_FIELDS_SCHEMA,
+  BRIEF_FIELDS_INSTRUCTIONS,
+  parseBriefFields,
+} from './planning-brief-fields';
 import {
   BadGatewayException,
   BadRequestException,
@@ -71,6 +78,39 @@ export class PlanningService {
     @Optional() @Inject(PLANNING_TELEMETRY_SINK) private readonly telemetry?: PlanningTelemetrySink,
     @Optional() private readonly geographic?: GeographicContextService,
   ) {}
+
+  async extractBriefFields(
+    input: import('@abonten/contracts/planning-study').PlanningBriefFieldsRequest,
+    scope: { userId: string; orgId: string },
+    signal?: AbortSignal,
+  ) {
+    if (!this.provider?.configured)
+      throw new HttpException(
+        'Brief import is unavailable. Enter campaign fields manually or ask the operator to configure planning intelligence.',
+        503,
+      );
+    return this.provider.structured(
+      {
+        locale: input.locale ?? 'en',
+        message: 'Extract the stated campaign form fields.',
+        briefText: input.briefText,
+        history: [],
+        snapshot: {
+          currentMarket: input.countryCode,
+          ageBands: PLANNING_AGE_BANDS,
+          availableCampaignPeriods: BUSINESS_CAMPAIGN_PERIODS,
+        },
+      },
+      scope,
+      {
+        name: 'abonten_campaign_fields',
+        schema: BRIEF_FIELDS_SCHEMA,
+        instructions: BRIEF_FIELDS_INSTRUCTIONS,
+        validate: parseBriefFields,
+      },
+      signal,
+    );
+  }
 
   assistantStatus() {
     return {

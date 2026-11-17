@@ -34,6 +34,14 @@ export async function main(args = process.argv.slice(2)): Promise<void> {
       'geoboundaries-adm1',
       'geoboundaries-adm2',
       'worldpop-r2025a-2026',
+      ...['f', 'm'].flatMap((sex) => [
+        `worldpop-age-sex:${sex}:0_4`,
+        ...Array.from({ length: 15 }, (_, index) => {
+          const age = (index + 1) * 5;
+          return `worldpop-age-sex:${sex}:${age}_${age + 4}`;
+        }),
+        `worldpop-age-sex:${sex}:80_plus`,
+      ]),
       'observed-traffic',
     ];
     process.stdout.write(

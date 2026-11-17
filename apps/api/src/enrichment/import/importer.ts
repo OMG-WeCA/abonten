@@ -69,7 +69,7 @@ export async function importDataset(
     throw new Error('Input SHA-256 does not match manifest');
   let rasterPath: string | null = null;
   let rasterInfo: PopulationRasterInfo | null = null;
-  if (manifest.layer === 'population') {
+  if (manifest.layer === 'population' || manifest.layer === 'population_demographics') {
     rasterPath = await preservePopulationRaster(input, manifest.checksum);
     rasterInfo = await inspectPopulationRaster(rasterPath);
   } else {

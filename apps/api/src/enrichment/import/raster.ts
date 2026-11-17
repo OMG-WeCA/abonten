@@ -5,6 +5,29 @@ import { isAbsolute, join, resolve, dirname, basename } from 'node:path';
 import { bboxPolygon, record, validateBounds, type Polygon } from './geometry';
 import type { Bounds } from '../registry';
 import { runTool } from './process';
+export class PopulationRasterCapacityError extends Error {
+  constructor() {
+    super('Population raster query capacity reached; retry later');
+    this.name = 'PopulationRasterCapacityError';
+  }
+}
+export class PopulationRasterReadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PopulationRasterReadError';
+  }
+}
+/** Known file/GDAL/reference-data failures; programming errors remain visible. */
+export function isPopulationRasterReadError(error: unknown): boolean {
+  if (error instanceof PopulationRasterReadError || error instanceof SyntaxError) return true;
+  if (!error || typeof error !== 'object') return false;
+  if (
+    'code' in error &&
+    ['ENOENT', 'EACCES', 'EPERM', 'ENOTDIR', 'EISDIR', 'EIO', 'ELOOP'].includes(String(error.code))
+  )
+    return true;
+  return error instanceof Error && /^(?:gdalinfo|gdal_translate) failed:/.test(error.message);
+}
 export interface PopulationRasterInfo {
   width: number;
   height: number;
@@ -41,7 +64,7 @@ export async function assertNoRasterSidecars(path: string): Promise<void> {
     const names = await readdir(dirname(file));
     const sidecar = names.find((entry) => forbidden.has(entry.toLowerCase()));
     if (sidecar)
-      throw new Error(
+      throw new PopulationRasterReadError(
         `Population raster has unsupported validity/metadata sidecar ${sidecar}; consolidate mask, NoData and metadata into a standalone GeoTIFF first`,
       );
   }
@@ -54,8 +77,19 @@ export async function inspectPopulationRaster(
   await assertNoRasterSidecars(absolute);
   const file = await stat(absolute);
   if (!file.isFile() || file.size > 2 * 1024 ** 3)
-    throw new Error('Population raster must be a regular local GeoTIFF no larger than 2 GiB');
-  const info = record(
+    throw new PopulationRasterReadError(
+      'Population raster must be a regular local GeoTIFF no larger than 2 GiB',
+    );
+  const metadataRecord = (value: unknown, label: string) => {
+    try {
+      return record(value, label);
+    } catch (error) {
+      if (error instanceof Error && error.message === `${label} must be an object`)
+        throw new PopulationRasterReadError(error.message);
+      throw error;
+    }
+  };
+  const info = metadataRecord(
     JSON.parse(
       await runTool(
         'gdalinfo',
@@ -68,10 +102,12 @@ export async function inspectPopulationRaster(
     'gdalinfo',
   );
   if (info.driverShortName !== 'GTiff')
-    throw new Error('Population input must be a GeoTIFF/BigTIFF, never a VRT or remote dataset');
-  const system = record(info.coordinateSystem, 'raster coordinateSystem');
+    throw new PopulationRasterReadError(
+      'Population input must be a GeoTIFF/BigTIFF, never a VRT or remote dataset',
+    );
+  const system = metadataRecord(info.coordinateSystem, 'raster coordinateSystem');
   if (typeof system.wkt !== 'string' || !/ID\["EPSG",\s*4326\]\s*\]$/.test(system.wkt.trim()))
-    throw new Error('Population raster must use EPSG:4326');
+    throw new PopulationRasterReadError('Population raster must use EPSG:4326');
   const size = info.size,
     transform = info.geoTransform,
     bands = info.bands;
@@ -80,7 +116,7 @@ export async function inspectPopulationRaster(
     size.length !== 2 ||
     size.some((v) => !Number.isSafeInteger(v) || v <= 0)
   )
-    throw new Error('Invalid raster dimensions');
+    throw new PopulationRasterReadError('Invalid raster dimensions');
   if (
     !Array.isArray(transform) ||
     transform.length !== 6 ||
@@ -90,30 +126,39 @@ export async function inspectPopulationRaster(
     transform[2] !== 0 ||
     transform[4] !== 0
   )
-    throw new Error('Population grid must be unrotated north-up WGS84');
+    throw new PopulationRasterReadError('Population grid must be unrotated north-up WGS84');
   if (!Array.isArray(bands) || bands.length !== 1)
-    throw new Error('Population raster must have exactly one band');
-  const band = record(bands[0], 'raster band');
+    throw new PopulationRasterReadError('Population raster must have exactly one band');
+  const band = metadataRecord(bands[0], 'raster band');
   if (typeof band.noDataValue !== 'number' || !Number.isFinite(band.noDataValue))
-    throw new Error('Population raster requires an explicit finite NoData value');
+    throw new PopulationRasterReadError(
+      'Population raster requires an explicit finite NoData value',
+    );
   if (
     (band.scale !== undefined && band.scale !== 1) ||
     (band.offset !== undefined && band.offset !== 0)
   )
-    throw new Error('Scaled population bands must be decoded before import');
+    throw new PopulationRasterReadError('Scaled population bands must be decoded before import');
   if (band.mask !== undefined) {
-    const mask = record(band.mask, 'raster mask');
+    const mask = metadataRecord(band.mask, 'raster mask');
     if (Array.isArray(mask.flags) && mask.flags.some((f) => f !== 'NODATA' && f !== 'ALL_VALID'))
-      throw new Error(
+      throw new PopulationRasterReadError(
         'External/alpha raster masks are unsupported; encode missing cells as NoData',
       );
   }
-  const bounds = validateBounds([
-    transform[0],
-    transform[3] + size[1] * transform[5],
-    transform[0] + size[0] * transform[1],
-    transform[3],
-  ]);
+  let bounds: Bounds;
+  try {
+    bounds = validateBounds([
+      transform[0],
+      transform[3] + size[1] * transform[5],
+      transform[0] + size[0] * transform[1],
+      transform[3],
+    ]);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Invalid WGS84 bounds;'))
+      throw new PopulationRasterReadError(error.message);
+    throw error;
+  }
   return {
     width: size[0],
     height: size[1],
@@ -175,8 +220,7 @@ const waiting: (() => void)[] = [];
 export async function rasterSlot<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   if (signal?.aborted) throw new Error('Population query cancelled');
   if (running >= 2) {
-    if (waiting.length >= 8)
-      throw new Error('Population raster query capacity reached; retry later');
+    if (waiting.length >= 8) throw new PopulationRasterCapacityError();
     await new Promise<void>((resolve, reject) => {
       const enter = () => {
         signal?.removeEventListener('abort', cancel);
@@ -202,6 +246,17 @@ export async function rasterSlot<T>(action: () => Promise<T>, signal?: AbortSign
     else running--;
   }
 }
+export class PopulationCellLimitError extends Error {
+  constructor(
+    readonly cells: number,
+    readonly limit: number,
+  ) {
+    super(
+      `This study needs ${cells.toLocaleString('en')} native population cells, which exceeds the ${limit.toLocaleString('en')} cell limit. Choose a smaller study area.`,
+    );
+    this.name = 'PopulationCellLimitError';
+  }
+}
 /** Never resamples people-per-pixel values. Caller intersects each native cell geodesically. */
 export async function readPopulationCells(
   path: string,
@@ -210,13 +265,14 @@ export async function readPopulationCells(
 ): Promise<PopulationCells> {
   const query = validateBounds(bbox);
   const maxCells = options.maxCells ?? 10_000;
-  if (!Number.isSafeInteger(maxCells) || maxCells < 1 || maxCells > 100_000)
-    throw new Error('maxCells must be between 1 and 100000');
+  if (!Number.isSafeInteger(maxCells) || maxCells < 1 || maxCells > 200_000)
+    throw new Error('maxCells must be between 1 and 200000');
   if (!isAbsolute(path) || !/^[a-f0-9]{64}\.tif$/.test(path.split('/').pop() ?? ''))
-    throw new Error('Raster is not a managed content-addressed file');
+    throw new PopulationRasterReadError('Raster is not a managed content-addressed file');
   const root = await realpath(enrichmentDataDirectory());
   const safePath = await realpath(path);
-  if (dirname(safePath) !== root) throw new Error('Raster path is outside ENRICHMENT_DATA_DIR');
+  if (dirname(safePath) !== root)
+    throw new PopulationRasterReadError('Raster path is outside ENRICHMENT_DATA_DIR');
   return rasterSlot(async () => {
     if (options.signal?.aborted) throw new Error('Population query cancelled');
     const info = await inspectPopulationRaster(safePath, options);
@@ -235,8 +291,7 @@ export async function readPopulationCells(
       warnings.push('Query extends beyond raster extent; uncovered area is unknown');
     if (width <= 0 || height <= 0)
       return { cells: [], warnings: [...warnings, 'No overlapping raster cells'] };
-    if (width * height > maxCells)
-      throw new Error(`Population query exceeds ${maxCells} native cells; use a smaller radius`);
+    if (width * height > maxCells) throw new PopulationCellLimitError(width * height, maxCells);
     const output = await runTool(
       'gdal_translate',
       [
@@ -261,15 +316,17 @@ export async function readPopulationCells(
     );
     const lines = output.trim().split(/\r?\n/);
     if (lines.length !== width * height)
-      throw new Error('GDAL returned an incomplete raster window');
+      throw new PopulationRasterReadError('GDAL returned an incomplete raster window');
     let noDataCount = 0;
     const cells = lines.map((line, i) => {
       const fields = line.trim().split(/\s+/);
-      if (fields.length !== 3) throw new Error('Invalid GDAL XYZ output');
+      if (fields.length !== 3) throw new PopulationRasterReadError('Invalid GDAL XYZ output');
       const value = Number(fields[2]);
-      if (!Number.isFinite(value)) throw new Error('Population cell is not finite');
+      if (!Number.isFinite(value))
+        throw new PopulationRasterReadError('Population cell is not finite');
       const isMissing = value === info.noData;
-      if (!isMissing && value < 0) throw new Error('Population cell is negative and not NoData');
+      if (!isMissing && value < 0)
+        throw new PopulationRasterReadError('Population cell is negative and not NoData');
       if (isMissing) noDataCount++;
       const west = info.originX + (x0 + (i % width)) * info.pixelWidth;
       const north = info.originY - (y0 + Math.floor(i / width)) * info.pixelHeight;
